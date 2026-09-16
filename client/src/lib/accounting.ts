@@ -1,4 +1,4 @@
-export type PageId = "dashboard" | "transactions" | "people" | "inventory" | "checks" | "reports" | "backup";
+export type PageId = "dashboard" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "reports" | "backup";
 
 export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "سایر";
 export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
@@ -50,6 +50,25 @@ export interface Account {
   balance: number;
 }
 
+export interface PriceHistory {
+  id: string;
+  productId?: string;
+  productName: string;
+  effectiveDate: string;
+  unit: string;
+  price: number;
+  note: string;
+}
+
+export interface PaymentRule {
+  id: string;
+  name: string;
+  active: boolean;
+  dayBasis: number;
+  graceDays: number;
+  tiers: Array<{ id: string; maxDays: number; rate: number; note: string }>;
+}
+
 export interface AuditEvent {
   id: string;
   at: string;
@@ -68,6 +87,8 @@ export interface AppState {
   };
   people: Person[];
   products: Product[];
+  priceHistory: PriceHistory[];
+  paymentRules: PaymentRule[];
   transactions: Transaction[];
   checks: Check[];
   accounts: Account[];
@@ -83,6 +104,8 @@ const seedState: AppState = {
   settings: { businessName: "کارگاه من", currency: "ریال", dayBasis: 30 },
   people: [],
   products: [],
+  priceHistory: [],
+  paymentRules: [{ id: "cash-default", name: "نقدی و تسویه فوری", active: true, dayBasis: 30, graceDays: 0, tiers: [{ id: "tier-1", maxDays: 30, rate: 0, note: "بدون سود" }] }],
   transactions: [],
   checks: [],
   accounts: [
@@ -111,6 +134,8 @@ export function normalizeState(input: unknown): AppState {
     settings: { ...seedState.settings, ...(isRecord(source.settings) ? source.settings : {}) },
     people: Array.isArray(source.people) ? source.people : [],
     products: Array.isArray(source.products) ? source.products : [],
+    priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
+    paymentRules: Array.isArray(source.paymentRules) ? source.paymentRules : seedState.paymentRules,
     transactions: Array.isArray(source.transactions) ? source.transactions : [],
     checks: Array.isArray(source.checks) ? source.checks : [],
     accounts: Array.isArray(source.accounts) ? source.accounts : seedState.accounts,
@@ -199,6 +224,8 @@ export const navItems: Array<{ id: PageId; label: string; caption: string; icon:
   { id: "transactions", label: "عملیات مالی", caption: "فروش و دریافت", icon: "arrow-left-right" },
   { id: "people", label: "طرف حساب‌ها", caption: "مشتری و تأمین‌کننده", icon: "users" },
   { id: "inventory", label: "انبار و کالا", caption: "موجودی و قیمت", icon: "boxes" },
+  { id: "prices", label: "تاریخچه قیمت", caption: "قیمت‌های معتبر", icon: "tags" },
+  { id: "paymentRules", label: "شرایط پرداخت", caption: "پله‌های سود", icon: "percent" },
   { id: "checks", label: "چک‌ها", caption: "سررسید و وضعیت", icon: "file-clock" },
   { id: "reports", label: "گزارش‌ها", caption: "خروجی و تحلیل", icon: "chart-no-axes-combined" },
   { id: "backup", label: "پشتیبان و تنظیمات", caption: "امنیت داده", icon: "cloud-cog" },
