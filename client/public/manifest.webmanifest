@@ -1,0 +1,13 @@
+{
+  "name": "حسابداری کارگاه | دفتر هوشمند",
+  "short_name": "حسابداری کارگاه",
+  "description": "دفتر محلی و آفلاین حسابداری کارگاه",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fc",
+  "theme_color": "#142d31",
+  "orientation": "portrait-primary",
+  "icons": []
+}

@@ -1,25 +1,161 @@
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Banknote,
+  Boxes,
+  ChartNoAxesCombined,
+  Check,
+  ChevronDown,
+  Cloud,
+  CloudDownload,
+  CloudUpload,
+  FileClock,
+  FileDown,
+  FileJson,
+  LayoutDashboard,
+  Menu,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings2,
+  ShieldCheck,
+  Upload,
+  Users,
+  WalletCards,
+  X,
+} from "lucide-react";
+import {
+  AppState,
+  CheckStatus,
+  PageId,
+  TransactionType,
+  appendAudit,
+  calculateMetrics,
+  createId,
+  exportPayload,
+  formatDate,
+  formatMoney,
+  formatNumber,
+  importPayload,
+  loadState,
+  navItems,
+  personName,
+  saveState,
+  todayJalali,
+  transactionLabel,
+} from "@/lib/accounting";
 
-/**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Best Practices, Design Guide and Common Pitfalls
- */
-export default function Home() {
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+const iconMap = { "layout-dashboard": LayoutDashboard, "arrow-left-right": ArrowLeftRight, users: Users, boxes: Boxes, "file-clock": FileClock, "chart-no-axes-combined": ChartNoAxesCombined, "cloud-cog": Cloud } as const;
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
-    </div>
-  );
+function Icon({ name, size = 18 }: { name: keyof typeof iconMap; size?: number }) {
+  const Component = iconMap[name];
+  return <Component size={size} strokeWidth={1.8} />;
 }
+
+function statusClass(status: string) {
+  if (["وصول شده", "ثبت شده", "تودیع شده"].includes(status)) return "status-success";
+  if (["برگشتی", "باطل"].includes(status)) return "status-danger";
+  return "status-warning";
+}
+
+function EmptyState({ title, description, onAction, actionLabel }: { title: string; description: string; onAction?: () => void; actionLabel?: string }) {
+  return <div className="empty-state"><div className="empty-icon"><FileJson size={22} /></div><strong>{title}</strong><p>{description}</p>{onAction && actionLabel && <button className="button button-primary button-small" onClick={onAction}><Plus size={16} />{actionLabel}</button>}</div>;
+}
+
+export default function Home() {
+  const [state, setState] = useState<AppState>(() => loadState());
+  const [activePage, setActivePage] = useState<PageId>("dashboard");
+  const [mobileNav, setMobileNav] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [notice, setNotice] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { localStorage.setItem("accounting-workshop-pwa:v1", JSON.stringify(state)); }, [state]);
+  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(""), 3600); return () => window.clearTimeout(timer); }, [notice]);
+
+  const metrics = useMemo(() => calculateMetrics(state), [state]);
+  const activeNav = navItems.find((item) => item.id === activePage) || navItems[0];
+
+  function updateState(next: AppState, message: string) {
+    setState(saveState(appendAudit(next, "UPDATE", message)));
+    setNotice(message);
+  }
+
+  function handleExport() {
+    const blob = new Blob([exportPayload(state)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.href = url; link.download = `backup-accounting-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
+    setNotice("فایل پشتیبان با موفقیت آماده شد");
+  }
+
+  function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { try { const next = importPayload(String(reader.result)); setState(saveState(appendAudit(next, "RESTORE", `بازیابی از ${file.name}`))); setNotice("بازیابی با موفقیت انجام شد"); } catch (error) { setNotice(error instanceof Error ? error.message : "خواندن فایل ناموفق بود"); } };
+    reader.readAsText(file); event.target.value = "";
+  }
+
+  function addTransaction(input: { type: TransactionType; amount: number; partyId?: string; note: string; date: string }) {
+    const next = { ...state, transactions: [{ id: createId("txn"), status: "ثبت شده" as const, ...input }, ...state.transactions] };
+    updateState(next, `ثبت ${transactionLabel(input.type)} جدید`); setQuickOpen(false);
+  }
+
+  return <div className="app-shell">
+    <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+      <div className="brand"><div className="brand-mark"><span>ک</span></div><div><strong>کارگاه</strong><small>دفتر هوشمند</small></div><button className="mobile-close" onClick={() => setMobileNav(false)}><X size={18} /></button></div>
+      <div className="workspace-switch"><div className="workspace-avatar">ک</div><div><strong>{state.settings.businessName}</strong><small>نسخه محلی فعال</small></div><ChevronDown size={15} /></div>
+      <div className="nav-label">منوی اصلی</div>
+      <nav className="main-nav">{navItems.map((item) => <button key={item.id} className={`nav-item ${activePage === item.id ? "active" : ""}`} onClick={() => { setActivePage(item.id); setMobileNav(false); }}><span className="nav-icon"><Icon name={item.icon as keyof typeof iconMap} size={18} /></span><span><strong>{item.label}</strong><small>{item.caption}</small></span>{item.id === "checks" && state.checks.filter((check) => check.status === "برگشتی").length > 0 && <b className="nav-count">{state.checks.filter((check) => check.status === "برگشتی").length}</b>}</button>)}</nav>
+      <div className="sidebar-bottom"><div className="offline-card"><div className="online-dot" /><div><strong>ذخیره‌سازی محلی</strong><small>اطلاعات روی همین دستگاه</small></div></div><button className="settings-link" onClick={() => setActivePage("backup")}><Settings2 size={17} />تنظیمات برنامه</button></div>
+    </aside>
+    {mobileNav && <button className="sidebar-backdrop" onClick={() => setMobileNav(false)} aria-label="بستن منو" />}
+    <main className="main-area">
+      <header className="topbar"><div className="topbar-title"><button className="mobile-menu" onClick={() => setMobileNav(true)}><Menu size={21} /></button><div><div className="eyebrow">{todayJalali()}</div><h1>{activeNav.label}</h1></div></div><div className="topbar-actions"><div className="save-indicator"><span /><span>ذخیره خودکار فعال</span></div><button className="icon-button" title="پشتیبان‌گیری" onClick={handleExport}><FileDown size={18} /></button><button className="user-chip"><span className="user-avatar">م</span><span className="user-name">مدیر کارگاه</span><ChevronDown size={14} /></button></div></header>
+      <div className="content-wrap">
+        {activePage === "dashboard" && <Dashboard state={state} metrics={metrics} onQuick={() => setQuickOpen(true)} onNavigate={setActivePage} />}
+        {activePage === "transactions" && <Transactions state={state} onQuick={() => setQuickOpen(true)} />}
+        {activePage === "people" && <People state={state} onSave={(next, msg) => updateState(next, msg)} />}
+        {activePage === "inventory" && <Inventory state={state} />}
+        {activePage === "checks" && <Checks state={state} />}
+        {activePage === "reports" && <Reports state={state} metrics={metrics} />}
+        {activePage === "backup" && <BackupPage state={state} onExport={handleExport} onImport={() => fileInput.current?.click()} />}
+      </div>
+    </main>
+    <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={handleImport} />
+    {quickOpen && <QuickAdd onClose={() => setQuickOpen(false)} people={state.people} onSave={addTransaction} />}
+    {notice && <div className="toast"><Check size={17} />{notice}</div>}
+  </div>;
+}
+
+function Dashboard({ state, metrics, onQuick, onNavigate }: { state: AppState; metrics: ReturnType<typeof calculateMetrics>; onQuick: () => void; onNavigate: (page: PageId) => void }) {
+  const recent = state.transactions.slice(0, 5);
+  return <div className="page-stack page-enter"><section className="welcome-row"><div><div className="eyebrow accent-eyebrow">مرکز کنترل کارگاه</div><h2>خلاصهٔ امروز، <em>روشن و ساده</em></h2><p>اطلاعات مالی و عملیاتی را یک‌جا ببینید و با خیال راحت جلو بروید.</p></div><button className="button button-primary" onClick={onQuick}><Plus size={18} />ثبت عملیات جدید</button></section>
+    <section className="metric-grid"><MetricCard label="دریافت این دوره" value={formatMoney(metrics.receipts, state.settings.currency)} helper="نقدینگی واردشده" icon={<ArrowDownLeft size={20} />} tone="mint" /><MetricCard label="پرداخت و هزینه" value={formatMoney(metrics.payments, state.settings.currency)} helper="خروجی ثبت‌شده" icon={<ArrowUpRight size={20} />} tone="rose" /><MetricCard label="مانده خالص" value={formatMoney(metrics.balance, state.settings.currency)} helper="دریافت منهای پرداخت" icon={<WalletCards size={20} />} tone="indigo" /><MetricCard label="چک‌های در جریان" value={formatMoney(metrics.outstandingChecks, state.settings.currency)} helper={`${formatNumber(state.checks.length)} فقره ثبت‌شده`} icon={<FileClock size={20} />} tone="amber" /></section>
+    <section className="dashboard-grid"><div className="panel large-panel"><div className="panel-heading"><div><span className="section-kicker">گردش مالی</span><h3>آخرین عملیات</h3></div><button className="text-button" onClick={() => onNavigate("transactions")}>مشاهده همه <ArrowLeftRight size={15} /></button></div>{recent.length ? <div className="activity-list">{recent.map((item) => <ActivityRow key={item.id} item={item} state={state} />)}</div> : <EmptyState title="هنوز عملیاتی ثبت نشده" description="اولین فروش، دریافت یا هزینهٔ کارگاه را ثبت کنید تا گردش مالی اینجا نمایش داده شود." onAction={onQuick} actionLabel="ثبت اولین عملیات" />}</div><div className="panel action-panel"><div className="panel-heading"><div><span className="section-kicker">دسترسی سریع</span><h3>کارهای روزانه</h3></div><span className="panel-dot" /></div><div className="quick-actions"><QuickAction icon={<ArrowDownLeft />} label="ثبت دریافت" tone="mint" onClick={onQuick} /><QuickAction icon={<ArrowUpRight />} label="ثبت پرداخت" tone="rose" onClick={onQuick} /><QuickAction icon={<Users />} label="طرف حساب جدید" tone="violet" onClick={() => onNavigate("people")} /><QuickAction icon={<Boxes />} label="بررسی موجودی" tone="amber" onClick={() => onNavigate("inventory")} /></div><div className="privacy-note"><ShieldCheck size={17} /><span><strong>داده‌ها در امان‌اند</strong><small>ذخیره خودکار روی دستگاه شما فعال است.</small></span></div></div></section>
+    <section className="bottom-grid"><div className="mini-panel"><div className="mini-panel-title"><span className="mini-icon mint"><Users size={17} /></span><span><strong>طرف حساب‌ها</strong><small>دفتر ارتباطات مالی</small></span></div><strong className="big-number">{formatNumber(state.people.length)}</strong><button className="under-button" onClick={() => onNavigate("people")}>مدیریت طرف حساب‌ها <ArrowLeftRight size={14} /></button></div><div className="mini-panel"><div className="mini-panel-title"><span className="mini-icon amber"><Boxes size={17} /></span><span><strong>موجودی کالا</strong><small>کالاهای قابل پیگیری</small></span></div><strong className="big-number">{formatNumber(state.products.length)}</strong><button className="under-button" onClick={() => onNavigate("inventory")}>مشاهده انبار <ArrowLeftRight size={14} /></button></div><div className="mini-panel"><div className="mini-panel-title"><span className="mini-icon violet"><Banknote size={17} /></span><span><strong>حساب‌های نقدی</strong><small>بانک و صندوق</small></span></div><strong className="big-number">{formatMoney(state.accounts.reduce((sum, account) => sum + account.balance, 0), state.settings.currency)}</strong><button className="under-button" onClick={() => onNavigate("reports")}>گزارش نقدینگی <ArrowLeftRight size={14} /></button></div></section>
+  </div>;
+}
+
+function MetricCard({ label, value, helper, icon, tone }: { label: string; value: string; helper: string; icon: React.ReactNode; tone: string }) { return <div className="metric-card"><div className={`metric-icon ${tone}`}>{icon}</div><div className="metric-copy"><span>{label}</span><strong>{value}</strong><small>{helper}</small></div><div className="metric-spark"><span /><span /><span /><span /><span /></div></div>; }
+function QuickAction({ icon, label, tone, onClick }: { icon: React.ReactNode; label: string; tone: string; onClick: () => void }) { return <button className="quick-action" onClick={onClick}><span className={`quick-icon ${tone}`}>{icon}</span><span>{label}</span><ArrowLeftRight size={14} /></button>; }
+function ActivityRow({ item, state }: { item: AppState["transactions"][number]; state: AppState }) { const incoming = ["دریافت", "درآمد"].includes(item.type); return <div className="activity-row"><span className={`activity-icon ${incoming ? "mint" : "rose"}`}>{incoming ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}</span><span className="activity-main"><strong>{transactionLabel(item.type)}</strong><small>{personName(state, item.partyId)} · {formatDate(item.date)}</small></span><strong className={incoming ? "amount-positive" : "amount-negative"}>{incoming ? "+" : "−"}{formatMoney(item.amount, state.settings.currency)}</strong><span className={`status-pill ${statusClass(item.status)}`}>{item.status}</span></div>; }
+
+function Transactions({ state, onQuick }: { state: AppState; onQuick: () => void }) { return <div className="page-stack page-enter"><PageIntro kicker="دفتر عملیات" title="عملیات مالی" description="فروش، خرید، دریافت، پرداخت و هزینه‌ها را در یک دفتر شفاف مدیریت کنید." actionLabel="ثبت عملیات" onAction={onQuick} /><div className="toolbar"><div className="search-box"><Search size={17} /><input placeholder="جست‌وجوی عملیات یا طرف حساب..." /></div><button className="filter-button">همه عملیات <ChevronDown size={15} /></button><button className="filter-button">این ماه <ChevronDown size={15} /></button></div><div className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>نوع عملیات</th><th>تاریخ</th><th>طرف حساب</th><th>مبلغ</th><th>وضعیت</th></tr></thead><tbody>{state.transactions.length ? state.transactions.map((item) => <tr key={item.id}><td><span className="table-type"><span className={`table-dot ${["دریافت", "درآمد"].includes(item.type) ? "mint" : "rose"}`} />{transactionLabel(item.type)}</span></td><td>{formatDate(item.date)}</td><td>{personName(state, item.partyId)}</td><td className="amount-cell">{formatMoney(item.amount, state.settings.currency)}</td><td><span className={`status-pill ${statusClass(item.status)}`}>{item.status}</span></td></tr>) : <tr><td colSpan={5}><EmptyState title="دفتر عملیات خالی است" description="هنوز رکوردی برای نمایش وجود ندارد." onAction={onQuick} actionLabel="ثبت عملیات" /></td></tr>}</tbody></table></div></div></div>; }
+
+function People({ state, onSave }: { state: AppState; onSave: (state: AppState, message: string) => void }) { const [open, setOpen] = useState(false); const [form, setForm] = useState({ name: "", type: "مشتری" as AppState["people"][number]["type"], phone: "" }); function submit(event: React.FormEvent) { event.preventDefault(); if (!form.name.trim()) return; onSave({ ...state, people: [{ id: createId("person"), code: String(state.people.length + 1).padStart(3, "0"), name: form.name.trim(), type: form.type, phone: form.phone, balance: 0 }, ...state.people] }, "طرف حساب جدید ثبت شد"); setForm({ name: "", type: "مشتری", phone: "" }); setOpen(false); } return <div className="page-stack page-enter"><PageIntro kicker="دفتر اشخاص" title="طرف حساب‌ها" description="مشتری، تأمین‌کننده و همکاران کارگاه را مرتب و قابل دسترس نگه دارید." actionLabel="افزودن طرف حساب" onAction={() => setOpen(true)} /><div className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">دفتر اشخاص</span><h3>{formatNumber(state.people.length)} رکورد</h3></div><div className="search-box compact"><Search size={16} /><input placeholder="جست‌وجو..." /></div></div><div className="table-wrap"><table><thead><tr><th>کد</th><th>نام</th><th>نوع</th><th>تلفن</th><th>مانده</th></tr></thead><tbody>{state.people.length ? state.people.map((person) => <tr key={person.id}><td className="muted-cell">{person.code}</td><td><strong>{person.name}</strong></td><td><span className="soft-tag">{person.type}</span></td><td>{person.phone || "—"}</td><td className={person.balance > 0 ? "amount-negative" : "muted-cell"}>{person.balance ? formatMoney(person.balance, state.settings.currency) : "بدون مانده"}</td></tr>) : <tr><td colSpan={5}><EmptyState title="هنوز طرف حسابی ندارید" description="با ساختن اولین مخاطب، ثبت عملیات مالی سریع‌تر می‌شود." onAction={() => setOpen(true)} actionLabel="افزودن طرف حساب" /></td></tr>}</tbody></table></div></div>{open && <Dialog title="طرف حساب جدید" onClose={() => setOpen(false)}><form onSubmit={submit} className="form-grid"><label>نام و نام خانوادگی<input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="مثلاً فروشگاه بهار" /></label><label>نوع<select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as typeof form.type })}><option>مشتری</option><option>تأمین‌کننده</option><option>شریک</option><option>کارگر</option><option>سایر</option></select></label><label>شماره تماس<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="اختیاری" /></label><div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setOpen(false)}>انصراف</button><button className="button button-primary" type="submit">ذخیره طرف حساب</button></div></form></Dialog>}</div>; }
+
+function Inventory({ state }: { state: AppState }) { return <div className="page-stack page-enter"><PageIntro kicker="کنترل موجودی" title="انبار و کالا" description="موجودی، قیمت پایه و کالاهای نزدیک به حداقل را یک‌جا ببینید." actionLabel="افزودن کالا" onAction={() => {}} /><div className="inventory-summary"><div><Boxes size={19} /><span>تعداد کالا</span><strong>{formatNumber(state.products.length)}</strong></div><div><WalletCards size={19} /><span>ارزش تقریبی موجودی</span><strong>{formatMoney(state.products.reduce((sum, item) => sum + item.stock * item.price, 0), state.settings.currency)}</strong></div><div><RefreshCw size={19} /><span>نیازمند بررسی</span><strong>{formatNumber(state.products.filter((item) => item.stock <= item.minStock).length)}</strong></div></div><div className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">دفتر کالا</span><h3>وضعیت فعلی انبار</h3></div><span className="soft-tag">محاسبه بر اساس گردش</span></div><div className="table-wrap"><table><thead><tr><th>کد کالا</th><th>نام کالا</th><th>واحد</th><th>موجودی</th><th>قیمت پایه</th><th>وضعیت</th></tr></thead><tbody>{state.products.length ? state.products.map((product) => <tr key={product.id}><td className="muted-cell">{product.code}</td><td><strong>{product.name}</strong></td><td>{product.unit}</td><td className="amount-cell">{formatNumber(product.stock)}</td><td>{formatMoney(product.price, state.settings.currency)}</td><td><span className={`status-pill ${product.stock <= product.minStock ? "status-warning" : "status-success"}`}>{product.stock <= product.minStock ? "نیاز به تأمین" : "مناسب"}</span></td></tr>) : <tr><td colSpan={6}><EmptyState title="کالایی ثبت نشده" description="پس از ثبت کالا، موجودی و هشدار تأمین در این صفحه نمایش داده می‌شود." /></td></tr>}</tbody></table></div></div></div>; }
+
+function Checks({ state }: { state: AppState }) { const groups: Array<{ label: CheckStatus; color: string }> = [{ label: "نزد ما", color: "amber" }, { label: "وصول شده", color: "mint" }, { label: "برگشتی", color: "rose" }]; return <div className="page-stack page-enter"><PageIntro kicker="مدیریت تعهدات" title="چک‌ها" description="سررسیدها و وضعیت وصول را قبل از موعد کنترل کنید." actionLabel="ثبت چک" onAction={() => {}} /><div className="check-cards">{groups.map((group) => <div className="check-card" key={group.label}><span className={`mini-icon ${group.color}`}><FileClock size={17} /></span><span>{group.label}</span><strong>{formatMoney(state.checks.filter((check) => check.status === group.label).reduce((sum, check) => sum + check.amount, 0), state.settings.currency)}</strong><small>{formatNumber(state.checks.filter((check) => check.status === group.label).length)} فقره</small></div>)}</div><div className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">دفتر چک</span><h3>پیگیری چک‌ها</h3></div><span className="soft-tag">وضعیت‌ها قابل تغییر</span></div><div className="table-wrap"><table><thead><tr><th>شماره چک</th><th>طرف حساب</th><th>بانک</th><th>سررسید</th><th>مبلغ</th><th>وضعیت</th></tr></thead><tbody>{state.checks.length ? state.checks.map((check) => <tr key={check.id}><td><strong>{check.number}</strong></td><td>{personName(state, check.partyId)}</td><td>{check.bank || "—"}</td><td>{formatDate(check.dueDate)}</td><td>{formatMoney(check.amount, state.settings.currency)}</td><td><span className={`status-pill ${statusClass(check.status)}`}>{check.status}</span></td></tr>) : <tr><td colSpan={6}><EmptyState title="چکی ثبت نشده" description="چک‌های دریافتی و پرداختی را اینجا متمرکز کنید." /></td></tr>}</tbody></table></div></div></div>; }
+
+function Reports({ state, metrics }: { state: AppState; metrics: ReturnType<typeof calculateMetrics> }) { return <div className="page-stack page-enter"><PageIntro kicker="دید مدیریتی" title="گزارش‌ها" description="عددهای کلیدی کارگاه را برای تصمیم‌گیری سریع کنار هم ببینید." actionLabel="خروجی JSON" onAction={() => { const blob = new Blob([exportPayload(state)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "accounting-report.json"; a.click(); URL.revokeObjectURL(url); }} /><div className="report-grid"><div className="panel report-highlight"><span className="section-kicker">خالص گردش نقدی</span><strong>{formatMoney(metrics.balance, state.settings.currency)}</strong><p>بر مبنای دریافت‌ها و پرداخت‌های ثبت‌شده تا امروز.</p><div className="report-line"><span style={{ width: `${Math.min(100, metrics.receipts ? Math.max(10, (metrics.balance / metrics.receipts) * 100) : 10)}%` }} /></div></div><div className="panel report-breakdown"><span className="section-kicker">خلاصهٔ دوره</span><div className="break-row"><span>فروش</span><strong>{formatMoney(metrics.sales, state.settings.currency)}</strong></div><div className="break-row"><span>خرید</span><strong>{formatMoney(metrics.purchases, state.settings.currency)}</strong></div><div className="break-row"><span>دریافت</span><strong className="amount-positive">{formatMoney(metrics.receipts, state.settings.currency)}</strong></div><div className="break-row"><span>پرداخت</span><strong className="amount-negative">{formatMoney(metrics.payments, state.settings.currency)}</strong></div></div></div><div className="panel insight-panel"><div className="mini-icon violet"><ChartNoAxesCombined size={18} /></div><div><strong>گزارش‌های تفصیلی در حال آماده‌سازی هستند</strong><p>ساختار گزارش‌ها از یک هستهٔ دادهٔ واحد تغذیه می‌شود تا ماندهٔ تاریخی، سود روزشمار و موجودی با فرمول‌های پراکنده تکرار نشوند.</p></div></div></div>; }
+
+function BackupPage({ state, onExport, onImport }: { state: AppState; onExport: () => void; onImport: () => void }) { return <div className="page-stack page-enter"><PageIntro kicker="امنیت و تداوم داده" title="پشتیبان و تنظیمات" description="اطلاعات را روی دستگاه نگه دارید و هر زمان خواستید یک نسخهٔ قابل انتقال بسازید." /><div className="backup-grid"><div className="panel backup-main"><div className="backup-hero"><div className="backup-hero-icon"><ShieldCheck size={25} /></div><div><span className="section-kicker">وضعیت ذخیره‌سازی</span><h3>اطلاعات شما محلی و آمادهٔ پشتیبان‌گیری است</h3><p>آخرین تغییر در همین مرورگر ذخیره می‌شود. برای اطمینان، مرتب یک فایل JSON خروجی بگیرید.</p></div></div><div className="backup-actions"><button className="backup-action" onClick={onExport}><span className="backup-action-icon mint"><CloudUpload size={20} /></span><span><strong>ساخت پشتیبان جدید</strong><small>دانلود فایل کامل اطلاعات</small></span><ArrowLeftRight size={16} /></button><button className="backup-action" onClick={onImport}><span className="backup-action-icon violet"><CloudDownload size={20} /></span><span><strong>بازیابی از فایل</strong><small>اعتبارسنجی قبل از جایگزینی</small></span><ArrowLeftRight size={16} /></button></div></div><div className="panel cloud-panel"><div className="cloud-illustration"><Cloud size={28} /></div><span className="section-kicker">مرحلهٔ بعد</span><h3>پشتیبان روی Google Drive</h3><p>اتصال ابری پس از تکمیل مجوز امن Drive اضافه می‌شود؛ فعلاً فایل محلی همیشه در اختیار شماست.</p><span className="coming-tag">به‌زودی · بدون حذف نسخه‌های قبلی</span></div></div><div className="data-health"><div><span className="health-dot" /><strong>داده سالم است</strong><small>{formatNumber(state.people.length + state.products.length + state.transactions.length + state.checks.length)} رکورد قابل بازیابی</small></div><div><FileJson size={18} /><span>نسخهٔ schema: ۱</span></div><div><RefreshCw size={18} /><span>revision: {formatNumber(state.revision)}</span></div></div></div>; }
+
+function PageIntro({ kicker, title, description, actionLabel, onAction }: { kicker: string; title: string; description: string; actionLabel?: string; onAction?: () => void }) { return <section className="page-intro"><div><span className="eyebrow accent-eyebrow">{kicker}</span><h2>{title}</h2><p>{description}</p></div>{actionLabel && onAction && <button className="button button-primary" onClick={onAction}><Plus size={18} />{actionLabel}</button>}</section>; }
+
+function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) { return <div className="dialog-backdrop" onMouseDown={onClose}><div className="dialog" onMouseDown={(e) => e.stopPropagation()}><div className="dialog-header"><div><span className="section-kicker">فرم ثبت</span><h3>{title}</h3></div><button className="icon-button" onClick={onClose}><X size={18} /></button></div>{children}</div></div>; }
+
+function QuickAdd({ onClose, people, onSave }: { onClose: () => void; people: AppState["people"]; onSave: (input: { type: TransactionType; amount: number; partyId?: string; note: string; date: string }) => void }) { const [form, setForm] = useState({ type: "دریافت" as TransactionType, amount: "", partyId: "", note: "", date: todayJalali() }); function submit(event: React.FormEvent) { event.preventDefault(); const amount = Number(form.amount.replace(/[^0-9.]/g, "")); if (!amount) return; onSave({ type: form.type, amount, partyId: form.partyId || undefined, note: form.note, date: form.date }); } return <Dialog title="ثبت عملیات جدید" onClose={onClose}><form onSubmit={submit} className="form-grid"><div className="operation-type-grid">{(["دریافت", "پرداخت", "فروش", "خرید", "هزینه", "درآمد"] as TransactionType[]).map((type) => <button type="button" key={type} className={`type-choice ${form.type === type ? "selected" : ""}`} onClick={() => setForm({ ...form, type })}>{type}</button>)}</div><label>مبلغ ({"ریال"})<input autoFocus inputMode="numeric" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="مثلاً ۵۰۰۰۰۰۰۰" /></label><label>تاریخ جلالی<input value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></label><label>طرف حساب<select value={form.partyId} onChange={(e) => setForm({ ...form, partyId: e.target.value })}><option value="">بدون طرف حساب</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><label>توضیحات<input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="اختیاری" /></label><div className="form-actions"><button type="button" className="button button-ghost" onClick={onClose}>انصراف</button><button className="button button-primary" type="submit"><Check size={17} />ذخیره عملیات</button></div></form></Dialog>; }
