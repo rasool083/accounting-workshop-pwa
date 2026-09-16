@@ -14,7 +14,7 @@ export interface Invoice {
 }
 
 export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
-export type CheckStatus = "نزد ما" | "وصول شده" | "تودیع شده" | "برگشتی" | "عودت داده شده" | "جایگزین شده" | "باطل";
+export type CheckStatus = "نزد ما" | "وصول شده" | "تودیع شده" | "برگشتی" | "عودت داده شده" | "جایگزین شده" | "باطل" | "خرج شده";
 
 export interface Person {
   id: string;
@@ -65,6 +65,7 @@ export interface Check {
   returnPartyId?: string;
   replacementOf?: string;
   replacementIds?: string[];
+  note?: string;
 }
 
 export interface Account {
