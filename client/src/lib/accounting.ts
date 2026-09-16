@@ -7,8 +7,10 @@ export type PriceScope = "عمومی" | "اختصاصی";
 
 export interface Warehouse { id: string; name: string; note: string; }
 
+export interface InvoiceItem { id: string; productId?: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; }
+export interface CheckAllocation { checkId: string; amount: number; allocatedAt: string; }
 export interface Invoice {
-  id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده"; note: string;
+  id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; items: InvoiceItem[]; allocations: CheckAllocation[]; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده"; note: string;
 }
 
 export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
@@ -159,7 +161,7 @@ export function normalizeState(input: unknown): AppState {
     people: Array.isArray(source.people) ? source.people.map((person) => ({ ...person, defaultPaymentRuleId: typeof person.defaultPaymentRuleId === "string" ? person.defaultPaymentRuleId : undefined, roles: Array.isArray(person.roles) && person.roles.length ? person.roles : [person.type || "مشتری"] })) : [],
     products: Array.isArray(source.products) ? source.products.map((product) => ({ ...product, unit2: product.unit2 || product.unit, conversionRate: Number(product.conversionRate) || 1 })) : [],
     warehouses: Array.isArray(source.warehouses) ? source.warehouses : seedState.warehouses,
-    invoices: Array.isArray(source.invoices) ? source.invoices : [],
+    invoices: Array.isArray(source.invoices) ? source.invoices.map((invoice) => ({ ...invoice, items: Array.isArray(invoice.items) ? invoice.items : [], allocations: Array.isArray(invoice.allocations) ? invoice.allocations : [], paidAmount: Number(invoice.paidAmount) || 0 })) : [],
     priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
     paymentRules: Array.isArray(source.paymentRules) ? source.paymentRules : seedState.paymentRules,
     transactions: Array.isArray(source.transactions) ? source.transactions : [],
@@ -241,8 +243,16 @@ export function jalaliDayDifference(from: string, to: string) {
 }
 
 export function allocateCheckFIFO(check: Check, invoices: Invoice[]) {
-  let remaining = check.amount;
+  const alreadyAllocated = invoices.reduce((sum, invoice) => sum + invoice.allocations.filter((item) => item.checkId === check.id).reduce((a, item) => a + item.amount, 0), 0);
+  let remaining = Math.max(0, check.amount - alreadyAllocated);
   return [...invoices].filter((invoice) => invoice.partyId === check.partyId && invoice.type === "فروش" && invoice.status !== "تسویه شده").sort((a, b) => a.date.localeCompare(b.date)).map((invoice) => { const allocation = Math.min(remaining, Math.max(0, invoice.amount - invoice.paidAmount)); remaining -= allocation; return { invoice, allocation, remainingAfter: remaining }; }).filter((item) => item.allocation > 0);
+}
+
+export function applyCheckFIFO(state: AppState, check: Check) {
+  const allocations = allocateCheckFIFO(check, state.invoices);
+  if (!allocations.length) return state;
+  const invoices = state.invoices.map((invoice) => { const row = allocations.find((item) => item.invoice.id === invoice.id); if (!row) return invoice; const paidAmount = invoice.paidAmount + row.allocation; return { ...invoice, paidAmount, allocations: [...invoice.allocations, { checkId: check.id, amount: row.allocation, allocatedAt: new Date().toISOString() }], status: paidAmount >= invoice.amount ? "تسویه شده" as const : "تسویه جزئی" as const }; });
+  return { ...state, invoices };
 }
 
 export function calculateLateProfit(check: Check, rule?: PaymentRule, invoiceDate?: string) {
