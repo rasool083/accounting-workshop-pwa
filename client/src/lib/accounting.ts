@@ -10,7 +10,7 @@ export interface Warehouse { id: string; name: string; note: string; }
 export interface InvoiceItem { id: string; productId?: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; }
 export interface CheckAllocation { checkId: string; amount: number; allocatedAt: string; }
 export interface Invoice {
-  id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; items: InvoiceItem[]; allocations: CheckAllocation[]; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده"; note: string;
+  id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; items: InvoiceItem[]; allocations: CheckAllocation[]; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده" | "باطل"; note: string;
 }
 
 export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
