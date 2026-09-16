@@ -1,4 +1,4 @@
-export type PageId = "dashboard" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "reports" | "backup";
+export type PageId = "dashboard" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "monthClose" | "reports" | "backup";
 
 export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "سایر";
 export const PERSON_TYPES: PersonType[] = ["مشتری", "تأمین‌کننده", "شریک", "کارگر", "سایر"];
@@ -41,6 +41,8 @@ export interface Check {
   number: string;
   partyId?: string;
   dueDate: string;
+  invoiceDate: string;
+  paymentRuleId?: string;
   amount: number;
   status: CheckStatus;
   bank: string;
@@ -140,7 +142,7 @@ export function normalizeState(input: unknown): AppState {
     priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
     paymentRules: Array.isArray(source.paymentRules) ? source.paymentRules : seedState.paymentRules,
     transactions: Array.isArray(source.transactions) ? source.transactions : [],
-    checks: Array.isArray(source.checks) ? source.checks : [],
+    checks: Array.isArray(source.checks) ? source.checks.map((check) => ({ ...check, invoiceDate: typeof check.invoiceDate === "string" ? check.invoiceDate : check.dueDate || "", paymentRuleId: typeof check.paymentRuleId === "string" ? check.paymentRuleId : undefined })) : [],
     accounts: Array.isArray(source.accounts) ? source.accounts : seedState.accounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
   } as AppState;
@@ -212,6 +214,20 @@ export function appendAudit(state: AppState, action: string, note: string): AppS
   };
 }
 
+export function jalaliDayDifference(from: string, to: string) {
+  const parse = (value: string) => { const parts = value.replace(/-/g, "/").split("/").map(Number); return parts.length === 3 && parts.every(Number.isFinite) ? parts[0] * 372 + parts[1] * 31 + parts[2] : 0; };
+  return Math.max(0, parse(to) - parse(from));
+}
+
+export function calculateLateProfit(check: Check, rule?: PaymentRule) {
+  const days = jalaliDayDifference(check.invoiceDate, check.dueDate);
+  const activeRule = rule || { dayBasis: 30, graceDays: 0, tiers: [{ maxDays: 9999, rate: 0 }] };
+  const overdueDays = Math.max(0, days - activeRule.graceDays);
+  const tier = [...activeRule.tiers].sort((a, b) => a.maxDays - b.maxDays).find((item) => overdueDays <= item.maxDays) || activeRule.tiers[activeRule.tiers.length - 1];
+  const profit = check.amount * ((tier?.rate || 0) * overdueDays / activeRule.dayBasis);
+  return { days, overdueDays, profit, settled: check.amount + profit, remaining: Math.max(0, check.amount - check.amount) };
+}
+
 export function calculateMetrics(state: AppState) {
   const valid = state.transactions.filter((item) => item.status !== "باطل");
   const sales = valid.filter((item) => item.type === "فروش").reduce((sum, item) => sum + item.amount, 0);
@@ -230,6 +246,7 @@ export const navItems: Array<{ id: PageId; label: string; caption: string; icon:
   { id: "prices", label: "تاریخچه قیمت", caption: "قیمت‌های معتبر", icon: "tags" },
   { id: "paymentRules", label: "شرایط پرداخت", caption: "پله‌های سود", icon: "percent" },
   { id: "checks", label: "چک‌ها", caption: "سررسید و وضعیت", icon: "file-clock" },
+  { id: "monthClose", label: "بستن ماه", caption: "تسویه و سود دیرکرد", icon: "lock-keyhole" },
   { id: "reports", label: "گزارش‌ها", caption: "خروجی و تحلیل", icon: "chart-no-axes-combined" },
   { id: "backup", label: "پشتیبان و تنظیمات", caption: "امنیت داده", icon: "cloud-cog" },
 ];
