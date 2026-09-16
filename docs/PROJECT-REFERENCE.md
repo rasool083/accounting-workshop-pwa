@@ -126,3 +126,7 @@ Repository اصلی پروژه `rasool083/accounting-workshop-pwa` است. Repos
 فایل `client/src/lib/googleDrive.ts` یک adapter مستقل برای فهرست‌کردن، بارگذاری و بازیابی فایل‌های JSON پشتیبان روی Google Drive اضافه می‌کند. OAuth access token فقط از host/connector به‌صورت کوتاه‌عمر وارد adapter می‌شود و در `localStorage`، `AppState` یا فایل پشتیبان ذخیره نمی‌شود. جست‌وجوی فایل‌ها به نام‌های `accounting-workshop-backup` محدود شده و امکان تعیین پوشهٔ مقصد وجود دارد.
 
 در این مرحله connector Drive در نشست فعال نیست و توکن فعلی Google Workspace نیز scope لازم برای Drive را ندارد؛ بنابراین adapter تا زمان اعطای مجوز Drive در UI فعال نمی‌شود و ذخیره‌سازی محلی/JSON بدون تغییر به‌عنوان مسیر اصلی باقی می‌ماند.
+
+### ۱۴۰۵/۰۶/۲۶ — تأیید مجوز و آزمون رفت‌وبرگشت Drive
+
+پس از اعطای مجوز، `gws drive files list` با موفقیت فایل‌ها و پوشه‌های حساب را خواند. یک فایل پشتیبان آزمایشی JSON در پوشهٔ «فاز ۵» بارگذاری شد و با شناسهٔ Drive `1uqIfkKNDMggSkDWw07pO3zt1KOgUlydO` بازیابی گردید؛ محتوای JSON اصلی و بازیابی‌شده دقیقاً برابر بودند. فایل آزمایشی محلی حذف شد. اتصال مرورگر PWA همچنان token را مستقیماً نگهداری نمی‌کند و از adapter/host امن استفاده می‌کند.
