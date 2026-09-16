@@ -57,3 +57,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .check-row-spent td{background:#edf5ff!important;color:#285b91}.check-row td select{min-width:112px;font-size:11px;padding:6px 8px}.check-row td small{display:block;margin-top:4px}.check-row td:last-child{white-space:nowrap}
 .check-filters{align-items:end;gap:12px}.check-filters label{display:flex;align-items:center;gap:7px;font-size:12px;color:#5d716b}.check-filters select{min-width:150px;padding:8px 10px;border:1px solid #dce8e4;border-radius:10px;background:#fff;color:#304a43}.audit-history{display:grid;gap:10px}.audit-history-row{padding:12px;border:1px solid #e5ece9;border-radius:12px;background:#fbfdfc}.audit-history-row span{font-size:11px;color:#778983}.audit-history-row strong{display:block;margin-top:4px;color:#275b4f}.audit-history-row p{margin:5px 0 0;color:#526760;font-size:12px}
 @media print{.check-filters{display:none!important}.check-cards{display:grid!important}.check-row td{background:#fff!important;color:#222!important}.check-row td select{border:0!important;appearance:none!important;padding:0!important}.table-panel{box-shadow:none!important;border:0!important}.table-panel .panel-heading{border-bottom:1px solid #ddd}.main-area{margin:0!important}.content-wrap{padding:0!important}}
+
+.drive-path-card { width: 100%; margin-top: 14px; padding: 12px; border: 1px solid #dcece5; border-radius: 12px; background: #f5fbf8; text-align: right; }
+.drive-path-card strong, .drive-path-card small { display: block; }
+.drive-path-card strong { color: #477866; font-size: 11px; }
+.drive-path-card small { color: #91a39d; font-size: 9px; margin-top: 5px; }
+.cloud-panel .form-actions { width: 100%; justify-content: center; margin-top: 12px; }
+.cloud-panel .form-actions .button { font-size: 10px; padding: 8px 10px; }

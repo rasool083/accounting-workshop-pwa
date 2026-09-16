@@ -57,6 +57,10 @@ import {
   PERSON_TYPES,
   UNIT_OPTIONS,
 } from "@/lib/accounting";
+import {
+  PROJECT_BACKUPS_FOLDER_URL,
+  PROJECT_DRIVE_FOLDER_URL,
+} from "@/lib/googleDrive";
 
 const iconMap = {
   "layout-dashboard": LayoutDashboard,
@@ -4366,13 +4370,25 @@ function BackupPage({
           <div className="cloud-illustration">
             <Cloud size={28} />
           </div>
-          <span className="section-kicker">مرحلهٔ بعد</span>
+          <span className="section-kicker">اتصال ابری فعال</span>
           <h3>پشتیبان روی Google Drive</h3>
           <p>
-            اتصال ابری پس از تکمیل مجوز امن Drive اضافه می‌شود؛ فعلاً فایل محلی
-            همیشه در اختیار شماست.
+            مجوز Drive فعال است و مسیر اختصاصی پروژه برای نگهداری نسخه‌های JSON
+            آماده شده است. پشتیبان محلی همچنان بدون وابستگی به اینترنت کار می‌کند.
           </p>
-          <span className="coming-tag">به‌زودی · بدون حذف نسخه‌های قبلی</span>
+          <div className="drive-path-card">
+            <strong>حسابداری کارگاه — پشتیبان‌های PWA</strong>
+            <small>زیرپوشه: نسخه‌های پشتیبان JSON</small>
+          </div>
+          <div className="form-actions">
+            <a className="button button-primary" href={PROJECT_BACKUPS_FOLDER_URL} target="_blank" rel="noreferrer">
+              مشاهده نسخه‌های پشتیبان
+            </a>
+            <a className="button button-ghost" href={PROJECT_DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">
+              پوشه اصلی پروژه
+            </a>
+          </div>
+          <span className="coming-tag">آخرین نسخه تأییدشده: ۱۴۰۵/۰۶/۲۶ · آماده برای همگام‌سازی</span>
         </div>
       </div>
       <div className="data-health">
