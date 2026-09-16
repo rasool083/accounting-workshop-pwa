@@ -130,3 +130,8 @@ Repository اصلی پروژه `rasool083/accounting-workshop-pwa` است. Repos
 ### ۱۴۰۵/۰۶/۲۶ — تأیید مجوز و آزمون رفت‌وبرگشت Drive
 
 پس از اعطای مجوز، `gws drive files list` با موفقیت فایل‌ها و پوشه‌های حساب را خواند. یک فایل پشتیبان آزمایشی JSON در پوشهٔ «فاز ۵» بارگذاری شد و با شناسهٔ Drive `1uqIfkKNDMggSkDWw07pO3zt1KOgUlydO` بازیابی گردید؛ محتوای JSON اصلی و بازیابی‌شده دقیقاً برابر بودند. فایل آزمایشی محلی حذف شد. اتصال مرورگر PWA همچنان token را مستقیماً نگهداری نمی‌کند و از adapter/host امن استفاده می‌کند.
+
+### ۱۴۰۵/۰۶/۲۶ — مسیر اختصاصی Google Drive پروژه
+
+برای پروژه پوشهٔ اختصاصی **حسابداری کارگاه — پشتیبان‌های PWA** در ریشهٔ Google Drive ایجاد شد. شناسهٔ پوشه `1Qrql348yLKgkKNEzRDYUwLAa1ylbEx8h` و [مسیر مشاهده در Google Drive](https://drive.google.com/drive/folders/1Qrql348yLKgkKNEzRDYUwLAa1ylbEx8h) است. زیرپوشهٔ **نسخه‌های پشتیبان JSON** با شناسهٔ `12qwZHYKcI7Zsg-m5gYOCCkzQc8Ynpthx` برای فایل‌های پشتیبان ساخته شد. شناسه‌ها به‌عنوان تنظیمات غیرمحرمانهٔ مسیر در `client/src/lib/googleDrive.ts` ثبت شدند؛ هیچ token یا credential در پروژه ذخیره نشده است.
+ نخستین فایل پشتیبان در این مسیر با نام `accounting-workshop-backup-initial-1405-06-26.json` و شناسهٔ `1CJDm58g25rGVwIG_EmrcgYaouoq6hlvq` قرار گرفت و با فهرست‌کردن زیرپوشه تأیید شد.

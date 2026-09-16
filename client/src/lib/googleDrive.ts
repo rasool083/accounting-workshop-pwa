@@ -12,6 +12,12 @@ export type GoogleDriveAdapter = {
   downloadBackup: (fileId: string) => Promise<string>;
 };
 
+/** Folder created specifically for this project in the user's Drive. */
+export const PROJECT_DRIVE_FOLDER_ID = "1Qrql348yLKgkKNEzRDYUwLAa1ylbEx8h";
+export const PROJECT_BACKUPS_FOLDER_ID = "12qwZHYKcI7Zsg-m5gYOCCkzQc8Ynpthx";
+export const PROJECT_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Qrql348yLKgkKNEzRDYUwLAa1ylbEx8h";
+export const PROJECT_BACKUPS_FOLDER_URL = "https://drive.google.com/drive/folders/12qwZHYKcI7Zsg-m5gYOCCkzQc8Ynpthx";
+
 /**
  * Creates a short-lived Google Drive adapter from an OAuth access token.
  * The token is intentionally supplied by the host/connector and is never
