@@ -1,6 +1,8 @@
 export type PageId = "dashboard" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "reports" | "backup";
 
 export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "سایر";
+export const PERSON_TYPES: PersonType[] = ["مشتری", "تأمین‌کننده", "شریک", "کارگر", "سایر"];
+export const UNIT_OPTIONS = ["عدد", "کیلوگرم", "گرم", "تن", "متر", "سانتی‌متر", "مترمربع", "مترمکعب", "لیتر", "گالن", "کیسه", "بسته", "کارتن", "پالت", "حلقه", "شاخه", "دست", "سرویس", "دستگاه", "ساعت", "روز", "ماه", "سایر"] as const;
 export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
 export type CheckStatus = "نزد ما" | "وصول شده" | "تودیع شده" | "برگشتی" | "باطل";
 
@@ -9,6 +11,7 @@ export interface Person {
   code: string;
   name: string;
   type: PersonType;
+  roles: PersonType[];
   phone: string;
   balance: number;
 }
@@ -132,7 +135,7 @@ export function normalizeState(input: unknown): AppState {
     revision: typeof source.revision === "number" ? source.revision : 1,
     updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : new Date().toISOString(),
     settings: { ...seedState.settings, ...(isRecord(source.settings) ? source.settings : {}) },
-    people: Array.isArray(source.people) ? source.people : [],
+    people: Array.isArray(source.people) ? source.people.map((person) => ({ ...person, roles: Array.isArray(person.roles) && person.roles.length ? person.roles : [person.type || "مشتری"] })) : [],
     products: Array.isArray(source.products) ? source.products : [],
     priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
     paymentRules: Array.isArray(source.paymentRules) ? source.paymentRules : seedState.paymentRules,
