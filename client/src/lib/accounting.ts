@@ -1,8 +1,16 @@
-export type PageId = "dashboard" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "monthClose" | "reports" | "backup";
+export type PageId = "dashboard" | "invoices" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "monthClose" | "reports" | "backup";
 
 export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "سایر";
 export const PERSON_TYPES: PersonType[] = ["مشتری", "تأمین‌کننده", "شریک", "کارگر", "سایر"];
 export const UNIT_OPTIONS = ["عدد", "کیلوگرم", "گرم", "تن", "متر", "سانتی‌متر", "مترمربع", "مترمکعب", "لیتر", "گالن", "کیسه", "بسته", "کارتن", "پالت", "حلقه", "شاخه", "دست", "سرویس", "دستگاه", "ساعت", "روز", "ماه", "سایر"] as const;
+export type PriceScope = "عمومی" | "اختصاصی";
+
+export interface Warehouse { id: string; name: string; note: string; }
+
+export interface Invoice {
+  id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده"; note: string;
+}
+
 export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
 export type CheckStatus = "نزد ما" | "وصول شده" | "تودیع شده" | "برگشتی" | "باطل";
 
@@ -11,6 +19,7 @@ export interface Person {
   code: string;
   name: string;
   type: PersonType;
+  defaultPaymentRuleId?: string;
   roles: PersonType[];
   phone: string;
   balance: number;
@@ -21,6 +30,9 @@ export interface Product {
   code: string;
   name: string;
   unit: string;
+  unit2?: string;
+  conversionRate?: number;
+  warehouseId?: string;
   stock: number;
   minStock: number;
   price: number;
@@ -41,7 +53,8 @@ export interface Check {
   number: string;
   partyId?: string;
   dueDate: string;
-  invoiceDate: string;
+  receivedDate: string;
+  invoiceDate?: string;
   paymentRuleId?: string;
   amount: number;
   status: CheckStatus;
@@ -59,6 +72,8 @@ export interface PriceHistory {
   id: string;
   productId?: string;
   productName: string;
+  scope: PriceScope;
+  partyIds?: string[];
   effectiveDate: string;
   unit: string;
   price: number;
@@ -92,6 +107,8 @@ export interface AppState {
   };
   people: Person[];
   products: Product[];
+  warehouses: Warehouse[];
+  invoices: Invoice[];
   priceHistory: PriceHistory[];
   paymentRules: PaymentRule[];
   transactions: Transaction[];
@@ -109,6 +126,8 @@ const seedState: AppState = {
   settings: { businessName: "کارگاه من", currency: "ریال", dayBasis: 30 },
   people: [],
   products: [],
+  warehouses: [{ id: "warehouse-production", name: "انبار محصولات تولید", note: "" }, { id: "warehouse-material", name: "انبار مواد اولیه", note: "" }, { id: "warehouse-trade", name: "انبار بازرگانی", note: "" }],
+  invoices: [],
   priceHistory: [],
   paymentRules: [{ id: "cash-default", name: "نقدی و تسویه فوری", active: true, dayBasis: 30, graceDays: 0, tiers: [{ id: "tier-1", maxDays: 30, rate: 0, note: "بدون سود" }] }],
   transactions: [],
@@ -137,12 +156,14 @@ export function normalizeState(input: unknown): AppState {
     revision: typeof source.revision === "number" ? source.revision : 1,
     updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : new Date().toISOString(),
     settings: { ...seedState.settings, ...(isRecord(source.settings) ? source.settings : {}) },
-    people: Array.isArray(source.people) ? source.people.map((person) => ({ ...person, roles: Array.isArray(person.roles) && person.roles.length ? person.roles : [person.type || "مشتری"] })) : [],
-    products: Array.isArray(source.products) ? source.products : [],
+    people: Array.isArray(source.people) ? source.people.map((person) => ({ ...person, defaultPaymentRuleId: typeof person.defaultPaymentRuleId === "string" ? person.defaultPaymentRuleId : undefined, roles: Array.isArray(person.roles) && person.roles.length ? person.roles : [person.type || "مشتری"] })) : [],
+    products: Array.isArray(source.products) ? source.products.map((product) => ({ ...product, unit2: product.unit2 || product.unit, conversionRate: Number(product.conversionRate) || 1 })) : [],
+    warehouses: Array.isArray(source.warehouses) ? source.warehouses : seedState.warehouses,
+    invoices: Array.isArray(source.invoices) ? source.invoices : [],
     priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
     paymentRules: Array.isArray(source.paymentRules) ? source.paymentRules : seedState.paymentRules,
     transactions: Array.isArray(source.transactions) ? source.transactions : [],
-    checks: Array.isArray(source.checks) ? source.checks.map((check) => ({ ...check, invoiceDate: typeof check.invoiceDate === "string" ? check.invoiceDate : check.dueDate || "", paymentRuleId: typeof check.paymentRuleId === "string" ? check.paymentRuleId : undefined })) : [],
+    checks: Array.isArray(source.checks) ? source.checks.map((check) => ({ ...check, receivedDate: typeof check.receivedDate === "string" ? check.receivedDate : check.dueDate || "", invoiceDate: typeof check.invoiceDate === "string" ? check.invoiceDate : undefined, paymentRuleId: typeof check.paymentRuleId === "string" ? check.paymentRuleId : undefined })) : [],
     accounts: Array.isArray(source.accounts) ? source.accounts : seedState.accounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
   } as AppState;
@@ -219,8 +240,13 @@ export function jalaliDayDifference(from: string, to: string) {
   return Math.max(0, parse(to) - parse(from));
 }
 
-export function calculateLateProfit(check: Check, rule?: PaymentRule) {
-  const days = jalaliDayDifference(check.invoiceDate, check.dueDate);
+export function allocateCheckFIFO(check: Check, invoices: Invoice[]) {
+  let remaining = check.amount;
+  return [...invoices].filter((invoice) => invoice.partyId === check.partyId && invoice.type === "فروش" && invoice.status !== "تسویه شده").sort((a, b) => a.date.localeCompare(b.date)).map((invoice) => { const allocation = Math.min(remaining, Math.max(0, invoice.amount - invoice.paidAmount)); remaining -= allocation; return { invoice, allocation, remainingAfter: remaining }; }).filter((item) => item.allocation > 0);
+}
+
+export function calculateLateProfit(check: Check, rule?: PaymentRule, invoiceDate?: string) {
+  const days = jalaliDayDifference(invoiceDate || check.invoiceDate || check.receivedDate, check.dueDate);
   const activeRule = rule || { dayBasis: 30, graceDays: 0, tiers: [{ maxDays: 9999, rate: 0 }] };
   const overdueDays = Math.max(0, days - activeRule.graceDays);
   const tier = [...activeRule.tiers].sort((a, b) => a.maxDays - b.maxDays).find((item) => overdueDays <= item.maxDays) || activeRule.tiers[activeRule.tiers.length - 1];
@@ -240,6 +266,7 @@ export function calculateMetrics(state: AppState) {
 
 export const navItems: Array<{ id: PageId; label: string; caption: string; icon: string }> = [
   { id: "dashboard", label: "نمای کلی", caption: "وضعیت امروز", icon: "layout-dashboard" },
+  { id: "invoices", label: "فاکتورها", caption: "فروش و خرید", icon: "file-text" },
   { id: "transactions", label: "عملیات مالی", caption: "فروش و دریافت", icon: "arrow-left-right" },
   { id: "people", label: "طرف حساب‌ها", caption: "مشتری و تأمین‌کننده", icon: "users" },
   { id: "inventory", label: "انبار و کالا", caption: "موجودی و قیمت", icon: "boxes" },
