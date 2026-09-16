@@ -54,6 +54,7 @@ import {
   calculateLateProfit,
   allocateCheckFIFO,
   applyCheckFIFO,
+  createEmptyState,
   PERSON_TYPES,
   UNIT_OPTIONS,
 } from "@/lib/accounting";
@@ -183,6 +184,13 @@ export default function Home() {
     };
     reader.readAsText(file);
     event.target.value = "";
+  }
+
+  function handleClearAll() {
+    handleExport();
+    const cleared = createEmptyState(state);
+    setState(saveState(cleared));
+    setNotice("ابتدا بکاپ دانلود و سپس اطلاعات کسب‌وکار پاک شد");
   }
 
   function addTransaction(input: {
@@ -377,6 +385,7 @@ export default function Home() {
               state={state}
               onExport={handleExport}
               onImport={() => fileInput.current?.click()}
+              onClearAll={handleClearAll}
             />
           )}
         </div>
@@ -4316,11 +4325,16 @@ function BackupPage({
   state,
   onExport,
   onImport,
+  onClearAll,
 }: {
   state: AppState;
   onExport: () => void;
   onImport: () => void;
+  onClearAll: () => void;
 }) {
+  const [clearOpen, setClearOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const recordCount = state.people.length + state.products.length + state.transactions.length + state.checks.length + state.invoices.length;
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -4365,6 +4379,28 @@ function BackupPage({
               <ArrowLeftRight size={16} />
             </button>
           </div>
+          <div className="danger-zone">
+            <div>
+              <strong>حذف همه اطلاعات کسب‌وکار</strong>
+              <small>ابتدا یک فایل JSON دانلود می‌شود؛ سپس طرف حساب‌ها، کالاها، فاکتورها، عملیات و چک‌ها پاک می‌شوند.</small>
+            </div>
+            <button className="button button-danger" onClick={() => { setClearOpen(true); setConfirmation(""); }}>
+              <Trash2 size={15} /> حذف همه اطلاعات
+            </button>
+          </div>
+          {clearOpen && (
+            <div className="clear-confirm-panel">
+              <strong>این عملیات قابل بازگشت مستقیم نیست</strong>
+              <p>برای ادامه عبارت <b>حذف کامل</b> را وارد کنید. قبل از پاک‌سازی، بکاپ JSON به‌صورت خودکار دانلود خواهد شد.</p>
+              <input value={confirmation} onChange={event => setConfirmation(event.target.value)} placeholder="حذف کامل" aria-label="تأیید حذف کامل" />
+              <div className="form-actions">
+                <button className="button button-ghost" onClick={() => setClearOpen(false)}>انصراف</button>
+                <button className="button button-danger" disabled={confirmation !== "حذف کامل"} onClick={() => { onClearAll(); setClearOpen(false); }}>
+                  پاک‌سازی {formatNumber(recordCount)} رکورد
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="panel cloud-panel">
           <div className="cloud-illustration">

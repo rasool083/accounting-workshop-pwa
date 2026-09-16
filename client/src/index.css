@@ -64,3 +64,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .drive-path-card small { color: #91a39d; font-size: 9px; margin-top: 5px; }
 .cloud-panel .form-actions { width: 100%; justify-content: center; margin-top: 12px; }
 .cloud-panel .form-actions .button { font-size: 10px; padding: 8px 10px; }
+
+.danger-zone { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:18px; padding:14px; border:1px solid #f0d9d9; border-radius:12px; background:#fff8f8; }
+.danger-zone strong, .danger-zone small { display:block; }
+.danger-zone strong { color:#9e5151; font-size:11px; }
+.danger-zone small { color:#b28b8b; font-size:9px; line-height:1.8; margin-top:4px; }
+.clear-confirm-panel { margin-top:12px; padding:14px; border:1px solid #e6bcbc; border-radius:12px; background:#fff3f3; }
+.clear-confirm-panel strong { color:#9b4545; font-size:12px; }
+.clear-confirm-panel p { color:#986e6e; font-size:10px; line-height:1.9; margin:7px 0; }
+.clear-confirm-panel input { width:100%; border:1px solid #e5c5c5; border-radius:9px; padding:9px 10px; background:#fff; color:#5f3e3e; font:inherit; outline:none; }
+.clear-confirm-panel input:focus { border-color:#b76969; box-shadow:0 0 0 3px rgba(183,105,105,.12); }
+.clear-confirm-panel .form-actions { justify-content:flex-start; margin-top:10px; }
+.button-danger:disabled { opacity:.45; cursor:not-allowed; }
+@media (max-width: 720px) { .danger-zone { align-items:stretch; flex-direction:column; } }

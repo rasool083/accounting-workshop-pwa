@@ -191,6 +191,14 @@ export function saveState(state: AppState) {
   return next;
 }
 
+export function createEmptyState(previous: AppState): AppState {
+  return normalizeState({
+    revision: previous.revision + 1,
+    people: [], products: [], priceHistory: [], invoices: [], transactions: [], checks: [],
+    audit: [{ id: createId("audit"), at: new Date().toISOString(), action: "CLEAR_DATA", note: "حذف همه اطلاعات کسب‌وکار پس از تأیید کاربر" }],
+  });
+}
+
 export function formatMoney(value: number, currency = "ریال") {
   return `${new Intl.NumberFormat("fa-IR").format(Math.round(value || 0))} ${currency}`;
 }
