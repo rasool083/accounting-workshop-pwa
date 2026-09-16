@@ -7,14 +7,14 @@ export type PriceScope = "عمومی" | "اختصاصی";
 
 export interface Warehouse { id: string; name: string; note: string; }
 
-export interface InvoiceItem { id: string; productId?: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; }
+export interface InvoiceItem { id: string; productId?: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; quantityBase?: number; conversionRate?: number; }
 export interface CheckAllocation { checkId: string; amount: number; allocatedAt: string; }
 export interface Invoice {
   id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; items: InvoiceItem[]; allocations: CheckAllocation[]; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده" | "باطل"; note: string;
 }
 
 export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
-export type CheckStatus = "نزد ما" | "وصول شده" | "تودیع شده" | "برگشتی" | "باطل";
+export type CheckStatus = "نزد ما" | "وصول شده" | "تودیع شده" | "برگشتی" | "عودت داده شده" | "جایگزین شده" | "باطل";
 
 export interface Person {
   id: string;
@@ -61,6 +61,10 @@ export interface Check {
   amount: number;
   status: CheckStatus;
   bank: string;
+  bankAccountId?: string;
+  returnPartyId?: string;
+  replacementOf?: string;
+  replacementIds?: string[];
 }
 
 export interface Account {
@@ -165,7 +169,7 @@ export function normalizeState(input: unknown): AppState {
     priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
     paymentRules: Array.isArray(source.paymentRules) ? source.paymentRules : seedState.paymentRules,
     transactions: Array.isArray(source.transactions) ? source.transactions : [],
-    checks: Array.isArray(source.checks) ? source.checks.map((check) => ({ ...check, receivedDate: typeof check.receivedDate === "string" ? check.receivedDate : check.dueDate || "", invoiceDate: typeof check.invoiceDate === "string" ? check.invoiceDate : undefined, paymentRuleId: typeof check.paymentRuleId === "string" ? check.paymentRuleId : undefined })) : [],
+    checks: Array.isArray(source.checks) ? source.checks.map((check) => ({ ...check, bankAccountId: typeof check.bankAccountId === "string" ? check.bankAccountId : undefined, returnPartyId: typeof check.returnPartyId === "string" ? check.returnPartyId : undefined, replacementIds: Array.isArray(check.replacementIds) ? check.replacementIds : [], receivedDate: typeof check.receivedDate === "string" ? check.receivedDate : check.dueDate || "", invoiceDate: typeof check.invoiceDate === "string" ? check.invoiceDate : undefined, paymentRuleId: typeof check.paymentRuleId === "string" ? check.paymentRuleId : undefined })) : [],
     accounts: Array.isArray(source.accounts) ? source.accounts : seedState.accounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
   } as AppState;
@@ -255,13 +259,17 @@ export function applyCheckFIFO(state: AppState, check: Check) {
   return { ...state, invoices };
 }
 
-export function calculateLateProfit(check: Check, rule?: PaymentRule, invoiceDate?: string) {
+export function calculateLateProfit(check: Check, rule?: PaymentRule, invoiceDate?: string, invoiceBaseAmount = check.amount) {
   const days = jalaliDayDifference(invoiceDate || check.invoiceDate || check.receivedDate, check.dueDate);
   const activeRule = rule || { dayBasis: 30, graceDays: 0, tiers: [{ maxDays: 9999, rate: 0 }] };
   const overdueDays = Math.max(0, days - activeRule.graceDays);
   const tier = [...activeRule.tiers].sort((a, b) => a.maxDays - b.maxDays).find((item) => overdueDays <= item.maxDays) || activeRule.tiers[activeRule.tiers.length - 1];
-  const profit = check.amount * ((tier?.rate || 0) * overdueDays / activeRule.dayBasis);
-  return { days, overdueDays, profit, settled: check.amount + profit, remaining: Math.max(0, check.amount - check.amount) };
+  const rate = tier?.rate || 0;
+  const profit = invoiceBaseAmount * (rate * overdueDays / activeRule.dayBasis);
+  const settled = invoiceBaseAmount + profit;
+  const remaining = Math.max(0, settled - check.amount);
+  const remainingBase = settled ? remaining / (1 + rate * overdueDays / activeRule.dayBasis) : 0;
+  return { days, overdueDays, rate, base: invoiceBaseAmount, profit, settled, remaining, remainingBase };
 }
 
 export function calculateMetrics(state: AppState) {
