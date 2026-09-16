@@ -59,6 +59,9 @@ import {
   UNIT_OPTIONS,
 } from "@/lib/accounting";
 import {
+  createGoogleDriveAdapter,
+  getDriveAccessToken,
+  LAST_VERIFIED_BACKUP,
   PROJECT_BACKUPS_FOLDER_URL,
   PROJECT_DRIVE_FOLDER_URL,
 } from "@/lib/googleDrive";
@@ -191,6 +194,23 @@ export default function Home() {
     const cleared = createEmptyState(state);
     setState(saveState(cleared));
     setNotice("ابتدا بکاپ دانلود و سپس اطلاعات کسب‌وکار پاک شد");
+  }
+
+  async function handleDriveRestore() {
+    if (!window.confirm("داده‌های محلی با آخرین نسخه Google Drive جایگزین شود؟ قبل از ادامه، از داده فعلی بکاپ بگیرید.")) return;
+    const token = getDriveAccessToken();
+    if (!token) {
+      setNotice("مجوز موقت Drive در این مرورگر تزریق نشده است؛ از لینک پوشه استفاده کنید");
+      return;
+    }
+    try {
+      const payload = await createGoogleDriveAdapter(token).downloadBackup(LAST_VERIFIED_BACKUP.id);
+      const next = importPayload(payload);
+      setState(saveState(appendAudit(next, "RESTORE_DRIVE", `بازیابی از ${LAST_VERIFIED_BACKUP.name}`)));
+      setNotice("بازیابی از Google Drive با موفقیت انجام شد");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "بازیابی از Drive ناموفق بود");
+    }
   }
 
   function addTransaction(input: {
@@ -386,6 +406,7 @@ export default function Home() {
               onExport={handleExport}
               onImport={() => fileInput.current?.click()}
               onClearAll={handleClearAll}
+              onDriveRestore={handleDriveRestore}
             />
           )}
         </div>
@@ -4326,11 +4347,13 @@ function BackupPage({
   onExport,
   onImport,
   onClearAll,
+  onDriveRestore,
 }: {
   state: AppState;
   onExport: () => void;
   onImport: () => void;
   onClearAll: () => void;
+  onDriveRestore: () => void;
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -4423,6 +4446,15 @@ function BackupPage({
             <a className="button button-ghost" href={PROJECT_DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">
               پوشه اصلی پروژه
             </a>
+          </div>
+          <div className="drive-backup-list">
+            <div className="drive-backup-row">
+              <div>
+                <strong>{LAST_VERIFIED_BACKUP.name}</strong>
+                <small>آخرین نسخه تأییدشده · {formatNumber(Number(LAST_VERIFIED_BACKUP.size) || 0)} بایت</small>
+              </div>
+              <button className="button button-primary" onClick={onDriveRestore}>بازیابی</button>
+            </div>
           </div>
           <span className="coming-tag">آخرین نسخه تأییدشده: ۱۴۰۵/۰۶/۲۶ · آماده برای همگام‌سازی</span>
         </div>

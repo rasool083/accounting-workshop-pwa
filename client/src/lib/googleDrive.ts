@@ -17,6 +17,23 @@ export const PROJECT_DRIVE_FOLDER_ID = "1Qrql348yLKgkKNEzRDYUwLAa1ylbEx8h";
 export const PROJECT_BACKUPS_FOLDER_ID = "12qwZHYKcI7Zsg-m5gYOCCkzQc8Ynpthx";
 export const PROJECT_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1Qrql348yLKgkKNEzRDYUwLAa1ylbEx8h";
 export const PROJECT_BACKUPS_FOLDER_URL = "https://drive.google.com/drive/folders/12qwZHYKcI7Zsg-m5gYOCCkzQc8Ynpthx";
+export const LAST_VERIFIED_BACKUP: DriveBackupFile = {
+  id: "1CJDm58g25rGVwIG_EmrcgYaouoq6hlvq",
+  name: "accounting-workshop-backup-initial-1405-06-26.json",
+  mimeType: "application/json",
+  modifiedTime: "2026-09-16T21:59:32.040Z",
+  size: "1227",
+};
+
+declare global {
+  interface Window {
+    __ACCOUNTING_DRIVE_ACCESS_TOKEN__?: string;
+  }
+}
+
+export function getDriveAccessToken() {
+  return typeof window !== "undefined" ? window.__ACCOUNTING_DRIVE_ACCESS_TOKEN__ || "" : "";
+}
 
 /**
  * Creates a short-lived Google Drive adapter from an OAuth access token.
