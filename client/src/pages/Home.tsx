@@ -138,6 +138,7 @@ export default function Home() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [driveBackups, setDriveBackups] = useState<DriveBackupFile[]>([LAST_VERIFIED_BACKUP]);
+  const [driveLoading, setDriveLoading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -148,6 +149,9 @@ export default function Home() {
     const timer = window.setTimeout(() => setNotice(""), 3600);
     return () => window.clearTimeout(timer);
   }, [notice]);
+  useEffect(() => {
+    if (activePage === "backup") void handleDriveRefresh();
+  }, [activePage]);
 
   const metrics = useMemo(() => calculateMetrics(state), [state]);
   const activeNav =
@@ -213,6 +217,21 @@ export default function Home() {
       setNotice("پشتیبان در پوشه اختصاصی Google Drive ذخیره شد");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "بارگذاری در Drive ناموفق بود");
+    }
+  }
+
+  async function handleDriveRefresh() {
+    const token = getDriveAccessToken();
+    if (!token) return;
+    setDriveLoading(true);
+    try {
+      const files = await createGoogleDriveAdapter(token, PROJECT_BACKUPS_FOLDER_ID).listBackups();
+      setDriveBackups(files.length ? files : [LAST_VERIFIED_BACKUP]);
+      setNotice(`${formatNumber(files.length)} نسخهٔ پشتیبان از Drive خوانده شد`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "خواندن فهرست Drive ناموفق بود");
+    } finally {
+      setDriveLoading(false);
     }
   }
 
@@ -430,6 +449,8 @@ export default function Home() {
               onDriveRestore={handleDriveRestore}
               onDriveUpload={handleDriveUpload}
               driveBackups={driveBackups}
+              driveLoading={driveLoading}
+              onDriveRefresh={handleDriveRefresh}
             />
           )}
         </div>
@@ -4373,6 +4394,8 @@ function BackupPage({
   onDriveRestore,
   onDriveUpload,
   driveBackups,
+  driveLoading,
+  onDriveRefresh,
 }: {
   state: AppState;
   onExport: () => void;
@@ -4381,6 +4404,8 @@ function BackupPage({
   onDriveRestore: (fileId?: string) => void;
   onDriveUpload: () => void;
   driveBackups: DriveBackupFile[];
+  driveLoading: boolean;
+  onDriveRefresh: () => void;
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -4469,6 +4494,9 @@ function BackupPage({
           <div className="form-actions">
             <button className="button button-primary" onClick={onDriveUpload}>
               <CloudUpload size={15} /> ذخیره در Drive
+            </button>
+            <button className="button button-ghost" onClick={onDriveRefresh} disabled={driveLoading}>
+              <RefreshCw size={15} className={driveLoading ? "spin" : ""} /> {driveLoading ? "در حال خواندن" : "تازه‌سازی فهرست"}
             </button>
             <a className="button button-primary" href={PROJECT_BACKUPS_FOLDER_URL} target="_blank" rel="noreferrer">
               مشاهده نسخه‌های پشتیبان

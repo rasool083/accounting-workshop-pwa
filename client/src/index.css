@@ -85,3 +85,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .drive-backup-row small { color:#9aa8b1; font-size:9px; margin-top:4px; }
 .drive-backup-row .button { flex:none; font-size:10px; padding:7px 10px; }
 @media (max-width: 720px) { .drive-backup-row { align-items:stretch; flex-direction:column; } }
+
+.spin { animation: drive-spin .8s linear infinite; }
+@keyframes drive-spin { to { transform: rotate(360deg); } }
