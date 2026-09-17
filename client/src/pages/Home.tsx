@@ -4442,7 +4442,17 @@ function BackupPage({
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const [driveQuery, setDriveQuery] = useState("");
+  const [driveSort, setDriveSort] = useState<"newest" | "oldest" | "largest">("newest");
   const recordCount = state.people.length + state.products.length + state.transactions.length + state.checks.length + state.invoices.length;
+  const visibleDriveBackups = useMemo(() => driveBackups
+    .filter(file => file.name.toLowerCase().includes(driveQuery.trim().toLowerCase()))
+    .sort((a, b) => {
+      if (driveSort === "largest") return Number(b.size || 0) - Number(a.size || 0);
+      const aTime = a.modifiedTime || "";
+      const bTime = b.modifiedTime || "";
+      return driveSort === "newest" ? bTime.localeCompare(aTime) : aTime.localeCompare(bTime);
+    }), [driveBackups, driveQuery, driveSort]);
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -4539,7 +4549,15 @@ function BackupPage({
             </a>
           </div>
           <div className="drive-backup-list">
-            {driveBackups.map(file => (
+            <div className="drive-list-toolbar">
+              <input value={driveQuery} onChange={event => setDriveQuery(event.target.value)} placeholder="جست‌وجوی نام فایل" aria-label="جست‌وجوی نسخه پشتیبان" />
+              <select value={driveSort} onChange={event => setDriveSort(event.target.value as typeof driveSort)} aria-label="مرتب‌سازی نسخه‌ها">
+                <option value="newest">جدیدترین</option>
+                <option value="oldest">قدیمی‌ترین</option>
+                <option value="largest">بیشترین حجم</option>
+              </select>
+            </div>
+            {visibleDriveBackups.map(file => (
               <div className="drive-backup-row" key={file.id}>
                 <div>
                   <strong>{file.name}</strong>
@@ -4548,6 +4566,7 @@ function BackupPage({
                 <button className="button button-primary" onClick={() => onDriveRestore(file.id)}>بازیابی</button>
               </div>
             ))}
+            {!visibleDriveBackups.length && <small className="drive-empty">نسخه‌ای با این نام پیدا نشد.</small>}
           </div>
           <span className="coming-tag">آخرین نسخه تأییدشده: ۱۴۰۵/۰۶/۲۶ · آماده برای همگام‌سازی</span>
         </div>
