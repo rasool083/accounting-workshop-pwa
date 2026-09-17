@@ -95,3 +95,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .settings-form input { display:block; width:100%; margin-top:7px; border:1px solid #dce8e4; border-radius:10px; padding:10px 11px; background:#fbfefd; color:#304d48; font:inherit; outline:none; }
 .settings-form input:focus { border-color:#75a99a; box-shadow:0 0 0 3px rgba(117,169,154,.12); }
 @media (max-width: 720px) { .settings-form { grid-template-columns:1fr; } .settings-panel { padding:16px; } }
+
+/* Keep every navigation destination reachable on short desktop and mobile viewports. */
+.sidebar { overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(151,190,181,.45) transparent; }
+.sidebar::-webkit-scrollbar { width: 5px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(151,190,181,.45); border-radius: 99px; }
+.main-nav { flex: 0 0 auto; }
+.sidebar-bottom { flex: 0 0 auto; }
