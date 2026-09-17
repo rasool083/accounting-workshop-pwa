@@ -153,6 +153,9 @@ export default function Home() {
   useEffect(() => {
     if (activePage === "backup") void handleDriveRefresh();
   }, [activePage]);
+  useEffect(() => {
+    setMobileNav(false);
+  }, [activePage]);
 
   const metrics = useMemo(() => calculateMetrics(state), [state]);
   const activeNav =

@@ -110,3 +110,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .drive-list-toolbar input:focus, .drive-list-toolbar select:focus { border-color:#8ab7aa; }
 .drive-empty { display:block; padding:13px 8px; color:#9aa8b1; font-size:10px; }
 @media (max-width:720px) { .drive-list-toolbar { flex-direction:column; } .drive-list-toolbar select { width:100%; } }
+
+@media (max-width:760px) {
+  .sidebar:not(.sidebar-open) { visibility:hidden; pointer-events:none; }
+  .sidebar.sidebar-open { visibility:visible; pointer-events:auto; transform:translateX(0); }
+}

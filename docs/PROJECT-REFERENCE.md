@@ -163,3 +163,7 @@ Repository اصلی پروژه `rasool083/accounting-workshop-pwa` است. Repos
 ### جست‌وجو و مرتب‌سازی نسخه‌های Drive
 
 فهرست Drive در `BackupPage` با `driveQuery` بر اساس نام فایل فیلتر می‌شود و `driveSort` سه حالت جدیدترین، قدیمی‌ترین و بیشترین حجم دارد. این کنترل‌ها فقط metadata موجود در state رابط را مرتب می‌کنند و هیچ محتوای فایل را تا زمان انتخاب بازیابی دریافت نمی‌کنند.
+
+### رفتار نوار کناری در موبایل
+
+تغییر `activePage` همیشه `mobileNav` را false می‌کند تا انتخاب هر مقصد، از جمله پشتیبان و بازیابی، نوار را ببندد. CSS responsive نیز برای `.sidebar:not(.sidebar-open)` مقدارهای `visibility: hidden` و `pointer-events: none` دارد و فقط `.sidebar-open` را قابل تعامل می‌کند؛ بنابراین محتوای هیچ صفحه‌ای نمی‌تواند نوار بسته را روی صفحه نگه دارد.
