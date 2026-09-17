@@ -1,4 +1,4 @@
-export type PageId = "dashboard" | "invoices" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "monthClose" | "reports" | "backup";
+export type PageId = "dashboard" | "invoices" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "monthClose" | "reports" | "backup" | "settings";
 
 export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "سایر";
 export const PERSON_TYPES: PersonType[] = ["مشتری", "تأمین‌کننده", "شریک", "کارگر", "سایر"];
@@ -302,7 +302,8 @@ export const navItems: Array<{ id: PageId; label: string; caption: string; icon:
   { id: "checks", label: "چک‌ها", caption: "سررسید و وضعیت", icon: "file-clock" },
   { id: "monthClose", label: "بستن ماه", caption: "تسویه و سود دیرکرد", icon: "lock-keyhole" },
   { id: "reports", label: "گزارش‌ها", caption: "خروجی و تحلیل", icon: "chart-no-axes-combined" },
-  { id: "backup", label: "پشتیبان و تنظیمات", caption: "امنیت داده", icon: "cloud-cog" },
+  { id: "backup", label: "پشتیبان و بازیابی", caption: "امنیت و انتقال داده", icon: "cloud-cog" },
+  { id: "settings", label: "تنظیمات برنامه", caption: "مشخصات کارگاه", icon: "settings" },
 ];
 
 export { seedState };

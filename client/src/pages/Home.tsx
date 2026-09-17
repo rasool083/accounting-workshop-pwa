@@ -77,6 +77,7 @@ const iconMap = {
   "file-clock": FileClock,
   "chart-no-axes-combined": ChartNoAxesCombined,
   "cloud-cog": Cloud,
+  settings: Settings2,
   tags: Tags,
   percent: Percent,
   "lock-keyhole": LockKeyhole,
@@ -335,7 +336,7 @@ export default function Home() {
           </div>
           <button
             className="settings-link"
-            onClick={() => setActivePage("backup")}
+            onClick={() => setActivePage("settings")}
           >
             <Settings2 size={17} />
             تنظیمات برنامه
@@ -452,6 +453,9 @@ export default function Home() {
               driveLoading={driveLoading}
               onDriveRefresh={handleDriveRefresh}
             />
+          )}
+          {activePage === "settings" && (
+            <SettingsPage state={state} onSave={(next, msg) => updateState(next, msg)} />
           )}
         </div>
       </main>
@@ -4381,6 +4385,35 @@ function Reports({
             تاریخی، سود روزشمار و موجودی با فرمول‌های پراکنده تکرار نشوند.
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPage({
+  state,
+  onSave,
+}: {
+  state: AppState;
+  onSave: (next: AppState, message: string) => void;
+}) {
+  const [businessName, setBusinessName] = useState(state.settings.businessName);
+  const [currency, setCurrency] = useState(state.settings.currency);
+  const [dayBasis, setDayBasis] = useState(String(state.settings.dayBasis));
+  return (
+    <div className="page-stack page-enter">
+      <PageIntro kicker="تنظیمات برنامه" title="مشخصات و تنظیمات کارگاه" description="تنظیمات عمومی برنامه مستقل از عملیات بکاپ و بازیابی مدیریت می‌شود." />
+      <div className="panel settings-panel">
+        <div className="backup-hero">
+          <div className="backup-hero-icon"><Settings2 size={25} /></div>
+          <div><span className="section-kicker">تنظیمات عمومی</span><h3>اطلاعات پایه کارگاه</h3><p>این بخش فقط مشخصات و تنظیمات محاسباتی را تغییر می‌دهد؛ برای ذخیره و بازیابی داده به صفحهٔ «پشتیبان و بازیابی» بروید.</p></div>
+        </div>
+        <div className="settings-form">
+          <label>نام کارگاه<input value={businessName} onChange={event => setBusinessName(event.target.value)} /></label>
+          <label>واحد پول<input value={currency} onChange={event => setCurrency(event.target.value)} /></label>
+          <label>مبنای روزشمار سود<input type="number" min="1" value={dayBasis} onChange={event => setDayBasis(event.target.value)} /></label>
+        </div>
+        <div className="form-actions"><button className="button button-primary" onClick={() => onSave({ ...state, settings: { ...state.settings, businessName: businessName.trim() || "کارگاه من", currency: currency.trim() || "ریال", dayBasis: Math.max(1, Number(dayBasis) || 30) } }, "تنظیمات برنامه ذخیره شد")}>ذخیره تنظیمات</button></div>
       </div>
     </div>
   );
