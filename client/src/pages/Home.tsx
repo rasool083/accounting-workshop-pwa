@@ -62,8 +62,10 @@ import {
   createGoogleDriveAdapter,
   getDriveAccessToken,
   LAST_VERIFIED_BACKUP,
+  PROJECT_BACKUPS_FOLDER_ID,
   PROJECT_BACKUPS_FOLDER_URL,
   PROJECT_DRIVE_FOLDER_URL,
+  type DriveBackupFile,
 } from "@/lib/googleDrive";
 
 const iconMap = {
@@ -135,6 +137,7 @@ export default function Home() {
   const [mobileNav, setMobileNav] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [driveBackups, setDriveBackups] = useState<DriveBackupFile[]>([LAST_VERIFIED_BACKUP]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -196,7 +199,24 @@ export default function Home() {
     setNotice("ابتدا بکاپ دانلود و سپس اطلاعات کسب‌وکار پاک شد");
   }
 
-  async function handleDriveRestore() {
+  async function handleDriveUpload() {
+    const token = getDriveAccessToken();
+    if (!token) {
+      setNotice("مجوز موقت Drive در این مرورگر تزریق نشده است؛ بکاپ محلی آماده دانلود است");
+      handleExport();
+      return;
+    }
+    try {
+      const filename = `accounting-workshop-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      const uploaded = await createGoogleDriveAdapter(token, PROJECT_BACKUPS_FOLDER_ID).uploadBackup(filename, exportPayload(state));
+      setDriveBackups(current => [uploaded, ...current.filter(file => file.id !== uploaded.id)]);
+      setNotice("پشتیبان در پوشه اختصاصی Google Drive ذخیره شد");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "بارگذاری در Drive ناموفق بود");
+    }
+  }
+
+  async function handleDriveRestore(fileId = LAST_VERIFIED_BACKUP.id) {
     if (!window.confirm("داده‌های محلی با آخرین نسخه Google Drive جایگزین شود؟ قبل از ادامه، از داده فعلی بکاپ بگیرید.")) return;
     const token = getDriveAccessToken();
     if (!token) {
@@ -204,9 +224,10 @@ export default function Home() {
       return;
     }
     try {
-      const payload = await createGoogleDriveAdapter(token).downloadBackup(LAST_VERIFIED_BACKUP.id);
+      const file = driveBackups.find(item => item.id === fileId) || LAST_VERIFIED_BACKUP;
+      const payload = await createGoogleDriveAdapter(token, PROJECT_BACKUPS_FOLDER_ID).downloadBackup(file.id);
       const next = importPayload(payload);
-      setState(saveState(appendAudit(next, "RESTORE_DRIVE", `بازیابی از ${LAST_VERIFIED_BACKUP.name}`)));
+      setState(saveState(appendAudit(next, "RESTORE_DRIVE", `بازیابی از ${file.name}`)));
       setNotice("بازیابی از Google Drive با موفقیت انجام شد");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "بازیابی از Drive ناموفق بود");
@@ -407,6 +428,8 @@ export default function Home() {
               onImport={() => fileInput.current?.click()}
               onClearAll={handleClearAll}
               onDriveRestore={handleDriveRestore}
+              onDriveUpload={handleDriveUpload}
+              driveBackups={driveBackups}
             />
           )}
         </div>
@@ -4348,12 +4371,16 @@ function BackupPage({
   onImport,
   onClearAll,
   onDriveRestore,
+  onDriveUpload,
+  driveBackups,
 }: {
   state: AppState;
   onExport: () => void;
   onImport: () => void;
   onClearAll: () => void;
-  onDriveRestore: () => void;
+  onDriveRestore: (fileId?: string) => void;
+  onDriveUpload: () => void;
+  driveBackups: DriveBackupFile[];
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -4440,6 +4467,9 @@ function BackupPage({
             <small>زیرپوشه: نسخه‌های پشتیبان JSON</small>
           </div>
           <div className="form-actions">
+            <button className="button button-primary" onClick={onDriveUpload}>
+              <CloudUpload size={15} /> ذخیره در Drive
+            </button>
             <a className="button button-primary" href={PROJECT_BACKUPS_FOLDER_URL} target="_blank" rel="noreferrer">
               مشاهده نسخه‌های پشتیبان
             </a>
@@ -4448,13 +4478,15 @@ function BackupPage({
             </a>
           </div>
           <div className="drive-backup-list">
-            <div className="drive-backup-row">
-              <div>
-                <strong>{LAST_VERIFIED_BACKUP.name}</strong>
-                <small>آخرین نسخه تأییدشده · {formatNumber(Number(LAST_VERIFIED_BACKUP.size) || 0)} بایت</small>
+            {driveBackups.map(file => (
+              <div className="drive-backup-row" key={file.id}>
+                <div>
+                  <strong>{file.name}</strong>
+                  <small>{file.modifiedTime ? formatDate(file.modifiedTime.slice(0, 10)) : "نسخهٔ پشتیبان"} · {formatNumber(Number(file.size) || 0)} بایت</small>
+                </div>
+                <button className="button button-primary" onClick={() => onDriveRestore(file.id)}>بازیابی</button>
               </div>
-              <button className="button button-primary" onClick={onDriveRestore}>بازیابی</button>
-            </div>
+            ))}
           </div>
           <span className="coming-tag">آخرین نسخه تأییدشده: ۱۴۰۵/۰۶/۲۶ · آماده برای همگام‌سازی</span>
         </div>
