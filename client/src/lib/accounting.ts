@@ -1,3 +1,6 @@
+export const CURRENT_SCHEMA_VERSION = 2;
+export const BACKUP_FORMAT_VERSION = 2;
+
 export type PageId =
   | "dashboard"
   | "invoices"
@@ -195,7 +198,7 @@ export interface AuditEvent {
 }
 
 export interface AppState {
-  schemaVersion: 1;
+  schemaVersion: number;
   revision: number;
   updatedAt: string;
   settings: {
@@ -218,7 +221,7 @@ export interface AppState {
 const STORAGE_KEY = "accounting-workshop-pwa:v1";
 
 const seedState: AppState = {
-  schemaVersion: 1,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
   revision: 1,
   updatedAt: new Date().toISOString(),
   settings: { businessName: "کارگاه من", currency: "ریال", dayBasis: 30 },
@@ -292,12 +295,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+function migrateBackupData(input: unknown, version: number) {
+  if (version > CURRENT_SCHEMA_VERSION) {
+    throw new Error(
+      `این پشتیبان برای نسخهٔ جدیدتری از برنامه است (نسخه ${version}). ابتدا برنامه را به‌روزرسانی کنید.`
+    );
+  }
+  return normalizeState(input);
+}
+
 export function normalizeState(input: unknown): AppState {
   const source = isRecord(input) ? input : {};
   return {
     ...seedState,
     ...source,
-    schemaVersion: 1,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     revision: typeof source.revision === "number" ? source.revision : 1,
     updatedAt:
       typeof source.updatedAt === "string"
@@ -462,12 +474,27 @@ export function transactionLabel(type: TransactionType) {
 }
 
 export function exportPayload(state: AppState) {
+  const data = normalizeState(state);
   return JSON.stringify(
     {
       format: "accounting-workshop-backup",
-      schemaVersion: state.schemaVersion,
+      backupFormatVersion: BACKUP_FORMAT_VERSION,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
-      data: state,
+      application: "حسابداری کارگاه",
+      collections: {
+        people: data.people.length,
+        products: data.products.length,
+        warehouses: data.warehouses.length,
+        priceHistory: data.priceHistory.length,
+        paymentRules: data.paymentRules.length,
+        invoices: data.invoices.length,
+        transactions: data.transactions.length,
+        checks: data.checks.length,
+        accounts: data.accounts.length,
+        audit: data.audit.length,
+      },
+      data,
     },
     null,
     2
@@ -477,8 +504,19 @@ export function exportPayload(state: AppState) {
 export function importPayload(text: string) {
   const parsed: unknown = JSON.parse(text);
   if (!isRecord(parsed)) throw new Error("ساختار فایل پشتیبان معتبر نیست");
+  if (
+    parsed.format === "accounting-workshop-backup" &&
+    typeof parsed.backupFormatVersion === "number" &&
+    parsed.backupFormatVersion > BACKUP_FORMAT_VERSION
+  ) {
+    throw new Error(
+      "این فایل پشتیبان برای نسخهٔ جدیدتری از برنامه ساخته شده است."
+    );
+  }
   const data = "data" in parsed ? parsed.data : parsed;
-  const normalized = normalizeState(data);
+  const version =
+    typeof parsed.schemaVersion === "number" ? parsed.schemaVersion : 1;
+  const normalized = migrateBackupData(data, version);
   if (
     !Array.isArray(normalized.people) ||
     !Array.isArray(normalized.transactions)
