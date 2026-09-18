@@ -60,6 +60,7 @@ import {
   PERSON_TYPES,
   UNIT_OPTIONS,
   suggestNextNumber,
+  suggestNextPartyNumber,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -983,20 +984,55 @@ function Invoices({
     paymentRuleId: "",
     priceHistoryId: "",
     items: [blankItem],
+    discount: "",
     note: "",
   });
-  const nextInvoiceNumber = useMemo(
-    () => suggestNextNumber(state.invoices.map(item => item.number)),
-    [state.invoices]
-  );
   const party = state.people.find(item => item.id === form.partyId);
-  const calculatedAmount = form.items.reduce(
-    (sum, item) =>
+  const nextInvoiceNumber = useMemo(
+    () =>
+      suggestNextPartyNumber(
+        state.invoices,
+        form.partyId,
+        party?.code,
+        state.invoices.map(item => item.number)
+      ),
+    [state.invoices, form.partyId, party?.code]
+  );
+  function suggestedPrice(
+    productId: string,
+    unit: string,
+    partyId = form.partyId
+  ) {
+    const product = state.products.find(item => item.id === productId);
+    if (!product) return "";
+    const matches = state.priceHistory
+      .filter(
+        price =>
+          (price.productName === product.name ||
+            price.productId === product.id) &&
+          price.unit === (unit || product.unit) &&
+          price.effectiveDate <= form.date &&
+          (price.scope === "عمومی" || price.partyIds?.includes(partyId))
+      )
+      .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+    return String(matches[0]?.price ?? product.price ?? "");
+  }
+  const subtotal = form.items.reduce((sum, item) => {
+    const product = state.products.find(row => row.id === item.productId);
+    const conversionRate =
+      product && item.unit === product.unit2 ? product.conversionRate || 1 : 1;
+    return (
       sum +
       (Number(item.quantity) || 0) *
-        (Number(item.unitPrice.replace(/[^0-9.-]/g, "")) || 0),
-    0
+        (Number(item.unitPrice.replace(/[^0-9.-]/g, "")) || 0) *
+        conversionRate
+    );
+  }, 0);
+  const discount = Math.min(
+    subtotal,
+    Number(form.discount.replace(/[^0-9.-]/g, "")) || 0
   );
+  const calculatedAmount = Math.max(0, subtotal - discount);
   function voidInvoice(invoice: AppState["invoices"][number]) {
     if (invoice.status === "باطل") return;
     const products = state.products.map(product => {
@@ -1045,6 +1081,7 @@ function Invoices({
         unit: item.unit,
         unitPrice: String(item.unitPrice),
       })),
+      discount: String(invoice.discountAmount || ""),
       note: invoice.note,
     });
     setSelectedInvoice(null);
@@ -1069,14 +1106,12 @@ function Invoices({
         conversionRate,
         quantityBase: quantity * conversionRate,
         unitPrice,
-        total: quantity * unitPrice,
+        total: quantity * unitPrice * conversionRate,
       };
     });
     const invoice = {
       id: editingInvoice?.id || createId("invoice"),
-      number:
-        form.number.trim() ||
-        String(state.invoices.length + 1).padStart(4, "0"),
+      number: form.number.trim() || nextInvoiceNumber,
       type: form.type,
       date: form.date,
       partyId: form.partyId || undefined,
@@ -1087,6 +1122,7 @@ function Invoices({
       priceHistoryId: form.priceHistoryId || undefined,
       items,
       allocations: editingInvoice?.allocations || [],
+      discountAmount: discount,
       amount: calculatedAmount,
       paidAmount: editingInvoice?.paidAmount || 0,
       status: editingInvoice?.status || ("باز" as const),
@@ -1134,6 +1170,7 @@ function Invoices({
       paymentRuleId: "",
       priceHistoryId: "",
       items: [blankItem],
+      discount: "",
       note: "",
     });
   }
@@ -1324,7 +1361,7 @@ function Invoices({
               شماره فاکتور
               <input
                 value={form.number}
-                inputMode="numeric"
+                inputMode="text"
                 placeholder={`پیشنهاد: ${nextInvoiceNumber}`}
                 onChange={e => setForm({ ...form, number: e.target.value })}
               />
@@ -1352,13 +1389,36 @@ function Invoices({
               طرف حساب
               <select
                 value={form.partyId}
-                onChange={e =>
-                  setForm({
-                    ...form,
+                onChange={e => {
+                  const selected = state.people.find(
+                    item => item.id === e.target.value
+                  );
+                  setForm(current => ({
+                    ...current,
+                    number: editingInvoice
+                      ? current.number
+                      : suggestNextPartyNumber(
+                          state.invoices,
+                          e.target.value,
+                          selected?.code,
+                          state.invoices.map(item => item.number)
+                        ),
                     partyId: e.target.value,
                     paymentRuleId: "",
-                  })
-                }
+                    items: current.items.map(item =>
+                      item.productId
+                        ? {
+                            ...item,
+                            unitPrice: suggestedPrice(
+                              item.productId,
+                              item.unit,
+                              e.target.value
+                            ),
+                          }
+                        : item
+                    ),
+                  }));
+                }}
               >
                 <option value="">بدون طرف حساب</option>
                 {state.people.map(person => (
@@ -1408,8 +1468,9 @@ function Invoices({
                       );
                       updateItem(index, {
                         productId: e.target.value,
+                        unit: product?.unit || "",
                         unitPrice: product
-                          ? String(product.price)
+                          ? suggestedPrice(product.id, product.unit)
                           : row.unitPrice,
                       });
                     }}
@@ -1431,7 +1492,15 @@ function Invoices({
                   />
                   <select
                     value={row.unit}
-                    onChange={e => updateItem(index, { unit: e.target.value })}
+                    onChange={e =>
+                      updateItem(index, {
+                        unit: e.target.value,
+                        unitPrice: suggestedPrice(
+                          row.productId,
+                          e.target.value
+                        ),
+                      })
+                    }
                   >
                     <option value="">واحد پایه</option>
                     {state.products.find(
@@ -1480,8 +1549,20 @@ function Invoices({
               ))}
             </div>
             <div className="panel invoice-total">
-              <span>مبلغ کل فاکتور</span>
+              <span>
+                جمع اقلام: {formatMoney(subtotal, state.settings.currency)}
+              </span>
+              <label className="invoice-discount-field">
+                تخفیف
+                <input
+                  inputMode="numeric"
+                  value={form.discount}
+                  onChange={e => setForm({ ...form, discount: e.target.value })}
+                  placeholder="مبلغ تخفیف"
+                />
+              </label>
               <strong>
+                مبلغ نهایی:{" "}
                 {formatMoney(calculatedAmount, state.settings.currency)}
               </strong>
             </div>
@@ -1548,8 +1629,21 @@ function Invoices({
               </table>
             </div>
             <div className="invoice-detail-total">
-              <span>مبلغ کل</span>
+              <span>
+                جمع اقلام:{" "}
+                {formatMoney(
+                  selectedInvoice.items.reduce(
+                    (sum, item) => sum + item.total,
+                    0
+                  ),
+                  state.settings.currency
+                )}
+                {selectedInvoice.discountAmount
+                  ? ` · تخفیف: ${formatMoney(selectedInvoice.discountAmount, state.settings.currency)}`
+                  : ""}
+              </span>
               <strong>
+                مبلغ نهایی:{" "}
                 {formatMoney(selectedInvoice.amount, state.settings.currency)}
               </strong>
             </div>
@@ -2761,6 +2855,9 @@ function Prices({
     event.preventDefault();
     const price = Number(form.price.replace(/[^0-9.]/g, ""));
     if (!form.productName.trim() || !price) return;
+    const selectedProduct = state.products.find(
+      item => item.name === form.productName
+    );
     onSave(
       {
         ...state,
@@ -2769,6 +2866,7 @@ function Prices({
               item.id === editingPrice.id
                 ? {
                     ...item,
+                    productId: selectedProduct?.id,
                     productName: form.productName.trim(),
                     scope: form.scope,
                     partyIds:
@@ -2783,6 +2881,7 @@ function Prices({
           : [
               {
                 id: createId("price"),
+                productId: selectedProduct?.id,
                 productName: form.productName.trim(),
                 scope: form.scope,
                 partyIds: form.scope === "اختصاصی" ? form.partyIds : undefined,
@@ -3353,10 +3452,15 @@ function Checks({
     note: "",
   };
   const [form, setForm] = useState(blank);
-  const nextCheckNumber = useMemo(
-    () => suggestNextNumber(state.checks.map(item => item.number)),
-    [state.checks]
-  );
+  const nextCheckNumber = useMemo(() => {
+    const checkParty = state.people.find(item => item.id === form.partyId);
+    return suggestNextPartyNumber(
+      state.checks,
+      form.partyId,
+      checkParty?.code,
+      state.checks.map(item => item.number)
+    );
+  }, [state.checks, state.people, form.partyId]);
   const visibleChecks = state.checks.filter(
     check =>
       (statusFilter === "همه" || check.status === statusFilter) &&
@@ -4091,7 +4195,7 @@ function Checks({
               <input
                 autoFocus
                 value={form.number}
-                inputMode="numeric"
+                inputMode="text"
                 placeholder={`پیشنهاد: ${nextCheckNumber}`}
                 onChange={e => setForm({ ...form, number: e.target.value })}
               />
@@ -4100,7 +4204,23 @@ function Checks({
               طرف حساب
               <select
                 value={form.partyId}
-                onChange={e => setForm({ ...form, partyId: e.target.value })}
+                onChange={e => {
+                  const selected = state.people.find(
+                    item => item.id === e.target.value
+                  );
+                  setForm({
+                    ...form,
+                    number: editingCheck
+                      ? form.number
+                      : suggestNextPartyNumber(
+                          state.checks,
+                          e.target.value,
+                          selected?.code,
+                          state.checks.map(item => item.number)
+                        ),
+                    partyId: e.target.value,
+                  });
+                }}
               >
                 <option value="">بدون طرف حساب</option>
                 {state.people.map(person => (

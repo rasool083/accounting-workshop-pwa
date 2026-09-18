@@ -82,6 +82,7 @@ export interface Invoice {
   priceHistoryId?: string;
   items: InvoiceItem[];
   allocations: CheckAllocation[];
+  discountAmount?: number;
   amount: number;
   paidAmount: number;
   status: "باز" | "تسویه جزئی" | "تسویه شده" | "باطل";
@@ -264,6 +265,21 @@ export function suggestNextNumber(values: string[], fallback = 1) {
     return Math.max(max, last ? Number(last) : 0);
   }, 0);
   return String(Math.max(fallback, highest + 1));
+}
+
+export function suggestNextPartyNumber(
+  records: Array<{ partyId?: string; number: string }>,
+  partyId?: string,
+  partyCode?: string,
+  fallbackValues: string[] = []
+) {
+  const own = partyId ? records.filter(item => item.partyId === partyId) : [];
+  if (!own.length) return suggestNextNumber(fallbackValues);
+  const latest = own[0]?.number || "";
+  const match = latest.match(/^(.*?)(\d+)\s*$/);
+  const prefix = match?.[1] ?? (partyCode?.match(/^[^\d]*/)?.[0] || "");
+  const next = suggestNextNumber(own.map(item => item.number));
+  return `${prefix}${next}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
