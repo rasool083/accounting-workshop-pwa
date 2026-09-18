@@ -275,11 +275,14 @@ export function suggestNextPartyNumber(
 ) {
   const own = partyId ? records.filter(item => item.partyId === partyId) : [];
   if (!own.length) return suggestNextNumber(fallbackValues);
-  const latest = own[0]?.number || "";
-  const match = latest.match(/^(.*?)(\d+)\s*$/);
-  const prefix = match?.[1] ?? (partyCode?.match(/^[^\d]*/)?.[0] || "");
+  const matches = own
+    .map(item => item.number.match(/^(.*?)(\d+)\s*$/))
+    .filter(Boolean) as RegExpMatchArray[];
+  const reference = matches.sort((a, b) => Number(b[2]) - Number(a[2]))[0];
+  const prefix = reference?.[1] ?? (partyCode?.match(/^[^\d]*/)?.[0] || "");
+  const width = reference?.[2]?.length || 0;
   const next = suggestNextNumber(own.map(item => item.number));
-  return `${prefix}${next}`;
+  return `${prefix}${width ? next.padStart(width, "0") : next}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -582,6 +585,7 @@ export function settleChecksFIFO(
       );
       checkRemaining = Math.max(0, checkRemaining - amount);
       remainingByCheck.set(check.id, checkRemaining);
+      if ((remainingByInvoice.get(invoice.id) || 0) > 0) break;
     }
   }
   return settlements;

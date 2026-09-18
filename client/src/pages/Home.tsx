@@ -1010,7 +1010,8 @@ function Invoices({
         price =>
           (price.productName === product.name ||
             price.productId === product.id) &&
-          price.unit === (unit || product.unit) &&
+          (price.unit === (unit || product.unit) ||
+            (unit === product.unit2 && price.unit === product.unit)) &&
           price.effectiveDate <= form.date &&
           (price.scope === "عمومی" || price.partyIds?.includes(partyId))
       )
