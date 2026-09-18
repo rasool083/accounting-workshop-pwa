@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -3615,7 +3615,7 @@ function Checks({
                   );
                   const expanded = expandedCheckIds.has(check.id);
                   return (
-                    <>
+                    <Fragment key={check.id}>
                       <tr
                         key={check.id}
                         className={`check-row check-row-${check.status === "وصول شده" ? "cleared" : check.status === "خرج شده" ? "spent" : ["برگشتی", "عودت داده شده", "باطل"].includes(check.status) ? "bad" : check.status === "جایگزین شده" ? "replaced" : "open"}`}
@@ -3852,7 +3852,7 @@ function Checks({
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })
               ) : (
