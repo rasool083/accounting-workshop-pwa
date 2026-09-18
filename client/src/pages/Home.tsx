@@ -52,6 +52,7 @@ import {
   todayJalali,
   transactionLabel,
   calculateLateProfit,
+  settleChecksFIFO,
   allocateCheckFIFO,
   applyCheckFIFO,
   createEmptyState,
@@ -3949,6 +3950,7 @@ function MonthClose({
         (!partyId || check.partyId === partyId)
     )
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const fifoSettlements = settleChecksFIFO(partyChecks, partyInvoices, state.paymentRules);
   const settlement = new Map<
     string,
     {
@@ -3970,26 +3972,11 @@ function MonthClose({
     profit: number;
   }> = [];
   partyInvoices.forEach(invoice => {
-    let baseRemaining = invoice.amount;
-    let collected = 0;
-    let profit = 0;
-    const rule =
-      state.paymentRules.find(item => item.id === invoice.paymentRuleId) ||
-      state.paymentRules.find(item => item.active);
-    partyChecks.forEach(check => {
-      if (baseRemaining <= 0 || check.dueDate < invoice.date) return;
-      const used = Math.min(check.amount, baseRemaining);
-      if (!used) return;
-      const result = calculateLateProfit(
-        { ...check, amount: used },
-        rule,
-        invoice.date,
-        baseRemaining
-      );
-      collected += used;
-      profit += result.profit;
-      baseRemaining = result.remainingBase;
-    });
+    const invoiceSettlements = fifoSettlements.filter(item => item.invoiceId === invoice.id);
+    const collected = invoiceSettlements.reduce((sum, item) => sum + item.amount, 0);
+    const profit = invoiceSettlements.reduce((sum, item) => sum + item.profit, 0);
+    const principalCollected = invoiceSettlements.reduce((sum, item) => sum + item.principalAmount, 0);
+    const baseRemaining = Math.max(0, invoice.amount - principalCollected);
     const todayCheck = {
       id: "today",
       number: "",
@@ -4002,7 +3989,7 @@ function MonthClose({
     };
     const today = calculateLateProfit(
       todayCheck,
-      rule,
+      state.paymentRules.find(item => item.id === invoice.paymentRuleId) || state.paymentRules.find(item => item.active),
       invoice.date,
       baseRemaining
     );

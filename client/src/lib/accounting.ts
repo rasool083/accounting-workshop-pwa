@@ -8,7 +8,7 @@ export type PriceScope = "عمومی" | "اختصاصی";
 export interface Warehouse { id: string; name: string; note: string; }
 
 export interface InvoiceItem { id: string; productId?: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; quantityBase?: number; conversionRate?: number; }
-export interface CheckAllocation { checkId: string; amount: number; allocatedAt: string; }
+export interface CheckAllocation { checkId: string; amount: number; principalAmount?: number; profit?: number; days?: number; allocatedAt: string; }
 export interface Invoice {
   id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; items: InvoiceItem[]; allocations: CheckAllocation[]; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده" | "باطل"; note: string;
 }
@@ -255,16 +255,70 @@ export function jalaliDayDifference(from: string, to: string) {
   return Math.max(0, parse(to) - parse(from));
 }
 
-export function allocateCheckFIFO(check: Check, invoices: Invoice[]) {
-  const alreadyAllocated = invoices.reduce((sum, invoice) => sum + invoice.allocations.filter((item) => item.checkId === check.id).reduce((a, item) => a + item.amount, 0), 0);
-  let remaining = Math.max(0, check.amount - alreadyAllocated);
-  return [...invoices].filter((invoice) => invoice.partyId === check.partyId && invoice.type === "فروش" && invoice.status !== "تسویه شده").sort((a, b) => a.date.localeCompare(b.date)).map((invoice) => { const allocation = Math.min(remaining, Math.max(0, invoice.amount - invoice.paidAmount)); remaining -= allocation; return { invoice, allocation, remainingAfter: remaining }; }).filter((item) => item.allocation > 0);
+export interface FIFOSettlement {
+  checkId: string;
+  invoiceId: string;
+  amount: number;
+  principalAmount: number;
+  profit: number;
+  days: number;
+}
+
+export function settleChecksFIFO(
+  checks: Check[],
+  invoices: Invoice[],
+  paymentRules: PaymentRule[] = []
+) {
+  const settlements: FIFOSettlement[] = [];
+  const eligibleInvoices = [...invoices]
+    .filter((invoice) => invoice.type === "فروش" && invoice.status !== "باطل")
+    .sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+  const eligibleChecks = [...checks]
+    .filter((check) => !["باطل", "برگشتی", "عودت داده شده", "جایگزین شده"].includes(check.status))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.receivedDate.localeCompare(b.receivedDate) || a.number.localeCompare(b.number));
+  const remainingByInvoice = new Map(eligibleInvoices.map((invoice) => [invoice.id, Math.max(0, invoice.amount)]));
+  const remainingByCheck = new Map(eligibleChecks.map((check) => [check.id, Math.max(0, check.amount)]));
+
+  for (const check of eligibleChecks) {
+    let checkRemaining = remainingByCheck.get(check.id) || 0;
+    for (const invoice of eligibleInvoices) {
+      if (invoice.partyId !== check.partyId || checkRemaining <= 0) continue;
+      const baseRemaining = remainingByInvoice.get(invoice.id) || 0;
+      if (baseRemaining <= 0) continue;
+      const rule = paymentRules.find((item) => item.id === invoice.paymentRuleId) || paymentRules.find((item) => item.active);
+      const probe = calculateLateProfit({ ...check, amount: checkRemaining }, rule, invoice.date, baseRemaining);
+      const amount = Math.min(checkRemaining, probe.settled);
+      const factor = baseRemaining > 0 ? probe.settled / baseRemaining : 1;
+      const principalAmount = Math.min(baseRemaining, amount / Math.max(1, factor));
+      const profit = Math.max(0, amount - principalAmount);
+      if (amount <= 0 || principalAmount <= 0) continue;
+      settlements.push({ checkId: check.id, invoiceId: invoice.id, amount, principalAmount, profit, days: probe.days });
+      remainingByInvoice.set(invoice.id, Math.max(0, baseRemaining - principalAmount));
+      checkRemaining = Math.max(0, checkRemaining - amount);
+      remainingByCheck.set(check.id, checkRemaining);
+    }
+  }
+  return settlements;
+}
+
+export function allocateCheckFIFO(check: Check, invoices: Invoice[], paymentRules: PaymentRule[] = []) {
+  return settleChecksFIFO([check], invoices, paymentRules)
+    .map((item) => ({ invoice: invoices.find((invoice) => invoice.id === item.invoiceId)!, allocation: item.amount, principalAmount: item.principalAmount, profit: item.profit, remainingAfter: Math.max(0, check.amount - item.amount) }));
 }
 
 export function applyCheckFIFO(state: AppState, check: Check) {
-  const allocations = allocateCheckFIFO(check, state.invoices);
-  if (!allocations.length) return state;
-  const invoices = state.invoices.map((invoice) => { const row = allocations.find((item) => item.invoice.id === invoice.id); if (!row) return invoice; const paidAmount = invoice.paidAmount + row.allocation; return { ...invoice, paidAmount, allocations: [...invoice.allocations, { checkId: check.id, amount: row.allocation, allocatedAt: new Date().toISOString() }], status: paidAmount >= invoice.amount ? "تسویه شده" as const : "تسویه جزئی" as const }; });
+  if (!check.partyId) return state;
+  const partyChecks = state.checks.map((item) => item.id === check.id ? check : item);
+  const settlements = settleChecksFIFO(partyChecks, state.invoices, state.paymentRules);
+  const byInvoice = new Map<string, FIFOSettlement[]>();
+  settlements.forEach((item) => byInvoice.set(item.invoiceId, [...(byInvoice.get(item.invoiceId) || []), item]));
+  const now = new Date().toISOString();
+  const invoices = state.invoices.map((invoice) => {
+    if (invoice.partyId !== check.partyId || invoice.type !== "فروش" || invoice.status === "باطل") return invoice;
+    const rows = byInvoice.get(invoice.id) || [];
+    const paidAmount = Math.min(invoice.amount, rows.reduce((sum, item) => sum + item.principalAmount, 0));
+    return { ...invoice, paidAmount, allocations: rows.map((item) => ({ checkId: item.checkId, amount: item.amount, principalAmount: item.principalAmount, profit: item.profit, days: item.days, allocatedAt: now })), status: paidAmount >= invoice.amount ? "تسویه شده" as const : paidAmount > 0 ? "تسویه جزئی" as const : "باز" as const };
+  });
   return { ...state, invoices };
 }
 
