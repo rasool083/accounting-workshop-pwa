@@ -59,6 +59,7 @@ import {
   createEmptyState,
   PERSON_TYPES,
   UNIT_OPTIONS,
+  suggestNextNumber,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -984,6 +985,10 @@ function Invoices({
     items: [blankItem],
     note: "",
   });
+  const nextInvoiceNumber = useMemo(
+    () => suggestNextNumber(state.invoices.map(item => item.number)),
+    [state.invoices]
+  );
   const party = state.people.find(item => item.id === form.partyId);
   const calculatedAmount = form.items.reduce(
     (sum, item) =>
@@ -1139,7 +1144,15 @@ function Invoices({
         title="فاکتورها"
         description="چند ردیف کالا/خدمت را ثبت کنید؛ مبلغ کل و گردش موجودی خودکار محاسبه می‌شود."
         actionLabel="ثبت فاکتور"
-        onAction={() => setOpen(true)}
+        onAction={() => {
+          setEditingInvoice(null);
+          setForm(current => ({
+            ...current,
+            number: nextInvoiceNumber,
+            date: todayJalali(),
+          }));
+          setOpen(true);
+        }}
       />
       <section className="metric-grid">
         <MetricCard
@@ -1311,6 +1324,8 @@ function Invoices({
               شماره فاکتور
               <input
                 value={form.number}
+                inputMode="numeric"
+                placeholder={`پیشنهاد: ${nextInvoiceNumber}`}
                 onChange={e => setForm({ ...form, number: e.target.value })}
               />
             </label>
@@ -1822,6 +1837,7 @@ function People({
   onSave: (state: AppState, message: string) => void;
 }) {
   const blank = {
+    code: "",
     name: "",
     roles: ["مشتری"] as AppState["people"][number]["roles"],
     phone: "",
@@ -1832,9 +1848,18 @@ function People({
     AppState["people"][number] | null
   >(null);
   const [form, setForm] = useState(blank);
+  const nextPersonCode = useMemo(
+    () =>
+      suggestNextNumber(
+        state.people.map(item => item.code),
+        1
+      ).padStart(3, "0"),
+    [state.people]
+  );
   function beginEdit(person: AppState["people"][number]) {
     setEditingPerson(person);
     setForm({
+      code: person.code || nextPersonCode,
       name: person.name,
       roles: person.roles?.length ? person.roles : [person.type],
       phone: person.phone || "",
@@ -1855,8 +1880,7 @@ function People({
     if (!form.name.trim() || !form.roles.length) return;
     const person = {
       id: editingPerson?.id || createId("person"),
-      code:
-        editingPerson?.code || String(state.people.length + 1).padStart(3, "0"),
+      code: form.code.trim() || nextPersonCode,
       name: form.name.trim(),
       type: form.roles[0],
       roles: form.roles,
@@ -1997,6 +2021,15 @@ function People({
           }}
         >
           <form onSubmit={submit} className="form-grid">
+            <label>
+              کد طرف حساب
+              <input
+                inputMode="numeric"
+                value={form.code}
+                placeholder={`پیشنهاد: ${nextPersonCode}`}
+                onChange={e => setForm({ ...form, code: e.target.value })}
+              />
+            </label>
             <label className="full-field">
               نام و نام خانوادگی
               <input
@@ -2098,6 +2131,14 @@ function Inventory({
     minStock: "0",
     price: "0",
   });
+  const nextProductCode = useMemo(
+    () =>
+      suggestNextNumber(
+        state.products.map(item => item.code),
+        1
+      ).padStart(3, "0"),
+    [state.products]
+  );
   function adjustStock(event: React.FormEvent) {
     event.preventDefault();
     const amount = Number(adjustForm.amount.replace(/[^0-9.-]/g, "")) || 0;
@@ -2184,7 +2225,11 @@ function Inventory({
         title="انبار و کالا"
         description="کالا را با واحد اول، واحد دوم، نسبت تبدیل و محل نگهداری ثبت کنید."
         actionLabel="افزودن کالا"
-        onAction={() => setOpen(true)}
+        onAction={() => {
+          setEditingProduct(null);
+          setForm(current => ({ ...current, code: nextProductCode }));
+          setOpen(true);
+        }}
       />
       <div className="toolbar">
         <button
@@ -2591,6 +2636,8 @@ function Inventory({
               کد کالا
               <input
                 value={form.code}
+                inputMode="numeric"
+                placeholder={`پیشنهاد: ${nextProductCode}`}
                 onChange={e => setForm({ ...form, code: e.target.value })}
               />
             </label>
@@ -3306,6 +3353,10 @@ function Checks({
     note: "",
   };
   const [form, setForm] = useState(blank);
+  const nextCheckNumber = useMemo(
+    () => suggestNextNumber(state.checks.map(item => item.number)),
+    [state.checks]
+  );
   const visibleChecks = state.checks.filter(
     check =>
       (statusFilter === "همه" || check.status === statusFilter) &&
@@ -3618,6 +3669,7 @@ function Checks({
           setEditingCheck(null);
           setForm({
             ...blank,
+            number: nextCheckNumber,
             paymentRuleId:
               state.paymentRules.find(item => item.active)?.id || "",
           });
@@ -4039,6 +4091,8 @@ function Checks({
               <input
                 autoFocus
                 value={form.number}
+                inputMode="numeric"
+                placeholder={`پیشنهاد: ${nextCheckNumber}`}
                 onChange={e => setForm({ ...form, number: e.target.value })}
               />
             </label>

@@ -1,20 +1,110 @@
-export type PageId = "dashboard" | "invoices" | "transactions" | "people" | "inventory" | "prices" | "paymentRules" | "checks" | "monthClose" | "reports" | "backup" | "settings";
+export type PageId =
+  | "dashboard"
+  | "invoices"
+  | "transactions"
+  | "people"
+  | "inventory"
+  | "prices"
+  | "paymentRules"
+  | "checks"
+  | "monthClose"
+  | "reports"
+  | "backup"
+  | "settings";
 
 export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "سایر";
-export const PERSON_TYPES: PersonType[] = ["مشتری", "تأمین‌کننده", "شریک", "کارگر", "سایر"];
-export const UNIT_OPTIONS = ["عدد", "کیلوگرم", "گرم", "تن", "متر", "سانتی‌متر", "مترمربع", "مترمکعب", "لیتر", "گالن", "کیسه", "بسته", "کارتن", "پالت", "حلقه", "شاخه", "دست", "سرویس", "دستگاه", "ساعت", "روز", "ماه", "سایر"] as const;
+export const PERSON_TYPES: PersonType[] = [
+  "مشتری",
+  "تأمین‌کننده",
+  "شریک",
+  "کارگر",
+  "سایر",
+];
+export const UNIT_OPTIONS = [
+  "عدد",
+  "کیلوگرم",
+  "گرم",
+  "تن",
+  "متر",
+  "سانتی‌متر",
+  "مترمربع",
+  "مترمکعب",
+  "لیتر",
+  "گالن",
+  "کیسه",
+  "بسته",
+  "کارتن",
+  "پالت",
+  "حلقه",
+  "شاخه",
+  "دست",
+  "سرویس",
+  "دستگاه",
+  "ساعت",
+  "روز",
+  "ماه",
+  "سایر",
+] as const;
 export type PriceScope = "عمومی" | "اختصاصی";
 
-export interface Warehouse { id: string; name: string; note: string; }
-
-export interface InvoiceItem { id: string; productId?: string; description: string; quantity: number; unit: string; unitPrice: number; total: number; quantityBase?: number; conversionRate?: number; }
-export interface CheckAllocation { checkId: string; amount: number; principalAmount?: number; profit?: number; days?: number; allocatedAt: string; }
-export interface Invoice {
-  id: string; number: string; type: "فروش" | "خرید"; date: string; partyId?: string; paymentRuleId?: string; priceHistoryId?: string; items: InvoiceItem[]; allocations: CheckAllocation[]; amount: number; paidAmount: number; status: "باز" | "تسویه جزئی" | "تسویه شده" | "باطل"; note: string;
+export interface Warehouse {
+  id: string;
+  name: string;
+  note: string;
 }
 
-export type TransactionType = "فروش" | "خرید" | "دریافت" | "پرداخت" | "هزینه" | "درآمد" | "اصلاحیه";
-export type CheckStatus = "نزد ما" | "وصول شده" | "تودیع شده" | "برگشتی" | "عودت داده شده" | "جایگزین شده" | "باطل" | "خرج شده";
+export interface InvoiceItem {
+  id: string;
+  productId?: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  total: number;
+  quantityBase?: number;
+  conversionRate?: number;
+}
+export interface CheckAllocation {
+  checkId: string;
+  amount: number;
+  principalAmount?: number;
+  profit?: number;
+  days?: number;
+  allocatedAt: string;
+}
+export interface Invoice {
+  id: string;
+  number: string;
+  type: "فروش" | "خرید";
+  date: string;
+  partyId?: string;
+  paymentRuleId?: string;
+  priceHistoryId?: string;
+  items: InvoiceItem[];
+  allocations: CheckAllocation[];
+  amount: number;
+  paidAmount: number;
+  status: "باز" | "تسویه جزئی" | "تسویه شده" | "باطل";
+  note: string;
+}
+
+export type TransactionType =
+  | "فروش"
+  | "خرید"
+  | "دریافت"
+  | "پرداخت"
+  | "هزینه"
+  | "درآمد"
+  | "اصلاحیه";
+export type CheckStatus =
+  | "نزد ما"
+  | "وصول شده"
+  | "تودیع شده"
+  | "برگشتی"
+  | "عودت داده شده"
+  | "جایگزین شده"
+  | "باطل"
+  | "خرج شده";
 
 export interface Person {
   id: string;
@@ -133,10 +223,23 @@ const seedState: AppState = {
   settings: { businessName: "کارگاه من", currency: "ریال", dayBasis: 30 },
   people: [],
   products: [],
-  warehouses: [{ id: "warehouse-production", name: "انبار محصولات تولید", note: "" }, { id: "warehouse-material", name: "انبار مواد اولیه", note: "" }, { id: "warehouse-trade", name: "انبار بازرگانی", note: "" }],
+  warehouses: [
+    { id: "warehouse-production", name: "انبار محصولات تولید", note: "" },
+    { id: "warehouse-material", name: "انبار مواد اولیه", note: "" },
+    { id: "warehouse-trade", name: "انبار بازرگانی", note: "" },
+  ],
   invoices: [],
   priceHistory: [],
-  paymentRules: [{ id: "cash-default", name: "نقدی و تسویه فوری", active: true, dayBasis: 30, graceDays: 0, tiers: [{ id: "tier-1", maxDays: 30, rate: 0, note: "بدون سود" }] }],
+  paymentRules: [
+    {
+      id: "cash-default",
+      name: "نقدی و تسویه فوری",
+      active: true,
+      dayBasis: 30,
+      graceDays: 0,
+      tiers: [{ id: "tier-1", maxDays: 30, rate: 0, note: "بدون سود" }],
+    },
+  ],
   transactions: [],
   checks: [],
   accounts: [
@@ -150,6 +253,19 @@ export function createId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+export function suggestNextNumber(values: string[], fallback = 1) {
+  const digits = (value: string) =>
+    value
+      .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+      .match(/\d+/g);
+  const highest = values.reduce((max, value) => {
+    const parts = digits(value || "");
+    const last = parts?.[parts.length - 1];
+    return Math.max(max, last ? Number(last) : 0);
+  }, 0);
+  return String(Math.max(fallback, highest + 1));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
@@ -161,17 +277,83 @@ export function normalizeState(input: unknown): AppState {
     ...source,
     schemaVersion: 1,
     revision: typeof source.revision === "number" ? source.revision : 1,
-    updatedAt: typeof source.updatedAt === "string" ? source.updatedAt : new Date().toISOString(),
-    settings: { ...seedState.settings, ...(isRecord(source.settings) ? source.settings : {}) },
-    people: Array.isArray(source.people) ? source.people.map((person) => ({ ...person, defaultPaymentRuleId: typeof person.defaultPaymentRuleId === "string" ? person.defaultPaymentRuleId : undefined, roles: Array.isArray(person.roles) && person.roles.length ? person.roles : [person.type || "مشتری"] })) : [],
-    products: Array.isArray(source.products) ? source.products.map((product) => ({ ...product, unit2: product.unit2 || product.unit, conversionRate: Number(product.conversionRate) || 1 })) : [],
-    warehouses: Array.isArray(source.warehouses) ? source.warehouses : seedState.warehouses,
-    invoices: Array.isArray(source.invoices) ? source.invoices.map((invoice) => ({ ...invoice, items: Array.isArray(invoice.items) ? invoice.items : [], allocations: Array.isArray(invoice.allocations) ? invoice.allocations : [], paidAmount: Number(invoice.paidAmount) || 0 })) : [],
+    updatedAt:
+      typeof source.updatedAt === "string"
+        ? source.updatedAt
+        : new Date().toISOString(),
+    settings: {
+      ...seedState.settings,
+      ...(isRecord(source.settings) ? source.settings : {}),
+    },
+    people: Array.isArray(source.people)
+      ? source.people.map(person => ({
+          ...person,
+          defaultPaymentRuleId:
+            typeof person.defaultPaymentRuleId === "string"
+              ? person.defaultPaymentRuleId
+              : undefined,
+          roles:
+            Array.isArray(person.roles) && person.roles.length
+              ? person.roles
+              : [person.type || "مشتری"],
+        }))
+      : [],
+    products: Array.isArray(source.products)
+      ? source.products.map(product => ({
+          ...product,
+          unit2: product.unit2 || product.unit,
+          conversionRate: Number(product.conversionRate) || 1,
+        }))
+      : [],
+    warehouses: Array.isArray(source.warehouses)
+      ? source.warehouses
+      : seedState.warehouses,
+    invoices: Array.isArray(source.invoices)
+      ? source.invoices.map(invoice => ({
+          ...invoice,
+          items: Array.isArray(invoice.items) ? invoice.items : [],
+          allocations: Array.isArray(invoice.allocations)
+            ? invoice.allocations
+            : [],
+          paidAmount: Number(invoice.paidAmount) || 0,
+        }))
+      : [],
     priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
-    paymentRules: Array.isArray(source.paymentRules) ? source.paymentRules : seedState.paymentRules,
+    paymentRules: Array.isArray(source.paymentRules)
+      ? source.paymentRules
+      : seedState.paymentRules,
     transactions: Array.isArray(source.transactions) ? source.transactions : [],
-    checks: Array.isArray(source.checks) ? source.checks.map((check) => ({ ...check, bankAccountId: typeof check.bankAccountId === "string" ? check.bankAccountId : undefined, returnPartyId: typeof check.returnPartyId === "string" ? check.returnPartyId : undefined, replacementIds: Array.isArray(check.replacementIds) ? check.replacementIds : [], receivedDate: typeof check.receivedDate === "string" ? check.receivedDate : check.dueDate || "", invoiceDate: typeof check.invoiceDate === "string" ? check.invoiceDate : undefined, paymentRuleId: typeof check.paymentRuleId === "string" ? check.paymentRuleId : undefined })) : [],
-    accounts: Array.isArray(source.accounts) ? source.accounts : seedState.accounts,
+    checks: Array.isArray(source.checks)
+      ? source.checks.map(check => ({
+          ...check,
+          bankAccountId:
+            typeof check.bankAccountId === "string"
+              ? check.bankAccountId
+              : undefined,
+          returnPartyId:
+            typeof check.returnPartyId === "string"
+              ? check.returnPartyId
+              : undefined,
+          replacementIds: Array.isArray(check.replacementIds)
+            ? check.replacementIds
+            : [],
+          receivedDate:
+            typeof check.receivedDate === "string"
+              ? check.receivedDate
+              : check.dueDate || "",
+          invoiceDate:
+            typeof check.invoiceDate === "string"
+              ? check.invoiceDate
+              : undefined,
+          paymentRuleId:
+            typeof check.paymentRuleId === "string"
+              ? check.paymentRuleId
+              : undefined,
+        }))
+      : [],
+    accounts: Array.isArray(source.accounts)
+      ? source.accounts
+      : seedState.accounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
   } as AppState;
 }
@@ -186,7 +368,11 @@ export function loadState(): AppState {
 }
 
 export function saveState(state: AppState) {
-  const next = normalizeState({ ...state, revision: state.revision + 1, updatedAt: new Date().toISOString() });
+  const next = normalizeState({
+    ...state,
+    revision: state.revision + 1,
+    updatedAt: new Date().toISOString(),
+  });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
@@ -194,8 +380,20 @@ export function saveState(state: AppState) {
 export function createEmptyState(previous: AppState): AppState {
   return normalizeState({
     revision: previous.revision + 1,
-    people: [], products: [], priceHistory: [], invoices: [], transactions: [], checks: [],
-    audit: [{ id: createId("audit"), at: new Date().toISOString(), action: "CLEAR_DATA", note: "حذف همه اطلاعات کسب‌وکار پس از تأیید کاربر" }],
+    people: [],
+    products: [],
+    priceHistory: [],
+    invoices: [],
+    transactions: [],
+    checks: [],
+    audit: [
+      {
+        id: createId("audit"),
+        at: new Date().toISOString(),
+        action: "CLEAR_DATA",
+        note: "حذف همه اطلاعات کسب‌وکار پس از تأیید کاربر",
+      },
+    ],
   });
 }
 
@@ -208,8 +406,16 @@ export function formatNumber(value: number) {
 }
 
 export function todayJalali() {
-  const formatted = new Intl.DateTimeFormat("fa-IR-u-ca-persian", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  return formatted.replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)).replace(/-/g, "/")).replace(/-/g, "/");
+  const formatted = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return formatted
+    .replace(/[۰-۹]/g, digit =>
+      String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)).replace(/-/g, "/")
+    )
+    .replace(/-/g, "/");
 }
 
 export function formatDate(value: string) {
@@ -218,20 +424,32 @@ export function formatDate(value: string) {
 }
 
 export function personName(state: AppState, id?: string) {
-  return state.people.find((person) => person.id === id)?.name || "بدون طرف حساب";
+  return state.people.find(person => person.id === id)?.name || "بدون طرف حساب";
 }
 
 export function transactionLabel(type: TransactionType) {
-  return { فروش: "فروش", خرید: "خرید", دریافت: "دریافت", پرداخت: "پرداخت", هزینه: "هزینه", درآمد: "درآمد", اصلاحیه: "اصلاحیه" }[type];
+  return {
+    فروش: "فروش",
+    خرید: "خرید",
+    دریافت: "دریافت",
+    پرداخت: "پرداخت",
+    هزینه: "هزینه",
+    درآمد: "درآمد",
+    اصلاحیه: "اصلاحیه",
+  }[type];
 }
 
 export function exportPayload(state: AppState) {
-  return JSON.stringify({
-    format: "accounting-workshop-backup",
-    schemaVersion: state.schemaVersion,
-    exportedAt: new Date().toISOString(),
-    data: state,
-  }, null, 2);
+  return JSON.stringify(
+    {
+      format: "accounting-workshop-backup",
+      schemaVersion: state.schemaVersion,
+      exportedAt: new Date().toISOString(),
+      data: state,
+    },
+    null,
+    2
+  );
 }
 
 export function importPayload(text: string) {
@@ -239,19 +457,35 @@ export function importPayload(text: string) {
   if (!isRecord(parsed)) throw new Error("ساختار فایل پشتیبان معتبر نیست");
   const data = "data" in parsed ? parsed.data : parsed;
   const normalized = normalizeState(data);
-  if (!Array.isArray(normalized.people) || !Array.isArray(normalized.transactions)) throw new Error("فایل پشتیبان ناقص است");
+  if (
+    !Array.isArray(normalized.people) ||
+    !Array.isArray(normalized.transactions)
+  )
+    throw new Error("فایل پشتیبان ناقص است");
   return normalized;
 }
 
-export function appendAudit(state: AppState, action: string, note: string): AppState {
+export function appendAudit(
+  state: AppState,
+  action: string,
+  note: string
+): AppState {
   return {
     ...state,
-    audit: [...state.audit, { id: createId("audit"), at: new Date().toISOString(), action, note }].slice(-500),
+    audit: [
+      ...state.audit,
+      { id: createId("audit"), at: new Date().toISOString(), action, note },
+    ].slice(-500),
   };
 }
 
 export function jalaliDayDifference(from: string, to: string) {
-  const parse = (value: string) => { const parts = value.replace(/-/g, "/").split("/").map(Number); return parts.length === 3 && parts.every(Number.isFinite) ? parts[0] * 372 + parts[1] * 31 + parts[2] : 0; };
+  const parse = (value: string) => {
+    const parts = value.replace(/-/g, "/").split("/").map(Number);
+    return parts.length === 3 && parts.every(Number.isFinite)
+      ? parts[0] * 372 + parts[1] * 31 + parts[2]
+      : 0;
+  };
   return Math.max(0, parse(to) - parse(from));
 }
 
@@ -271,13 +505,29 @@ export function settleChecksFIFO(
 ) {
   const settlements: FIFOSettlement[] = [];
   const eligibleInvoices = [...invoices]
-    .filter((invoice) => invoice.type === "فروش" && invoice.status !== "باطل")
-    .sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+    .filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل")
+    .sort(
+      (a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number)
+    );
   const eligibleChecks = [...checks]
-    .filter((check) => !["باطل", "برگشتی", "عودت داده شده", "جایگزین شده"].includes(check.status))
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.receivedDate.localeCompare(b.receivedDate) || a.number.localeCompare(b.number));
-  const remainingByInvoice = new Map(eligibleInvoices.map((invoice) => [invoice.id, Math.max(0, invoice.amount)]));
-  const remainingByCheck = new Map(eligibleChecks.map((check) => [check.id, Math.max(0, check.amount)]));
+    .filter(
+      check =>
+        !["باطل", "برگشتی", "عودت داده شده", "جایگزین شده"].includes(
+          check.status
+        )
+    )
+    .sort(
+      (a, b) =>
+        a.dueDate.localeCompare(b.dueDate) ||
+        a.receivedDate.localeCompare(b.receivedDate) ||
+        a.number.localeCompare(b.number)
+    );
+  const remainingByInvoice = new Map(
+    eligibleInvoices.map(invoice => [invoice.id, Math.max(0, invoice.amount)])
+  );
+  const remainingByCheck = new Map(
+    eligibleChecks.map(check => [check.id, Math.max(0, check.amount)])
+  );
 
   for (const check of eligibleChecks) {
     let checkRemaining = remainingByCheck.get(check.id) || 0;
@@ -285,15 +535,35 @@ export function settleChecksFIFO(
       if (invoice.partyId !== check.partyId || checkRemaining <= 0) continue;
       const baseRemaining = remainingByInvoice.get(invoice.id) || 0;
       if (baseRemaining <= 0) continue;
-      const rule = paymentRules.find((item) => item.id === invoice.paymentRuleId) || paymentRules.find((item) => item.active);
-      const probe = calculateLateProfit({ ...check, amount: checkRemaining }, rule, invoice.date, baseRemaining);
+      const rule =
+        paymentRules.find(item => item.id === invoice.paymentRuleId) ||
+        paymentRules.find(item => item.active);
+      const probe = calculateLateProfit(
+        { ...check, amount: checkRemaining },
+        rule,
+        invoice.date,
+        baseRemaining
+      );
       const amount = Math.min(checkRemaining, probe.settled);
       const factor = baseRemaining > 0 ? probe.settled / baseRemaining : 1;
-      const principalAmount = Math.min(baseRemaining, amount / Math.max(1, factor));
+      const principalAmount = Math.min(
+        baseRemaining,
+        amount / Math.max(1, factor)
+      );
       const profit = Math.max(0, amount - principalAmount);
       if (amount <= 0 || principalAmount <= 0) continue;
-      settlements.push({ checkId: check.id, invoiceId: invoice.id, amount, principalAmount, profit, days: probe.days });
-      remainingByInvoice.set(invoice.id, Math.max(0, baseRemaining - principalAmount));
+      settlements.push({
+        checkId: check.id,
+        invoiceId: invoice.id,
+        amount,
+        principalAmount,
+        profit,
+        days: probe.days,
+      });
+      remainingByInvoice.set(
+        invoice.id,
+        Math.max(0, baseRemaining - principalAmount)
+      );
       checkRemaining = Math.max(0, checkRemaining - amount);
       remainingByCheck.set(check.id, checkRemaining);
     }
@@ -301,63 +571,218 @@ export function settleChecksFIFO(
   return settlements;
 }
 
-export function allocateCheckFIFO(check: Check, invoices: Invoice[], paymentRules: PaymentRule[] = []) {
-  return settleChecksFIFO([check], invoices, paymentRules)
-    .map((item) => ({ invoice: invoices.find((invoice) => invoice.id === item.invoiceId)!, allocation: item.amount, principalAmount: item.principalAmount, profit: item.profit, remainingAfter: Math.max(0, check.amount - item.amount) }));
+export function allocateCheckFIFO(
+  check: Check,
+  invoices: Invoice[],
+  paymentRules: PaymentRule[] = []
+) {
+  return settleChecksFIFO([check], invoices, paymentRules).map(item => ({
+    invoice: invoices.find(invoice => invoice.id === item.invoiceId)!,
+    allocation: item.amount,
+    principalAmount: item.principalAmount,
+    profit: item.profit,
+    remainingAfter: Math.max(0, check.amount - item.amount),
+  }));
 }
 
 export function applyCheckFIFO(state: AppState, check: Check) {
   if (!check.partyId) return state;
-  const partyChecks = state.checks.map((item) => item.id === check.id ? check : item);
-  const settlements = settleChecksFIFO(partyChecks, state.invoices, state.paymentRules);
+  const partyChecks = state.checks.map(item =>
+    item.id === check.id ? check : item
+  );
+  const settlements = settleChecksFIFO(
+    partyChecks,
+    state.invoices,
+    state.paymentRules
+  );
   const byInvoice = new Map<string, FIFOSettlement[]>();
-  settlements.forEach((item) => byInvoice.set(item.invoiceId, [...(byInvoice.get(item.invoiceId) || []), item]));
+  settlements.forEach(item =>
+    byInvoice.set(item.invoiceId, [
+      ...(byInvoice.get(item.invoiceId) || []),
+      item,
+    ])
+  );
   const now = new Date().toISOString();
-  const invoices = state.invoices.map((invoice) => {
-    if (invoice.partyId !== check.partyId || invoice.type !== "فروش" || invoice.status === "باطل") return invoice;
+  const invoices = state.invoices.map(invoice => {
+    if (
+      invoice.partyId !== check.partyId ||
+      invoice.type !== "فروش" ||
+      invoice.status === "باطل"
+    )
+      return invoice;
     const rows = byInvoice.get(invoice.id) || [];
-    const paidAmount = Math.min(invoice.amount, rows.reduce((sum, item) => sum + item.principalAmount, 0));
-    return { ...invoice, paidAmount, allocations: rows.map((item) => ({ checkId: item.checkId, amount: item.amount, principalAmount: item.principalAmount, profit: item.profit, days: item.days, allocatedAt: now })), status: paidAmount >= invoice.amount ? "تسویه شده" as const : paidAmount > 0 ? "تسویه جزئی" as const : "باز" as const };
+    const paidAmount = Math.min(
+      invoice.amount,
+      rows.reduce((sum, item) => sum + item.principalAmount, 0)
+    );
+    return {
+      ...invoice,
+      paidAmount,
+      allocations: rows.map(item => ({
+        checkId: item.checkId,
+        amount: item.amount,
+        principalAmount: item.principalAmount,
+        profit: item.profit,
+        days: item.days,
+        allocatedAt: now,
+      })),
+      status:
+        paidAmount >= invoice.amount
+          ? ("تسویه شده" as const)
+          : paidAmount > 0
+            ? ("تسویه جزئی" as const)
+            : ("باز" as const),
+    };
   });
   return { ...state, invoices };
 }
 
-export function calculateLateProfit(check: Check, rule?: PaymentRule, invoiceDate?: string, invoiceBaseAmount = check.amount) {
-  const days = jalaliDayDifference(invoiceDate || check.invoiceDate || check.receivedDate, check.dueDate);
-  const activeRule = rule || { dayBasis: 30, graceDays: 0, tiers: [{ maxDays: 9999, rate: 0 }] };
+export function calculateLateProfit(
+  check: Check,
+  rule?: PaymentRule,
+  invoiceDate?: string,
+  invoiceBaseAmount = check.amount
+) {
+  const days = jalaliDayDifference(
+    invoiceDate || check.invoiceDate || check.receivedDate,
+    check.dueDate
+  );
+  const activeRule = rule || {
+    dayBasis: 30,
+    graceDays: 0,
+    tiers: [{ maxDays: 9999, rate: 0 }],
+  };
   const overdueDays = Math.max(0, days - activeRule.graceDays);
-  const tier = [...activeRule.tiers].sort((a, b) => a.maxDays - b.maxDays).find((item) => overdueDays <= item.maxDays) || activeRule.tiers[activeRule.tiers.length - 1];
+  const tier =
+    [...activeRule.tiers]
+      .sort((a, b) => a.maxDays - b.maxDays)
+      .find(item => overdueDays <= item.maxDays) ||
+    activeRule.tiers[activeRule.tiers.length - 1];
   const rate = tier?.rate || 0;
-  const profit = invoiceBaseAmount * (rate * overdueDays / activeRule.dayBasis);
+  const profit =
+    invoiceBaseAmount * ((rate * overdueDays) / activeRule.dayBasis);
   const settled = invoiceBaseAmount + profit;
   const remaining = Math.max(0, settled - check.amount);
-  const remainingBase = settled ? remaining / (1 + rate * overdueDays / activeRule.dayBasis) : 0;
-  return { days, overdueDays, rate, base: invoiceBaseAmount, profit, settled, remaining, remainingBase };
+  const remainingBase = settled
+    ? remaining / (1 + (rate * overdueDays) / activeRule.dayBasis)
+    : 0;
+  return {
+    days,
+    overdueDays,
+    rate,
+    base: invoiceBaseAmount,
+    profit,
+    settled,
+    remaining,
+    remainingBase,
+  };
 }
 
 export function calculateMetrics(state: AppState) {
-  const valid = state.transactions.filter((item) => item.status !== "باطل");
-  const sales = valid.filter((item) => item.type === "فروش").reduce((sum, item) => sum + item.amount, 0);
-  const purchases = valid.filter((item) => item.type === "خرید").reduce((sum, item) => sum + item.amount, 0);
-  const receipts = valid.filter((item) => item.type === "دریافت" || item.type === "درآمد").reduce((sum, item) => sum + item.amount, 0);
-  const payments = valid.filter((item) => ["پرداخت", "هزینه"].includes(item.type)).reduce((sum, item) => sum + item.amount, 0);
-  const outstandingChecks = state.checks.filter((item) => ["نزد ما", "تودیع شده"].includes(item.status)).reduce((sum, item) => sum + item.amount, 0);
-  return { sales, purchases, receipts, payments, outstandingChecks, balance: receipts - payments };
+  const valid = state.transactions.filter(item => item.status !== "باطل");
+  const sales = valid
+    .filter(item => item.type === "فروش")
+    .reduce((sum, item) => sum + item.amount, 0);
+  const purchases = valid
+    .filter(item => item.type === "خرید")
+    .reduce((sum, item) => sum + item.amount, 0);
+  const receipts = valid
+    .filter(item => item.type === "دریافت" || item.type === "درآمد")
+    .reduce((sum, item) => sum + item.amount, 0);
+  const payments = valid
+    .filter(item => ["پرداخت", "هزینه"].includes(item.type))
+    .reduce((sum, item) => sum + item.amount, 0);
+  const outstandingChecks = state.checks
+    .filter(item => ["نزد ما", "تودیع شده"].includes(item.status))
+    .reduce((sum, item) => sum + item.amount, 0);
+  return {
+    sales,
+    purchases,
+    receipts,
+    payments,
+    outstandingChecks,
+    balance: receipts - payments,
+  };
 }
 
-export const navItems: Array<{ id: PageId; label: string; caption: string; icon: string }> = [
-  { id: "dashboard", label: "نمای کلی", caption: "وضعیت امروز", icon: "layout-dashboard" },
-  { id: "invoices", label: "فاکتورها", caption: "فروش و خرید", icon: "file-text" },
-  { id: "transactions", label: "عملیات مالی", caption: "فروش و دریافت", icon: "arrow-left-right" },
-  { id: "people", label: "طرف حساب‌ها", caption: "مشتری و تأمین‌کننده", icon: "users" },
-  { id: "inventory", label: "انبار و کالا", caption: "موجودی و قیمت", icon: "boxes" },
-  { id: "prices", label: "تاریخچه قیمت", caption: "قیمت‌های معتبر", icon: "tags" },
-  { id: "paymentRules", label: "شرایط پرداخت", caption: "پله‌های سود", icon: "percent" },
-  { id: "checks", label: "چک‌ها", caption: "سررسید و وضعیت", icon: "file-clock" },
-  { id: "monthClose", label: "بستن ماه", caption: "تسویه و سود دیرکرد", icon: "lock-keyhole" },
-  { id: "reports", label: "گزارش‌ها", caption: "خروجی و تحلیل", icon: "chart-no-axes-combined" },
-  { id: "backup", label: "پشتیبان و بازیابی", caption: "امنیت و انتقال داده", icon: "cloud-cog" },
-  { id: "settings", label: "تنظیمات برنامه", caption: "مشخصات کارگاه", icon: "settings" },
+export const navItems: Array<{
+  id: PageId;
+  label: string;
+  caption: string;
+  icon: string;
+}> = [
+  {
+    id: "dashboard",
+    label: "نمای کلی",
+    caption: "وضعیت امروز",
+    icon: "layout-dashboard",
+  },
+  {
+    id: "invoices",
+    label: "فاکتورها",
+    caption: "فروش و خرید",
+    icon: "file-text",
+  },
+  {
+    id: "transactions",
+    label: "عملیات مالی",
+    caption: "فروش و دریافت",
+    icon: "arrow-left-right",
+  },
+  {
+    id: "people",
+    label: "طرف حساب‌ها",
+    caption: "مشتری و تأمین‌کننده",
+    icon: "users",
+  },
+  {
+    id: "inventory",
+    label: "انبار و کالا",
+    caption: "موجودی و قیمت",
+    icon: "boxes",
+  },
+  {
+    id: "prices",
+    label: "تاریخچه قیمت",
+    caption: "قیمت‌های معتبر",
+    icon: "tags",
+  },
+  {
+    id: "paymentRules",
+    label: "شرایط پرداخت",
+    caption: "پله‌های سود",
+    icon: "percent",
+  },
+  {
+    id: "checks",
+    label: "چک‌ها",
+    caption: "سررسید و وضعیت",
+    icon: "file-clock",
+  },
+  {
+    id: "monthClose",
+    label: "بستن ماه",
+    caption: "تسویه و سود دیرکرد",
+    icon: "lock-keyhole",
+  },
+  {
+    id: "reports",
+    label: "گزارش‌ها",
+    caption: "خروجی و تحلیل",
+    icon: "chart-no-axes-combined",
+  },
+  {
+    id: "backup",
+    label: "پشتیبان و بازیابی",
+    caption: "امنیت و انتقال داده",
+    icon: "cloud-cog",
+  },
+  {
+    id: "settings",
+    label: "تنظیمات برنامه",
+    caption: "مشخصات کارگاه",
+    icon: "settings",
+  },
 ];
 
 export { seedState };
