@@ -274,14 +274,17 @@ export function suggestNextPartyNumber(
   fallbackValues: string[] = []
 ) {
   const own = partyId ? records.filter(item => item.partyId === partyId) : [];
-  if (!own.length) return suggestNextNumber(fallbackValues);
-  const matches = own
+  const source = own.length
+    ? own
+    : records.filter(item => fallbackValues.includes(item.number));
+  const matches = source
     .map(item => item.number.match(/^(.*?)(\d+)\s*$/))
     .filter(Boolean) as RegExpMatchArray[];
+  if (!matches.length) return suggestNextNumber(fallbackValues);
   const reference = matches.sort((a, b) => Number(b[2]) - Number(a[2]))[0];
   const prefix = reference?.[1] ?? (partyCode?.match(/^[^\d]*/)?.[0] || "");
   const width = reference?.[2]?.length || 0;
-  const next = suggestNextNumber(own.map(item => item.number));
+  const next = suggestNextNumber(source.map(item => item.number));
   return `${prefix}${width ? next.padStart(width, "0") : next}`;
 }
 

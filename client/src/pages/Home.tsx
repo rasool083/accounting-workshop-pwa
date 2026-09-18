@@ -1491,6 +1491,21 @@ function Invoices({
                     }
                     placeholder="تعداد"
                   />
+                  <input
+                    value={formatNumber(
+                      (Number(row.quantity) || 0) *
+                        (state.products.find(
+                          product => product.id === row.productId
+                        )?.unit2 === row.unit
+                          ? state.products.find(
+                              product => product.id === row.productId
+                            )?.conversionRate || 1
+                          : 1)
+                    )}
+                    readOnly
+                    aria-label="تعداد کل به واحد پایه"
+                    placeholder="تعداد کل پایه"
+                  />
                   <select
                     value={row.unit}
                     onChange={e =>
