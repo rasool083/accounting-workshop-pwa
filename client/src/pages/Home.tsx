@@ -3124,6 +3124,22 @@ function Checks({
       (!dueFrom || check.dueDate >= dueFrom) &&
       (!dueTo || check.dueDate <= dueTo)
   );
+  const allocationDetails = settleChecksFIFO(
+    state.checks,
+    state.invoices,
+    state.paymentRules
+  );
+  function recalculateAllocations() {
+    let next = state;
+    const parties = Array.from(
+      new Set(next.checks.map(check => check.partyId).filter(Boolean))
+    ) as string[];
+    parties.forEach(partyId => {
+      const trigger = next.checks.find(check => check.partyId === partyId);
+      if (trigger) next = applyCheckFIFO(next, trigger);
+    });
+    onSave(next, "تخصیص FIFO همه چک‌ها بر اساس سررسید محاسبه شد");
+  }
   function exportChecks() {
     const rows = [
       [
@@ -3522,6 +3538,12 @@ function Checks({
         >
           چاپ گزارش
         </button>
+        <button
+          className="button button-primary button-small"
+          onClick={recalculateAllocations}
+        >
+          محاسبه مجدد تخصیص‌ها
+        </button>
       </div>
       <div className="panel table-panel">
         <div className="panel-heading">
@@ -3557,6 +3579,18 @@ function Checks({
                       {check.replacementOf && (
                         <small className="muted-cell">جایگزین چک اصلی</small>
                       )}
+                      {allocationDetails
+                        .filter(item => item.checkId === check.id)
+                        .map(item => {
+                          const invoice = state.invoices.find(
+                            row => row.id === item.invoiceId
+                          );
+                          return (
+                            <small className="check-allocation-detail" key={`${item.checkId}-${item.invoiceId}`}>
+                              فاکتور {invoice?.number || "—"} · اصل {formatMoney(item.principalAmount, state.settings.currency)} · سود {formatMoney(item.profit, state.settings.currency)} · {formatNumber(item.days)} روز
+                            </small>
+                          );
+                        })}
                     </td>
                     <td>{personName(state, check.partyId)}</td>
                     <td>{formatDate(check.receivedDate)}</td>
