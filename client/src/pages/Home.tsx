@@ -139,7 +139,9 @@ export default function Home() {
   const [mobileNav, setMobileNav] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useState("");
-  const [driveBackups, setDriveBackups] = useState<DriveBackupFile[]>([LAST_VERIFIED_BACKUP]);
+  const [driveBackups, setDriveBackups] = useState<DriveBackupFile[]>([
+    LAST_VERIFIED_BACKUP,
+  ]);
   const [driveLoading, setDriveLoading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -211,17 +213,27 @@ export default function Home() {
   async function handleDriveUpload() {
     const token = getDriveAccessToken();
     if (!token) {
-      setNotice("مجوز موقت Drive در این مرورگر تزریق نشده است؛ بکاپ محلی آماده دانلود است");
+      setNotice(
+        "مجوز موقت Drive در این مرورگر تزریق نشده است؛ بکاپ محلی آماده دانلود است"
+      );
       handleExport();
       return;
     }
     try {
       const filename = `accounting-workshop-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-      const uploaded = await createGoogleDriveAdapter(token, PROJECT_BACKUPS_FOLDER_ID).uploadBackup(filename, exportPayload(state));
-      setDriveBackups(current => [uploaded, ...current.filter(file => file.id !== uploaded.id)]);
+      const uploaded = await createGoogleDriveAdapter(
+        token,
+        PROJECT_BACKUPS_FOLDER_ID
+      ).uploadBackup(filename, exportPayload(state));
+      setDriveBackups(current => [
+        uploaded,
+        ...current.filter(file => file.id !== uploaded.id),
+      ]);
       setNotice("پشتیبان در پوشه اختصاصی Google Drive ذخیره شد");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "بارگذاری در Drive ناموفق بود");
+      setNotice(
+        error instanceof Error ? error.message : "بارگذاری در Drive ناموفق بود"
+      );
     }
   }
 
@@ -230,31 +242,53 @@ export default function Home() {
     if (!token) return;
     setDriveLoading(true);
     try {
-      const files = await createGoogleDriveAdapter(token, PROJECT_BACKUPS_FOLDER_ID).listBackups();
+      const files = await createGoogleDriveAdapter(
+        token,
+        PROJECT_BACKUPS_FOLDER_ID
+      ).listBackups();
       setDriveBackups(files.length ? files : [LAST_VERIFIED_BACKUP]);
-      setNotice(`${formatNumber(files.length)} نسخهٔ پشتیبان از Drive خوانده شد`);
+      setNotice(
+        `${formatNumber(files.length)} نسخهٔ پشتیبان از Drive خوانده شد`
+      );
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "خواندن فهرست Drive ناموفق بود");
+      setNotice(
+        error instanceof Error ? error.message : "خواندن فهرست Drive ناموفق بود"
+      );
     } finally {
       setDriveLoading(false);
     }
   }
 
   async function handleDriveRestore(fileId = LAST_VERIFIED_BACKUP.id) {
-    if (!window.confirm("داده‌های محلی با آخرین نسخه Google Drive جایگزین شود؟ قبل از ادامه، از داده فعلی بکاپ بگیرید.")) return;
+    if (
+      !window.confirm(
+        "داده‌های محلی با آخرین نسخه Google Drive جایگزین شود؟ قبل از ادامه، از داده فعلی بکاپ بگیرید."
+      )
+    )
+      return;
     const token = getDriveAccessToken();
     if (!token) {
-      setNotice("مجوز موقت Drive در این مرورگر تزریق نشده است؛ از لینک پوشه استفاده کنید");
+      setNotice(
+        "مجوز موقت Drive در این مرورگر تزریق نشده است؛ از لینک پوشه استفاده کنید"
+      );
       return;
     }
     try {
-      const file = driveBackups.find(item => item.id === fileId) || LAST_VERIFIED_BACKUP;
-      const payload = await createGoogleDriveAdapter(token, PROJECT_BACKUPS_FOLDER_ID).downloadBackup(file.id);
+      const file =
+        driveBackups.find(item => item.id === fileId) || LAST_VERIFIED_BACKUP;
+      const payload = await createGoogleDriveAdapter(
+        token,
+        PROJECT_BACKUPS_FOLDER_ID
+      ).downloadBackup(file.id);
       const next = importPayload(payload);
-      setState(saveState(appendAudit(next, "RESTORE_DRIVE", `بازیابی از ${file.name}`)));
+      setState(
+        saveState(appendAudit(next, "RESTORE_DRIVE", `بازیابی از ${file.name}`))
+      );
       setNotice("بازیابی از Google Drive با موفقیت انجام شد");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "بازیابی از Drive ناموفق بود");
+      setNotice(
+        error instanceof Error ? error.message : "بازیابی از Drive ناموفق بود"
+      );
     }
   }
 
@@ -459,7 +493,10 @@ export default function Home() {
             />
           )}
           {activePage === "settings" && (
-            <SettingsPage state={state} onSave={(next, msg) => updateState(next, msg)} />
+            <SettingsPage
+              state={state}
+              onSave={(next, msg) => updateState(next, msg)}
+            />
           )}
         </div>
       </main>
@@ -3100,6 +3137,9 @@ function Checks({
   const [dueFrom, setDueFrom] = useState("");
   const [dueTo, setDueTo] = useState("");
   const [historyCheckId, setHistoryCheckId] = useState<string | null>(null);
+  const [expandedCheckIds, setExpandedCheckIds] = useState<Set<string>>(
+    new Set()
+  );
   const blank = {
     number: "",
     partyId: "",
@@ -3569,178 +3609,252 @@ function Checks({
             </thead>
             <tbody>
               {visibleChecks.length ? (
-                visibleChecks.map(check => (
-                  <tr
-                    key={check.id}
-                    className={`check-row check-row-${check.status === "وصول شده" ? "cleared" : check.status === "خرج شده" ? "spent" : ["برگشتی", "عودت داده شده", "باطل"].includes(check.status) ? "bad" : check.status === "جایگزین شده" ? "replaced" : "open"}`}
-                  >
-                    <td>
-                      <strong>{check.number}</strong>
-                      {check.replacementOf && (
-                        <small className="muted-cell">جایگزین چک اصلی</small>
-                      )}
-                      {allocationDetails
-                        .filter(item => item.checkId === check.id)
-                        .map(item => {
-                          const invoice = state.invoices.find(
-                            row => row.id === item.invoiceId
-                          );
-                          return (
-                            <small className="check-allocation-detail" key={`${item.checkId}-${item.invoiceId}`}>
-                              فاکتور {invoice?.number || "—"} · اصل {formatMoney(item.principalAmount, state.settings.currency)} · سود {formatMoney(item.profit, state.settings.currency)} · {formatNumber(item.days)} روز
+                visibleChecks.map(check => {
+                  const checkAllocations = allocationDetails.filter(
+                    item => item.checkId === check.id
+                  );
+                  const expanded = expandedCheckIds.has(check.id);
+                  return (
+                    <>
+                      <tr
+                        key={check.id}
+                        className={`check-row check-row-${check.status === "وصول شده" ? "cleared" : check.status === "خرج شده" ? "spent" : ["برگشتی", "عودت داده شده", "باطل"].includes(check.status) ? "bad" : check.status === "جایگزین شده" ? "replaced" : "open"}`}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className={`allocation-toggle ${expanded ? "is-expanded" : ""}`}
+                            onClick={() =>
+                              setExpandedCheckIds(current => {
+                                const next = new Set(current);
+                                if (next.has(check.id)) next.delete(check.id);
+                                else next.add(check.id);
+                                return next;
+                              })
+                            }
+                            aria-expanded={expanded}
+                            title="نمایش فاکتورهای تخصیص‌یافته"
+                          >
+                            <ChevronDown size={14} />
+                            <strong>{check.number}</strong>
+                          </button>
+                          {check.replacementOf && (
+                            <small className="muted-cell">
+                              جایگزین چک اصلی
                             </small>
-                          );
-                        })}
-                    </td>
-                    <td>{personName(state, check.partyId)}</td>
-                    <td>{formatDate(check.receivedDate)}</td>
-                    <td>{formatDate(check.dueDate)}</td>
-                    <td>
-                      {formatMoney(check.amount, state.settings.currency)}
-                    </td>
-                    <td>
-                      <select
-                        value={check.status}
-                        onChange={e => {
-                          const status = e.target.value as CheckStatus;
-                          if (status === "جایگزین شده") {
-                            beginEdit(check);
-                            setForm({
-                              number: check.number,
-                              partyId: check.partyId || "",
-                              bank: check.bank || "",
-                              bankAccountId: check.bankAccountId || "",
-                              returnPartyId: check.returnPartyId || "",
-                              status,
-                              replacementOf: check.replacementOf || "",
-                              receivedDate: check.receivedDate,
-                              dueDate: check.dueDate,
-                              amount: String(check.amount),
-                              paymentRuleId: check.paymentRuleId || "",
-                              note: check.note || "",
-                            });
-                          } else
-                            saveCheckStatus(
-                              check,
-                              status,
-                              check.bankAccountId || check.returnPartyId || ""
-                            );
-                        }}
-                      >
-                        <option value="نزد ما">نزد ما</option>
-                        <option value="وصول شده">وصول شده</option>
-                        <option value="برگشتی">برگشتی</option>
-                        <option value="عودت داده شده">عودت</option>
-                        <option value="جایگزین شده">جایگزین</option>
-                        <option value="باطل">باطل</option>
-                        <option value="خرج شده">خرج شده</option>
-                      </select>
-                    </td>
-                    <td>
-                      {["نزد ما", "وصول شده", "برگشتی"].includes(
-                        check.status
-                      ) ? (
-                        <select
-                          value={check.bankAccountId || ""}
-                          onChange={e =>
-                            saveCheckStatus(check, check.status, e.target.value)
-                          }
-                        >
-                          <option value="">انتخاب بانک</option>
-                          {state.accounts
-                            .filter(account => account.type === "بانک")
-                            .map(account => (
-                              <option key={account.id} value={account.id}>
-                                {account.name}
-                              </option>
-                            ))}
-                        </select>
-                      ) : ["عودت داده شده", "خرج شده"].includes(
-                          check.status
-                        ) ? (
-                        <select
-                          value={check.returnPartyId || ""}
-                          onChange={e =>
-                            saveCheckStatus(check, check.status, e.target.value)
-                          }
-                        >
-                          <option value="">انتخاب شخص</option>
-                          {state.people.map(person => (
-                            <option key={person.id} value={person.id}>
-                              {person.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="muted-cell">
-                          {check.status === "جایگزین شده" ? (
-                            <>
-                              <span>
-                                {check.replacementIds?.length || 0} جایگزین
-                              </span>
-                              <button
-                                type="button"
-                                className="button button-ghost button-small"
-                                onClick={() => {
-                                  setReplacementParent(check);
-                                  setEditingCheck(null);
-                                  setForm({
-                                    ...blank,
-                                    partyId: check.partyId || "",
-                                    receivedDate: todayJalali(),
-                                    dueDate: check.dueDate,
-                                    paymentRuleId: check.paymentRuleId || "",
-                                  });
-                                  setOpen(true);
-                                }}
-                              >
-                                افزودن چک
-                              </button>
-                            </>
-                          ) : (
-                            "—"
                           )}
-                        </span>
+                        </td>
+                        <td>{personName(state, check.partyId)}</td>
+                        <td>{formatDate(check.receivedDate)}</td>
+                        <td>{formatDate(check.dueDate)}</td>
+                        <td>
+                          {formatMoney(check.amount, state.settings.currency)}
+                        </td>
+                        <td>
+                          <select
+                            value={check.status}
+                            onChange={e => {
+                              const status = e.target.value as CheckStatus;
+                              if (status === "جایگزین شده") {
+                                beginEdit(check);
+                                setForm({
+                                  number: check.number,
+                                  partyId: check.partyId || "",
+                                  bank: check.bank || "",
+                                  bankAccountId: check.bankAccountId || "",
+                                  returnPartyId: check.returnPartyId || "",
+                                  status,
+                                  replacementOf: check.replacementOf || "",
+                                  receivedDate: check.receivedDate,
+                                  dueDate: check.dueDate,
+                                  amount: String(check.amount),
+                                  paymentRuleId: check.paymentRuleId || "",
+                                  note: check.note || "",
+                                });
+                              } else
+                                saveCheckStatus(
+                                  check,
+                                  status,
+                                  check.bankAccountId ||
+                                    check.returnPartyId ||
+                                    ""
+                                );
+                            }}
+                          >
+                            <option value="نزد ما">نزد ما</option>
+                            <option value="وصول شده">وصول شده</option>
+                            <option value="برگشتی">برگشتی</option>
+                            <option value="عودت داده شده">عودت</option>
+                            <option value="جایگزین شده">جایگزین</option>
+                            <option value="باطل">باطل</option>
+                            <option value="خرج شده">خرج شده</option>
+                          </select>
+                        </td>
+                        <td>
+                          {["نزد ما", "وصول شده", "برگشتی"].includes(
+                            check.status
+                          ) ? (
+                            <select
+                              value={check.bankAccountId || ""}
+                              onChange={e =>
+                                saveCheckStatus(
+                                  check,
+                                  check.status,
+                                  e.target.value
+                                )
+                              }
+                            >
+                              <option value="">انتخاب بانک</option>
+                              {state.accounts
+                                .filter(account => account.type === "بانک")
+                                .map(account => (
+                                  <option key={account.id} value={account.id}>
+                                    {account.name}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : ["عودت داده شده", "خرج شده"].includes(
+                              check.status
+                            ) ? (
+                            <select
+                              value={check.returnPartyId || ""}
+                              onChange={e =>
+                                saveCheckStatus(
+                                  check,
+                                  check.status,
+                                  e.target.value
+                                )
+                              }
+                            >
+                              <option value="">انتخاب شخص</option>
+                              {state.people.map(person => (
+                                <option key={person.id} value={person.id}>
+                                  {person.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="muted-cell">
+                              {check.status === "جایگزین شده" ? (
+                                <>
+                                  <span>
+                                    {check.replacementIds?.length || 0} جایگزین
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="button button-ghost button-small"
+                                    onClick={() => {
+                                      setReplacementParent(check);
+                                      setEditingCheck(null);
+                                      setForm({
+                                        ...blank,
+                                        partyId: check.partyId || "",
+                                        receivedDate: todayJalali(),
+                                        dueDate: check.dueDate,
+                                        paymentRuleId:
+                                          check.paymentRuleId || "",
+                                      });
+                                      setOpen(true);
+                                    }}
+                                  >
+                                    افزودن چک
+                                  </button>
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            className="icon-button row-action"
+                            title="تاریخچه چک"
+                            onClick={() => setHistoryCheckId(check.id)}
+                          >
+                            <FileClock size={14} />
+                          </button>
+                          <button
+                            className="icon-button row-action"
+                            title="ویرایش کامل چک"
+                            onClick={() => beginEdit(check)}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          {!check.replacementIds?.length && (
+                            <button
+                              className="icon-button row-action"
+                              title="حذف چک"
+                              onClick={() =>
+                                window.confirm("چک حذف شود؟") &&
+                                onSave(
+                                  {
+                                    ...state,
+                                    checks: state.checks.filter(
+                                      item => item.id !== check.id
+                                    ),
+                                  },
+                                  "چک حذف شد"
+                                )
+                              }
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr className="allocation-detail-row">
+                          <td colSpan={8}>
+                            {checkAllocations.length ? (
+                              checkAllocations.map(item => {
+                                const invoice = state.invoices.find(
+                                  row => row.id === item.invoiceId
+                                );
+                                return (
+                                  <div
+                                    className="allocation-detail-card"
+                                    key={`${item.checkId}-${item.invoiceId}`}
+                                  >
+                                    <strong>
+                                      فاکتور {invoice?.number || "—"}
+                                    </strong>
+                                    <span>
+                                      مبلغ تخصیص:{" "}
+                                      {formatMoney(
+                                        item.amount,
+                                        state.settings.currency
+                                      )}
+                                    </span>
+                                    <span>
+                                      اصل:{" "}
+                                      {formatMoney(
+                                        item.principalAmount,
+                                        state.settings.currency
+                                      )}
+                                    </span>
+                                    <span>
+                                      سود:{" "}
+                                      {formatMoney(
+                                        item.profit,
+                                        state.settings.currency
+                                      )}
+                                    </span>
+                                    <span>{formatNumber(item.days)} روز</span>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <span className="muted-cell">
+                                برای این چک تخصیصی ثبت نشده است.
+                              </span>
+                            )}
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td>
-                      <button
-                        className="icon-button row-action"
-                        title="تاریخچه چک"
-                        onClick={() => setHistoryCheckId(check.id)}
-                      >
-                        <FileClock size={14} />
-                      </button>
-                      <button
-                        className="icon-button row-action"
-                        title="ویرایش کامل چک"
-                        onClick={() => beginEdit(check)}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      {!check.replacementIds?.length && (
-                        <button
-                          className="icon-button row-action"
-                          title="حذف چک"
-                          onClick={() =>
-                            window.confirm("چک حذف شود؟") &&
-                            onSave(
-                              {
-                                ...state,
-                                checks: state.checks.filter(
-                                  item => item.id !== check.id
-                                ),
-                              },
-                              "چک حذف شد"
-                            )
-                          }
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                    </>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={8}>
@@ -3984,7 +4098,11 @@ function MonthClose({
         (!partyId || check.partyId === partyId)
     )
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  const fifoSettlements = settleChecksFIFO(partyChecks, partyInvoices, state.paymentRules);
+  const fifoSettlements = settleChecksFIFO(
+    partyChecks,
+    partyInvoices,
+    state.paymentRules
+  );
   const settlement = new Map<
     string,
     {
@@ -4006,10 +4124,21 @@ function MonthClose({
     profit: number;
   }> = [];
   partyInvoices.forEach(invoice => {
-    const invoiceSettlements = fifoSettlements.filter(item => item.invoiceId === invoice.id);
-    const collected = invoiceSettlements.reduce((sum, item) => sum + item.amount, 0);
-    const profit = invoiceSettlements.reduce((sum, item) => sum + item.profit, 0);
-    const principalCollected = invoiceSettlements.reduce((sum, item) => sum + item.principalAmount, 0);
+    const invoiceSettlements = fifoSettlements.filter(
+      item => item.invoiceId === invoice.id
+    );
+    const collected = invoiceSettlements.reduce(
+      (sum, item) => sum + item.amount,
+      0
+    );
+    const profit = invoiceSettlements.reduce(
+      (sum, item) => sum + item.profit,
+      0
+    );
+    const principalCollected = invoiceSettlements.reduce(
+      (sum, item) => sum + item.principalAmount,
+      0
+    );
     const baseRemaining = Math.max(0, invoice.amount - principalCollected);
     const todayCheck = {
       id: "today",
@@ -4023,7 +4152,8 @@ function MonthClose({
     };
     const today = calculateLateProfit(
       todayCheck,
-      state.paymentRules.find(item => item.id === invoice.paymentRuleId) || state.paymentRules.find(item => item.active),
+      state.paymentRules.find(item => item.id === invoice.paymentRuleId) ||
+        state.paymentRules.find(item => item.active),
       invoice.date,
       baseRemaining
     );
@@ -4426,18 +4556,71 @@ function SettingsPage({
   const [dayBasis, setDayBasis] = useState(String(state.settings.dayBasis));
   return (
     <div className="page-stack page-enter">
-      <PageIntro kicker="تنظیمات برنامه" title="مشخصات و تنظیمات کارگاه" description="تنظیمات عمومی برنامه مستقل از عملیات بکاپ و بازیابی مدیریت می‌شود." />
+      <PageIntro
+        kicker="تنظیمات برنامه"
+        title="مشخصات و تنظیمات کارگاه"
+        description="تنظیمات عمومی برنامه مستقل از عملیات بکاپ و بازیابی مدیریت می‌شود."
+      />
       <div className="panel settings-panel">
         <div className="backup-hero">
-          <div className="backup-hero-icon"><Settings2 size={25} /></div>
-          <div><span className="section-kicker">تنظیمات عمومی</span><h3>اطلاعات پایه کارگاه</h3><p>این بخش فقط مشخصات و تنظیمات محاسباتی را تغییر می‌دهد؛ برای ذخیره و بازیابی داده به صفحهٔ «پشتیبان و بازیابی» بروید.</p></div>
+          <div className="backup-hero-icon">
+            <Settings2 size={25} />
+          </div>
+          <div>
+            <span className="section-kicker">تنظیمات عمومی</span>
+            <h3>اطلاعات پایه کارگاه</h3>
+            <p>
+              این بخش فقط مشخصات و تنظیمات محاسباتی را تغییر می‌دهد؛ برای ذخیره
+              و بازیابی داده به صفحهٔ «پشتیبان و بازیابی» بروید.
+            </p>
+          </div>
         </div>
         <div className="settings-form">
-          <label>نام کارگاه<input value={businessName} onChange={event => setBusinessName(event.target.value)} /></label>
-          <label>واحد پول<input value={currency} onChange={event => setCurrency(event.target.value)} /></label>
-          <label>مبنای روزشمار سود<input type="number" min="1" value={dayBasis} onChange={event => setDayBasis(event.target.value)} /></label>
+          <label>
+            نام کارگاه
+            <input
+              value={businessName}
+              onChange={event => setBusinessName(event.target.value)}
+            />
+          </label>
+          <label>
+            واحد پول
+            <input
+              value={currency}
+              onChange={event => setCurrency(event.target.value)}
+            />
+          </label>
+          <label>
+            مبنای روزشمار سود
+            <input
+              type="number"
+              min="1"
+              value={dayBasis}
+              onChange={event => setDayBasis(event.target.value)}
+            />
+          </label>
         </div>
-        <div className="form-actions"><button className="button button-primary" onClick={() => onSave({ ...state, settings: { ...state.settings, businessName: businessName.trim() || "کارگاه من", currency: currency.trim() || "ریال", dayBasis: Math.max(1, Number(dayBasis) || 30) } }, "تنظیمات برنامه ذخیره شد")}>ذخیره تنظیمات</button></div>
+        <div className="form-actions">
+          <button
+            className="button button-primary"
+            onClick={() =>
+              onSave(
+                {
+                  ...state,
+                  settings: {
+                    ...state.settings,
+                    businessName: businessName.trim() || "کارگاه من",
+                    currency: currency.trim() || "ریال",
+                    dayBasis: Math.max(1, Number(dayBasis) || 30),
+                  },
+                },
+                "تنظیمات برنامه ذخیره شد"
+              )
+            }
+          >
+            ذخیره تنظیمات
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -4467,16 +4650,32 @@ function BackupPage({
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [driveQuery, setDriveQuery] = useState("");
-  const [driveSort, setDriveSort] = useState<"newest" | "oldest" | "largest">("newest");
-  const recordCount = state.people.length + state.products.length + state.transactions.length + state.checks.length + state.invoices.length;
-  const visibleDriveBackups = useMemo(() => driveBackups
-    .filter(file => file.name.toLowerCase().includes(driveQuery.trim().toLowerCase()))
-    .sort((a, b) => {
-      if (driveSort === "largest") return Number(b.size || 0) - Number(a.size || 0);
-      const aTime = a.modifiedTime || "";
-      const bTime = b.modifiedTime || "";
-      return driveSort === "newest" ? bTime.localeCompare(aTime) : aTime.localeCompare(bTime);
-    }), [driveBackups, driveQuery, driveSort]);
+  const [driveSort, setDriveSort] = useState<"newest" | "oldest" | "largest">(
+    "newest"
+  );
+  const recordCount =
+    state.people.length +
+    state.products.length +
+    state.transactions.length +
+    state.checks.length +
+    state.invoices.length;
+  const visibleDriveBackups = useMemo(
+    () =>
+      driveBackups
+        .filter(file =>
+          file.name.toLowerCase().includes(driveQuery.trim().toLowerCase())
+        )
+        .sort((a, b) => {
+          if (driveSort === "largest")
+            return Number(b.size || 0) - Number(a.size || 0);
+          const aTime = a.modifiedTime || "";
+          const bTime = b.modifiedTime || "";
+          return driveSort === "newest"
+            ? bTime.localeCompare(aTime)
+            : aTime.localeCompare(bTime);
+        }),
+    [driveBackups, driveQuery, driveSort]
+  );
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -4524,20 +4723,49 @@ function BackupPage({
           <div className="danger-zone">
             <div>
               <strong>حذف همه اطلاعات کسب‌وکار</strong>
-              <small>ابتدا یک فایل JSON دانلود می‌شود؛ سپس طرف حساب‌ها، کالاها، فاکتورها، عملیات و چک‌ها پاک می‌شوند.</small>
+              <small>
+                ابتدا یک فایل JSON دانلود می‌شود؛ سپس طرف حساب‌ها، کالاها،
+                فاکتورها، عملیات و چک‌ها پاک می‌شوند.
+              </small>
             </div>
-            <button className="button button-danger" onClick={() => { setClearOpen(true); setConfirmation(""); }}>
+            <button
+              className="button button-danger"
+              onClick={() => {
+                setClearOpen(true);
+                setConfirmation("");
+              }}
+            >
               <Trash2 size={15} /> حذف همه اطلاعات
             </button>
           </div>
           {clearOpen && (
             <div className="clear-confirm-panel">
               <strong>این عملیات قابل بازگشت مستقیم نیست</strong>
-              <p>برای ادامه عبارت <b>حذف کامل</b> را وارد کنید. قبل از پاک‌سازی، بکاپ JSON به‌صورت خودکار دانلود خواهد شد.</p>
-              <input value={confirmation} onChange={event => setConfirmation(event.target.value)} placeholder="حذف کامل" aria-label="تأیید حذف کامل" />
+              <p>
+                برای ادامه عبارت <b>حذف کامل</b> را وارد کنید. قبل از پاک‌سازی،
+                بکاپ JSON به‌صورت خودکار دانلود خواهد شد.
+              </p>
+              <input
+                value={confirmation}
+                onChange={event => setConfirmation(event.target.value)}
+                placeholder="حذف کامل"
+                aria-label="تأیید حذف کامل"
+              />
               <div className="form-actions">
-                <button className="button button-ghost" onClick={() => setClearOpen(false)}>انصراف</button>
-                <button className="button button-danger" disabled={confirmation !== "حذف کامل"} onClick={() => { onClearAll(); setClearOpen(false); }}>
+                <button
+                  className="button button-ghost"
+                  onClick={() => setClearOpen(false)}
+                >
+                  انصراف
+                </button>
+                <button
+                  className="button button-danger"
+                  disabled={confirmation !== "حذف کامل"}
+                  onClick={() => {
+                    onClearAll();
+                    setClearOpen(false);
+                  }}
+                >
                   پاک‌سازی {formatNumber(recordCount)} رکورد
                 </button>
               </div>
@@ -4552,7 +4780,8 @@ function BackupPage({
           <h3>پشتیبان روی Google Drive</h3>
           <p>
             مجوز Drive فعال است و مسیر اختصاصی پروژه برای نگهداری نسخه‌های JSON
-            آماده شده است. پشتیبان محلی همچنان بدون وابستگی به اینترنت کار می‌کند.
+            آماده شده است. پشتیبان محلی همچنان بدون وابستگی به اینترنت کار
+            می‌کند.
           </p>
           <div className="drive-path-card">
             <strong>حسابداری کارگاه — پشتیبان‌های PWA</strong>
@@ -4562,20 +4791,46 @@ function BackupPage({
             <button className="button button-primary" onClick={onDriveUpload}>
               <CloudUpload size={15} /> ذخیره در Drive
             </button>
-            <button className="button button-ghost" onClick={onDriveRefresh} disabled={driveLoading}>
-              <RefreshCw size={15} className={driveLoading ? "spin" : ""} /> {driveLoading ? "در حال خواندن" : "تازه‌سازی فهرست"}
+            <button
+              className="button button-ghost"
+              onClick={onDriveRefresh}
+              disabled={driveLoading}
+            >
+              <RefreshCw size={15} className={driveLoading ? "spin" : ""} />{" "}
+              {driveLoading ? "در حال خواندن" : "تازه‌سازی فهرست"}
             </button>
-            <a className="button button-primary" href={PROJECT_BACKUPS_FOLDER_URL} target="_blank" rel="noreferrer">
+            <a
+              className="button button-primary"
+              href={PROJECT_BACKUPS_FOLDER_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
               مشاهده نسخه‌های پشتیبان
             </a>
-            <a className="button button-ghost" href={PROJECT_DRIVE_FOLDER_URL} target="_blank" rel="noreferrer">
+            <a
+              className="button button-ghost"
+              href={PROJECT_DRIVE_FOLDER_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
               پوشه اصلی پروژه
             </a>
           </div>
           <div className="drive-backup-list">
             <div className="drive-list-toolbar">
-              <input value={driveQuery} onChange={event => setDriveQuery(event.target.value)} placeholder="جست‌وجوی نام فایل" aria-label="جست‌وجوی نسخه پشتیبان" />
-              <select value={driveSort} onChange={event => setDriveSort(event.target.value as typeof driveSort)} aria-label="مرتب‌سازی نسخه‌ها">
+              <input
+                value={driveQuery}
+                onChange={event => setDriveQuery(event.target.value)}
+                placeholder="جست‌وجوی نام فایل"
+                aria-label="جست‌وجوی نسخه پشتیبان"
+              />
+              <select
+                value={driveSort}
+                onChange={event =>
+                  setDriveSort(event.target.value as typeof driveSort)
+                }
+                aria-label="مرتب‌سازی نسخه‌ها"
+              >
                 <option value="newest">جدیدترین</option>
                 <option value="oldest">قدیمی‌ترین</option>
                 <option value="largest">بیشترین حجم</option>
@@ -4585,14 +4840,30 @@ function BackupPage({
               <div className="drive-backup-row" key={file.id}>
                 <div>
                   <strong>{file.name}</strong>
-                  <small>{file.modifiedTime ? formatDate(file.modifiedTime.slice(0, 10)) : "نسخهٔ پشتیبان"} · {formatNumber(Number(file.size) || 0)} بایت</small>
+                  <small>
+                    {file.modifiedTime
+                      ? formatDate(file.modifiedTime.slice(0, 10))
+                      : "نسخهٔ پشتیبان"}{" "}
+                    · {formatNumber(Number(file.size) || 0)} بایت
+                  </small>
                 </div>
-                <button className="button button-primary" onClick={() => onDriveRestore(file.id)}>بازیابی</button>
+                <button
+                  className="button button-primary"
+                  onClick={() => onDriveRestore(file.id)}
+                >
+                  بازیابی
+                </button>
               </div>
             ))}
-            {!visibleDriveBackups.length && <small className="drive-empty">نسخه‌ای با این نام پیدا نشد.</small>}
+            {!visibleDriveBackups.length && (
+              <small className="drive-empty">
+                نسخه‌ای با این نام پیدا نشد.
+              </small>
+            )}
           </div>
-          <span className="coming-tag">آخرین نسخه تأییدشده: ۱۴۰۵/۰۶/۲۶ · آماده برای همگام‌سازی</span>
+          <span className="coming-tag">
+            آخرین نسخه تأییدشده: ۱۴۰۵/۰۶/۲۶ · آماده برای همگام‌سازی
+          </span>
         </div>
       </div>
       <div className="data-health">
