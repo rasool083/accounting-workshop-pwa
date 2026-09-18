@@ -7,6 +7,7 @@ import {
   Boxes,
   ChartNoAxesCombined,
   Check,
+  Calendar,
   ChevronDown,
   Cloud,
   CloudDownload,
@@ -100,6 +101,160 @@ function statusClass(status: string) {
     return "status-success";
   if (["برگشتی", "باطل"].includes(status)) return "status-danger";
   return "status-warning";
+}
+
+function JalaliDatePicker({
+  value,
+  onChange,
+  placeholder = "انتخاب تاریخ",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const today = todayJalali().split("/").map(Number);
+  const parsed = value
+    ? value.replace(/-/g, "/").split("/").map(Number)
+    : today;
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState({
+    year: parsed[0] || today[0],
+    month: parsed[1] || today[1],
+  });
+  const monthNames = [
+    "فروردین",
+    "اردیبهشت",
+    "خرداد",
+    "تیر",
+    "مرداد",
+    "شهریور",
+    "مهر",
+    "آبان",
+    "آذر",
+    "دی",
+    "بهمن",
+    "اسفند",
+  ];
+  const weekdays = ["ش", "ی", "د", "س", "چ", "پ", "ج"];
+  const daysInMonth =
+    view.month <= 6
+      ? 31
+      : view.month <= 11
+        ? 30
+        : view.year % 4 === 3
+          ? 30
+          : 29;
+  const firstDay = (() => {
+    const jy = view.year + 1595;
+    let days =
+      -355668 +
+      365 * jy +
+      Math.floor(jy / 33) * 8 +
+      Math.floor(((jy % 33) + 3) / 4) +
+      1 +
+      (view.month < 7 ? (view.month - 1) * 31 : (view.month - 7) * 30 + 186);
+    let gy = 400 * Math.floor(days / 146097);
+    days %= 146097;
+    if (days > 36524) {
+      gy += 100 * Math.floor(--days / 36524);
+      days %= 36524;
+      if (days >= 365) days++;
+    }
+    gy += 4 * Math.floor(days / 1461);
+    days %= 1461;
+    if (days > 365) {
+      gy += Math.floor((days - 1) / 365);
+      days = (days - 1) % 365;
+    }
+    return (new Date(Date.UTC(gy, 0, days + 1)).getUTCDay() + 1) % 7;
+  })();
+  const cells = Array.from({ length: firstDay + daysInMonth }, (_, index) =>
+    index < firstDay ? null : index - firstDay + 1
+  );
+  function shiftMonth(delta: number) {
+    setView(current =>
+      current.month + delta > 12
+        ? { year: current.year + 1, month: 1 }
+        : current.month + delta < 1
+          ? { year: current.year - 1, month: 12 }
+          : { year: current.year, month: current.month + delta }
+    );
+  }
+  return (
+    <div className="jalali-picker">
+      <button
+        type="button"
+        className="jalali-picker-trigger"
+        onClick={() => {
+          setView({
+            year: parsed[0] || today[0],
+            month: parsed[1] || today[1],
+          });
+          setOpen(current => !current);
+        }}
+      >
+        <Calendar size={15} />
+        <span>{value ? formatDate(value) : placeholder}</span>
+      </button>
+      {open && (
+        <div className="jalali-calendar" role="dialog" aria-label="تقویم شمسی">
+          <div className="jalali-calendar-head">
+            <button type="button" onClick={() => shiftMonth(1)}>
+              ›
+            </button>
+            <strong>
+              {monthNames[view.month - 1]} {formatNumber(view.year)}
+            </strong>
+            <button type="button" onClick={() => shiftMonth(-1)}>
+              ‹
+            </button>
+          </div>
+          <div className="jalali-weekdays">
+            {weekdays.map(day => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+          <div className="jalali-days">
+            {cells.map((day, index) =>
+              day ? (
+                <button
+                  type="button"
+                  key={day}
+                  className={
+                    value ===
+                    `${view.year}/${String(view.month).padStart(2, "0")}/${String(day).padStart(2, "0")}`
+                      ? "selected"
+                      : ""
+                  }
+                  onClick={() => {
+                    onChange(
+                      `${view.year}/${String(view.month).padStart(2, "0")}/${String(day).padStart(2, "0")}`
+                    );
+                    setOpen(false);
+                  }}
+                >
+                  {formatNumber(day)}
+                </button>
+              ) : (
+                <span key={`empty-${index}`} />
+              )
+            )}
+          </div>
+          <button
+            type="button"
+            className="jalali-today"
+            onClick={() => {
+              onChange(todayJalali());
+              setView({ year: today[0], month: today[1] });
+              setOpen(false);
+            }}
+          >
+            امروز
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function EmptyState({
@@ -1173,9 +1328,9 @@ function Invoices({
             </label>
             <label>
               تاریخ فاکتور
-              <input
+              <JalaliDatePicker
                 value={form.date}
-                onChange={e => setForm({ ...form, date: e.target.value })}
+                onChange={date => setForm({ ...form, date })}
               />
             </label>
             <label>
@@ -1610,11 +1765,9 @@ function Transactions({
             </label>
             <label>
               تاریخ
-              <input
+              <JalaliDatePicker
                 value={editForm.date}
-                onChange={e =>
-                  setEditForm({ ...editForm, date: e.target.value })
-                }
+                onChange={date => setEditForm({ ...editForm, date })}
               />
             </label>
             <label>
@@ -2739,11 +2892,9 @@ function Prices({
             </label>
             <label>
               تاریخ اعتبار
-              <input
+              <JalaliDatePicker
                 value={form.effectiveDate}
-                onChange={e =>
-                  setForm({ ...form, effectiveDate: e.target.value })
-                }
+                onChange={effectiveDate => setForm({ ...form, effectiveDate })}
               />
             </label>
             <label>
@@ -3532,34 +3683,34 @@ function Checks({
         </label>
         <label>
           دریافت از
-          <input
+          <JalaliDatePicker
             value={receivedFrom}
-            onChange={e => setReceivedFrom(e.target.value)}
-            placeholder="۱۴۰۵/۰۱/۰۱"
+            onChange={setReceivedFrom}
+            placeholder="از تاریخ"
           />
         </label>
         <label>
           دریافت تا
-          <input
+          <JalaliDatePicker
             value={receivedTo}
-            onChange={e => setReceivedTo(e.target.value)}
-            placeholder="۱۴۰۵/۱۲/۲۹"
+            onChange={setReceivedTo}
+            placeholder="تا تاریخ"
           />
         </label>
         <label>
           سررسید از
-          <input
+          <JalaliDatePicker
             value={dueFrom}
-            onChange={e => setDueFrom(e.target.value)}
-            placeholder="۱۴۰۵/۰۱/۰۱"
+            onChange={setDueFrom}
+            placeholder="از تاریخ"
           />
         </label>
         <label>
           سررسید تا
-          <input
+          <JalaliDatePicker
             value={dueTo}
-            onChange={e => setDueTo(e.target.value)}
-            placeholder="۱۴۰۵/۱۲/۲۹"
+            onChange={setDueTo}
+            placeholder="تا تاریخ"
           />
         </label>
         <span className="soft-tag">
@@ -3907,18 +4058,16 @@ function Checks({
             </label>
             <label>
               تاریخ دریافت چک
-              <input
+              <JalaliDatePicker
                 value={form.receivedDate}
-                onChange={e =>
-                  setForm({ ...form, receivedDate: e.target.value })
-                }
+                onChange={receivedDate => setForm({ ...form, receivedDate })}
               />
             </label>
             <label>
               تاریخ سررسید
-              <input
+              <JalaliDatePicker
                 value={form.dueDate}
-                onChange={e => setForm({ ...form, dueDate: e.target.value })}
+                onChange={dueDate => setForm({ ...form, dueDate })}
               />
             </label>
             <label>
@@ -5020,9 +5169,9 @@ function QuickAdd({
         </label>
         <label>
           تاریخ جلالی
-          <input
+          <JalaliDatePicker
             value={form.date}
-            onChange={e => setForm({ ...form, date: e.target.value })}
+            onChange={date => setForm({ ...form, date })}
           />
         </label>
         <label>
