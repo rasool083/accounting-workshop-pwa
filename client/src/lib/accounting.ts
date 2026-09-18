@@ -7,6 +7,7 @@ export type PageId =
   | "transactions"
   | "people"
   | "inventory"
+  | "production"
   | "prices"
   | "paymentRules"
   | "checks"
@@ -132,6 +133,43 @@ export interface Product {
   stock: number;
   minStock: number;
   price: number;
+  category?: "مواد اولیه" | "محصول تولیدی" | "بسته تولید";
+}
+
+export interface ProductionMaterial {
+  id: string;
+  productId: string;
+  quantity: number;
+  unit: string;
+}
+
+export interface ProductionCost {
+  id: string;
+  title: string;
+  amount: number;
+}
+
+export interface ProductionFormula {
+  id: string;
+  name: string;
+  outputProductId: string;
+  outputQuantity: number;
+  outputUnit: string;
+  materials: ProductionMaterial[];
+  costs: ProductionCost[];
+  note: string;
+}
+
+export interface ProductionRecord {
+  id: string;
+  formulaId: string;
+  date: string;
+  outputQuantity: number;
+  materialCost: number;
+  overheadCost: number;
+  totalCost: number;
+  unitCost: number;
+  note: string;
 }
 
 export interface Transaction {
@@ -216,6 +254,8 @@ export interface AppState {
   checks: Check[];
   accounts: Account[];
   audit: AuditEvent[];
+  productionFormulas: ProductionFormula[];
+  productionRecords: ProductionRecord[];
 }
 
 const STORAGE_KEY = "accounting-workshop-pwa:v1";
@@ -251,6 +291,8 @@ const seedState: AppState = {
     { id: "bank", name: "حساب بانکی", type: "بانک", balance: 0 },
   ],
   audit: [],
+  productionFormulas: [],
+  productionRecords: [],
 };
 
 export function createId(prefix: string) {
@@ -389,6 +431,12 @@ export function normalizeState(input: unknown): AppState {
       ? source.accounts
       : seedState.accounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
+    productionFormulas: Array.isArray(source.productionFormulas)
+      ? source.productionFormulas
+      : [],
+    productionRecords: Array.isArray(source.productionRecords)
+      ? source.productionRecords
+      : [],
   } as AppState;
 }
 
@@ -420,6 +468,8 @@ export function createEmptyState(previous: AppState): AppState {
     invoices: [],
     transactions: [],
     checks: [],
+    productionFormulas: [],
+    productionRecords: [],
     audit: [
       {
         id: createId("audit"),
@@ -493,6 +543,8 @@ export function exportPayload(state: AppState) {
         checks: data.checks.length,
         accounts: data.accounts.length,
         audit: data.audit.length,
+        productionFormulas: data.productionFormulas.length,
+        productionRecords: data.productionRecords.length,
       },
       data,
     },
@@ -812,6 +864,12 @@ export const navItems: Array<{
     id: "inventory",
     label: "انبار و کالا",
     caption: "موجودی و قیمت",
+    icon: "boxes",
+  },
+  {
+    id: "production",
+    label: "تولید",
+    caption: "فرمول و هزینه ساخت",
     icon: "boxes",
   },
   {

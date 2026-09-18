@@ -36,6 +36,10 @@ import {
 import {
   AppState,
   CheckStatus,
+  ProductionCost,
+  ProductionMaterial,
+  ProductionFormula,
+  Product,
   PageId,
   TransactionType,
   appendAudit,
@@ -605,6 +609,12 @@ export default function Home() {
           )}
           {activePage === "inventory" && (
             <Inventory
+              state={state}
+              onSave={(next, msg) => updateState(next, msg)}
+            />
+          )}
+          {activePage === "production" && (
+            <Production
               state={state}
               onSave={(next, msg) => updateState(next, msg)}
             />
@@ -4877,6 +4887,536 @@ function Reports({
             ساختار گزارش‌ها از یک هستهٔ دادهٔ واحد تغذیه می‌شود تا ماندهٔ
             تاریخی، سود روزشمار و موجودی با فرمول‌های پراکنده تکرار نشوند.
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Production({
+  state,
+  onSave,
+}: {
+  state: AppState;
+  onSave: (next: AppState, message: string) => void;
+}) {
+  const rawWarehouses = state.warehouses.filter(warehouse =>
+    warehouse.name.includes("مواد")
+  );
+  const outputWarehouses = state.warehouses.filter(warehouse =>
+    warehouse.name.includes("محصول")
+  );
+  const rawProducts = state.products.filter(product => {
+    const warehouse = state.warehouses.find(
+      item => item.id === product.warehouseId
+    );
+    return (
+      product.category === "مواد اولیه" ||
+      product.category === "بسته تولید" ||
+      warehouse?.name.includes("مواد")
+    );
+  });
+  const outputProducts = state.products.filter(product => {
+    const warehouse = state.warehouses.find(
+      item => item.id === product.warehouseId
+    );
+    return (
+      warehouse?.name.includes("محصول") || product.category === "محصول تولیدی"
+    );
+  });
+  const blankMaterial: ProductionMaterial = {
+    id: createId("material"),
+    productId: "",
+    quantity: 0,
+    unit: "",
+  };
+  const blankCost: ProductionCost = {
+    id: createId("cost"),
+    title: "",
+    amount: 0,
+  };
+  const [form, setForm] = useState({
+    name: "",
+    outputProductId: "",
+    outputQuantity: "1",
+    outputUnit: "",
+    materials: [blankMaterial],
+    costs: [blankCost],
+    note: "",
+    packageOutput: false,
+  });
+  const [selectedFormulaId, setSelectedFormulaId] = useState("");
+  const selectedOutput = state.products.find(
+    product => product.id === form.outputProductId
+  );
+  const unitPrice = (productId: string, unit: string) => {
+    const product = state.products.find(item => item.id === productId);
+    if (!product) return 0;
+    const history = state.priceHistory
+      .filter(
+        item =>
+          item.productId === productId && item.effectiveDate <= todayJalali()
+      )
+      .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+    return Number(history[0]?.price ?? product.price) || 0;
+  };
+  const materialCost = form.materials.reduce((sum, material) => {
+    const product = state.products.find(item => item.id === material.productId);
+    const conversion =
+      product?.unit2 === material.unit ? product.conversionRate || 1 : 1;
+    return (
+      sum +
+      (Number(material.quantity) || 0) *
+        conversion *
+        unitPrice(material.productId, material.unit)
+    );
+  }, 0);
+  const overheadCost = form.costs.reduce(
+    (sum, cost) => sum + (Number(cost.amount) || 0),
+    0
+  );
+  const totalCost = materialCost + overheadCost;
+  const formulaCostPerUnit =
+    totalCost / Math.max(1, Number(form.outputQuantity) || 1);
+
+  function saveProduction(event: React.FormEvent) {
+    event.preventDefault();
+    const quantity = Number(form.outputQuantity) || 0;
+    const materials = form.materials.filter(
+      item => item.productId && Number(item.quantity) > 0
+    );
+    if (
+      !form.name.trim() ||
+      !form.outputProductId ||
+      quantity <= 0 ||
+      !materials.length
+    )
+      return;
+    const insufficient = materials.find(material => {
+      const product = state.products.find(
+        item => item.id === material.productId
+      );
+      const conversion =
+        product?.unit2 === material.unit ? product.conversionRate || 1 : 1;
+      return (product?.stock || 0) < Number(material.quantity) * conversion;
+    });
+    if (insufficient) {
+      window.alert("موجودی یکی از مواد اولیه کافی نیست.");
+      return;
+    }
+    const formula: ProductionFormula = {
+      id: createId("formula"),
+      name: form.name.trim(),
+      outputProductId: form.outputProductId,
+      outputQuantity: quantity,
+      outputUnit: form.outputUnit || selectedOutput?.unit || "عدد",
+      materials,
+      costs: form.costs.filter(
+        item => item.title.trim() && Number(item.amount) > 0
+      ),
+      note: form.note,
+    };
+    const rawIds = new Set(materials.map(item => item.productId));
+    let products = state.products.map(product => {
+      const material = materials.find(item => item.productId === product.id);
+      if (material) {
+        const conversion =
+          product.unit2 === material.unit ? product.conversionRate || 1 : 1;
+        return {
+          ...product,
+          stock: product.stock - Number(material.quantity) * conversion,
+        };
+      }
+      if (product.id === form.outputProductId) {
+        return {
+          ...product,
+          stock: product.stock + quantity,
+          category: (form.packageOutput
+            ? "بسته تولید"
+            : "محصول تولیدی") as Product["category"],
+          warehouseId: form.packageOutput
+            ? rawWarehouses[0]?.id || product.warehouseId
+            : product.warehouseId,
+          price: formulaCostPerUnit,
+        };
+      }
+      return product;
+    });
+    const record = {
+      id: createId("production"),
+      formulaId: formula.id,
+      date: todayJalali(),
+      outputQuantity: quantity,
+      materialCost,
+      overheadCost,
+      totalCost,
+      unitCost: formulaCostPerUnit,
+      note: form.note,
+    };
+    onSave(
+      {
+        ...state,
+        products,
+        productionFormulas: [...state.productionFormulas, formula],
+        productionRecords: [...state.productionRecords, record],
+      },
+      "فرمول و عملیات تولید ثبت شد"
+    );
+    setForm({
+      name: "",
+      outputProductId: "",
+      outputQuantity: "1",
+      outputUnit: "",
+      materials: [{ ...blankMaterial, id: createId("material") }],
+      costs: [{ ...blankCost, id: createId("cost") }],
+      note: "",
+      packageOutput: false,
+    });
+  }
+
+  function loadFormula(formula: ProductionFormula) {
+    setSelectedFormulaId(formula.id);
+    setForm({
+      name: formula.name,
+      outputProductId: formula.outputProductId,
+      outputQuantity: String(formula.outputQuantity),
+      outputUnit: formula.outputUnit,
+      materials: formula.materials,
+      costs: formula.costs.length
+        ? formula.costs
+        : [{ ...blankCost, id: createId("cost") }],
+      note: formula.note,
+      packageOutput: false,
+    });
+  }
+
+  return (
+    <div className="page-stack page-enter">
+      <PageIntro
+        kicker="فرمول و بهای ساخت"
+        title="تولید"
+        description="مواد اولیه را از انبار مصرف کنید، بسته‌های نیمه‌آماده بسازید و هزینهٔ تمام‌شده را محاسبه کنید."
+      />
+      <div className="production-layout">
+        <form className="panel production-form" onSubmit={saveProduction}>
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">ثبت تولید</span>
+              <h3>فرمول جدید و تولید محصول</h3>
+            </div>
+            <span className="status-pill">
+              بهای ساخت: {formatMoney(totalCost, state.settings.currency)}
+            </span>
+          </div>
+          <div className="form-grid">
+            <label className="full-field">
+              نام فرمول
+              <input
+                value={form.name}
+                onChange={event =>
+                  setForm({ ...form, name: event.target.value })
+                }
+                placeholder="مثلاً فرمول تولید لقمه Z"
+              />
+            </label>
+            <label>
+              محصول نهایی از انبار محصولات
+              <select
+                value={form.outputProductId}
+                onChange={event => {
+                  const product = state.products.find(
+                    item => item.id === event.target.value
+                  );
+                  setForm({
+                    ...form,
+                    outputProductId: event.target.value,
+                    outputUnit: product?.unit || "",
+                  });
+                }}
+              >
+                <option value="">انتخاب محصول</option>
+                {outputProducts.map(product => (
+                  <option value={product.id} key={product.id}>
+                    {product.name} · {product.code}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              مقدار تولید
+              <input
+                inputMode="decimal"
+                value={form.outputQuantity}
+                onChange={event =>
+                  setForm({ ...form, outputQuantity: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              واحد تولید
+              <select
+                value={form.outputUnit}
+                onChange={event =>
+                  setForm({ ...form, outputUnit: event.target.value })
+                }
+              >
+                <option value="">واحد پایه</option>
+                {selectedOutput &&
+                  [selectedOutput.unit, selectedOutput.unit2]
+                    .filter(Boolean)
+                    .map(unit => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+              </select>
+            </label>
+          </div>
+          <div className="production-section">
+            <div className="tier-editor-head">
+              <strong>مواد اولیه و بسته‌های نیمه‌آماده</strong>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    materials: [
+                      ...form.materials,
+                      { ...blankMaterial, id: createId("material") },
+                    ],
+                  })
+                }
+              >
+                <Plus size={14} /> افزودن ماده
+              </button>
+            </div>
+            {form.materials.map((material, index) => {
+              const product = state.products.find(
+                item => item.id === material.productId
+              );
+              return (
+                <div className="production-row" key={material.id}>
+                  <select
+                    value={material.productId}
+                    onChange={event => {
+                      const item = state.products.find(
+                        product => product.id === event.target.value
+                      );
+                      const materials = [...form.materials];
+                      materials[index] = {
+                        ...material,
+                        productId: event.target.value,
+                        unit: item?.unit || "",
+                      };
+                      setForm({ ...form, materials });
+                    }}
+                  >
+                    <option value="">انتخاب از انبار مواد اولیه</option>
+                    {rawProducts.map(item => (
+                      <option value={item.id} key={item.id}>
+                        {item.name} · موجودی {formatNumber(item.stock)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    inputMode="decimal"
+                    value={material.quantity || ""}
+                    onChange={event => {
+                      const materials = [...form.materials];
+                      materials[index] = {
+                        ...material,
+                        quantity: Number(event.target.value) || 0,
+                      };
+                      setForm({ ...form, materials });
+                    }}
+                    placeholder="مقدار مصرف"
+                  />
+                  <select
+                    value={material.unit}
+                    onChange={event => {
+                      const materials = [...form.materials];
+                      materials[index] = {
+                        ...material,
+                        unit: event.target.value,
+                      };
+                      setForm({ ...form, materials });
+                    }}
+                  >
+                    {[product?.unit, product?.unit2]
+                      .filter(Boolean)
+                      .map(unit => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
+                  </select>
+                  <strong>
+                    {formatMoney(
+                      (Number(material.quantity) || 0) *
+                        (product?.unit2 === material.unit
+                          ? product.conversionRate || 1
+                          : 1) *
+                        unitPrice(material.productId, material.unit),
+                      state.settings.currency
+                    )}
+                  </strong>
+                  {form.materials.length > 1 && (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          materials: form.materials.filter(
+                            item => item.id !== material.id
+                          ),
+                        })
+                      }
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="production-section">
+            <div className="tier-editor-head">
+              <strong>هزینه‌های سربار</strong>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    costs: [
+                      ...form.costs,
+                      { ...blankCost, id: createId("cost") },
+                    ],
+                  })
+                }
+              >
+                <Plus size={14} /> افزودن هزینه
+              </button>
+            </div>
+            {form.costs.map((cost, index) => (
+              <div className="production-row" key={cost.id}>
+                <input
+                  value={cost.title}
+                  onChange={event => {
+                    const costs = [...form.costs];
+                    costs[index] = { ...cost, title: event.target.value };
+                    setForm({ ...form, costs });
+                  }}
+                  placeholder="برق، اجاره، کارگر و..."
+                />
+                <input
+                  inputMode="numeric"
+                  value={cost.amount || ""}
+                  onChange={event => {
+                    const costs = [...form.costs];
+                    costs[index] = {
+                      ...cost,
+                      amount: Number(event.target.value) || 0,
+                    };
+                    setForm({ ...form, costs });
+                  }}
+                  placeholder="مبلغ"
+                />
+                {form.costs.length > 1 && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        costs: form.costs.filter(item => item.id !== cost.id),
+                      })
+                    }
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <label className="check-line">
+            <input
+              type="checkbox"
+              checked={form.packageOutput}
+              onChange={event =>
+                setForm({ ...form, packageOutput: event.target.checked })
+              }
+            />{" "}
+            محصول تولیدشده بستهٔ نیمه‌آماده است و در انبار مواد اولیه قرار گیرد
+          </label>
+          <label className="full-field">
+            توضیحات
+            <textarea
+              value={form.note}
+              onChange={event => setForm({ ...form, note: event.target.value })}
+              placeholder="توضیحات فرایند یا بچ تولید"
+            />
+          </label>
+          <div className="production-total">
+            <span>
+              مواد: {formatMoney(materialCost, state.settings.currency)}
+            </span>
+            <span>
+              سربار: {formatMoney(overheadCost, state.settings.currency)}
+            </span>
+            <strong>
+              هزینه کل: {formatMoney(totalCost, state.settings.currency)} · هر
+              واحد: {formatMoney(formulaCostPerUnit, state.settings.currency)}
+            </strong>
+          </div>
+          <button className="button button-primary" type="submit">
+            <Check size={16} /> ثبت فرمول و تولید
+          </button>
+        </form>
+        <div className="panel">
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">سوابق</span>
+              <h3>فرمول‌های ثبت‌شده</h3>
+            </div>
+          </div>
+          {state.productionFormulas.length ? (
+            state.productionFormulas.map(formula => {
+              const product = state.products.find(
+                item => item.id === formula.outputProductId
+              );
+              const record = state.productionRecords
+                .filter(item => item.formulaId === formula.id)
+                .at(-1);
+              return (
+                <button
+                  type="button"
+                  className={`production-card ${selectedFormulaId === formula.id ? "selected" : ""}`}
+                  key={formula.id}
+                  onClick={() => loadFormula(formula)}
+                >
+                  <strong>{formula.name}</strong>
+                  <span>
+                    {product?.name || "محصول حذف‌شده"} ·{" "}
+                    {formatNumber(formula.materials.length)} ماده اولیه
+                  </span>
+                  {record && (
+                    <small>
+                      آخرین هزینه:{" "}
+                      {formatMoney(record.unitCost, state.settings.currency)}
+                    </small>
+                  )}
+                </button>
+              );
+            })
+          ) : (
+            <EmptyState
+              title="فرمولی ثبت نشده"
+              description="اولین فرمول تولید را با افزودن مواد اولیه و هزینه‌های سربار بسازید."
+            />
+          )}
         </div>
       </div>
     </div>
