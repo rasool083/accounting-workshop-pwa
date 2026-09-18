@@ -511,6 +511,14 @@ export function jalaliDayDifference(from: string, to: string) {
   return Math.max(0, parse(to) - parse(from));
 }
 
+export function jalaliDateKey(value: string) {
+  const parts = value.replace(/-/g, "/").split("/").map(Number);
+  if (parts.length !== 3 || parts.some(part => !Number.isFinite(part))) {
+    return "9999/99/99";
+  }
+  return parts.map(part => String(part).padStart(2, "0")).join("/");
+}
+
 export interface FIFOSettlement {
   checkId: string;
   invoiceId: string;
@@ -529,7 +537,9 @@ export function settleChecksFIFO(
   const eligibleInvoices = [...invoices]
     .filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل")
     .sort(
-      (a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number)
+      (a, b) =>
+        jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)) ||
+        a.number.localeCompare(b.number)
     );
   const eligibleChecks = [...checks]
     .filter(
@@ -540,8 +550,10 @@ export function settleChecksFIFO(
     )
     .sort(
       (a, b) =>
-        a.dueDate.localeCompare(b.dueDate) ||
-        a.receivedDate.localeCompare(b.receivedDate) ||
+        jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)) ||
+        jalaliDateKey(a.receivedDate).localeCompare(
+          jalaliDateKey(b.receivedDate)
+        ) ||
         a.number.localeCompare(b.number)
     );
   const remainingByInvoice = new Map(
