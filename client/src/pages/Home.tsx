@@ -3859,19 +3859,103 @@ function Inventory({
         (productSortDirection === "asc" ? 1 : -1) *
         a.name.localeCompare(b.name, "fa")
     );
-  const movements = selectedProduct
-    ? state.invoices
-        .filter(invoice => invoice.status !== "باطل")
-        .flatMap(invoice =>
-          invoice.items
-            .filter(item => item.productId === selectedProduct.id)
-            .map(item => ({
-              invoice,
-              item,
-              direction: invoice.type === "خرید" ? "ورود" : "خروج",
-            }))
-        )
-    : [];
+  const movements = useMemo(() => {
+    if (!selectedProduct) return [];
+    const rows: Array<{
+      id: string;
+      date: string;
+      reference: string;
+      direction: string;
+      quantity: number;
+      unit: string;
+      amount: number;
+      warehouse: string;
+    }> = [];
+    state.invoices
+      .filter(invoice => invoice.status !== "باطل")
+      .forEach(invoice =>
+        invoice.items
+          .filter(item => item.productId === selectedProduct.id)
+          .forEach(item =>
+            rows.push({
+              id: `invoice-${invoice.id}-${item.id}`,
+              date: invoice.date,
+              reference: `فاکتور ${invoice.number}`,
+              direction: invoice.type === "خرید" ? "ورود خرید" : "خروج فروش",
+              quantity: item.quantityBase || item.quantity,
+              unit: item.unit,
+              amount: item.total,
+              warehouse:
+                state.warehouses.find(
+                  warehouse => warehouse.id === selectedProduct.warehouseId
+                )?.name || "بدون انبار",
+            })
+          )
+      );
+    state.transactions
+      .filter(
+        item =>
+          item.status !== "باطل" &&
+          item.productId === selectedProduct.id &&
+          ["خرید کالا", "فروش کالا"].includes(item.type)
+      )
+      .forEach(item =>
+        rows.push({
+          id: `transaction-${item.id}`,
+          date: item.date,
+          reference: "عملیات مستقیم",
+          direction: item.type === "خرید کالا" ? "ورود خرید" : "خروج فروش",
+          quantity: item.quantity || 0,
+          unit: item.unit || selectedProduct.unit,
+          amount: item.amount,
+          warehouse:
+            state.warehouses.find(
+              warehouse => warehouse.id === item.warehouseId
+            )?.name || "بدون انبار",
+        })
+      );
+    state.productionRecords.forEach(record => {
+      const formula = state.productionFormulas.find(
+        item => item.id === record.formulaId
+      );
+      if (!formula) return;
+      if (formula.outputProductId === selectedProduct.id) {
+        rows.push({
+          id: `production-output-${record.id}`,
+          date: record.date,
+          reference: `تولید ${formula.name}`,
+          direction: "ورود تولید",
+          quantity: record.outputQuantity,
+          unit: formula.outputUnit,
+          amount: record.totalCost,
+          warehouse:
+            state.warehouses.find(
+              warehouse => warehouse.id === selectedProduct.warehouseId
+            )?.name || "بدون انبار",
+        });
+      }
+      formula.materials
+        .filter(material => material.productId === selectedProduct.id)
+        .forEach(material =>
+          rows.push({
+            id: `production-material-${record.id}-${material.id}`,
+            date: record.date,
+            reference: `مصرف تولید ${formula.name}`,
+            direction: "خروج مصرف تولید",
+            quantity: material.quantity,
+            unit: material.unit,
+            amount: material.quantity * selectedProduct.price,
+            warehouse:
+              state.warehouses.find(
+                warehouse => warehouse.id === selectedProduct.warehouseId
+              )?.name || "بدون انبار",
+          })
+        );
+    });
+    return rows.sort((a, b) =>
+      jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date))
+    );
+  }, [selectedProduct, state]);
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!form.name.trim()) return;
@@ -4192,31 +4276,29 @@ function Inventory({
                   <th>شماره فاکتور</th>
                   <th>نوع گردش</th>
                   <th>تعداد</th>
-                  <th>قیمت واحد</th>
-                  <th>جمع</th>
+                  <th>انبار</th>
+                  <th>ارزش گردش</th>
                 </tr>
               </thead>
               <tbody>
                 {movements.length ? (
-                  movements.map(({ invoice, item, direction }) => (
-                    <tr key={`${invoice.id}-${item.id}`}>
-                      <td>{formatDate(invoice.date)}</td>
-                      <td>{invoice.number}</td>
+                  movements.map(row => (
+                    <tr key={row.id}>
+                      <td>{formatDate(row.date)}</td>
+                      <td>{row.reference}</td>
                       <td>
                         <span
-                          className={`status-pill ${direction === "ورود" ? "status-success" : "status-warning"}`}
+                          className={`status-pill ${row.direction.startsWith("ورود") ? "status-success" : "status-warning"}`}
                         >
-                          {direction}
+                          {row.direction}
                         </span>
                       </td>
                       <td>
-                        {formatNumber(item.quantity)} {item.unit}
+                        {formatNumber(row.quantity)} {row.unit}
                       </td>
+                      <td>{row.warehouse}</td>
                       <td>
-                        {formatMoney(item.unitPrice, state.settings.currency)}
-                      </td>
-                      <td>
-                        {formatMoney(item.total, state.settings.currency)}
+                        {formatMoney(row.amount, state.settings.currency)}
                       </td>
                     </tr>
                   ))
