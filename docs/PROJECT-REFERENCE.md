@@ -342,3 +342,7 @@ Repository اصلی پروژه `rasool083/accounting-workshop-pwa` است. Repos
 ### اعتبارنامهٔ Google Drive
 
 شناسهٔ عمومی OAuth Web برای پروژهٔ `diesel-equator-450911-j4` در `client/src/lib/googleDrive.ts` ثبت شده است و به‌دلیل عمومی‌بودن Client ID، قرارگرفتن آن در bundle خطر افشای credential ندارد. Client Secret هرگز نباید در frontend، GitHub، backup، localStorage یا مستندات ذخیره شود. Client Secret ارسال‌شده در گفتگو باید افشاشده فرض شود؛ مالک پروژه باید از Google Cloud آن Client را حذف یا Secret را rotate کند و پس از آن فقط Client ID جدید/همان Client ID را در برنامه استفاده نماید. امنیت واقعی با Authorized JavaScript origins، OAuth consent screen، Test users و scope محدود `drive.file` کنترل می‌شود.
+
+### پاک‌سازی OAuth در نشست‌های قدیمی موبایل
+
+مرورگر گوشی ممکن است Client ID نسخهٔ قبلی را در localStorage نگه دارد. تابع `getDriveClientId` اکنون مقدار ذخیره‌شدهٔ متفاوت را نادیده می‌گیرد و Client ID عمومی معتبر پروژه را دوباره ثبت می‌کند. بنابراین پس از انتشار، کاربر باید صفحهٔ برنامه را با بازکردن مستقیم نشانی اصلی دوباره بارگذاری کند؛ در صورت نمایش bundle قدیمی، بستن تب و بازکردن دوبارهٔ صفحه یا پاک‌کردن cache سایت لازم است. پیام `invalid_client` به‌صورت جداگانه تشخیص داده می‌شود تا تفاوت آن با خطای Test User یا Origin روشن بماند.

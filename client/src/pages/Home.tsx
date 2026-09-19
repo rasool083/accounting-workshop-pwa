@@ -566,8 +566,14 @@ export default function Home() {
       setNotice("Google Drive با موفقیت برای این مرورگر متصل شد");
       await handleDriveRefresh();
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "اتصال Google Drive ناموفق بود";
       setNotice(
-        error instanceof Error ? error.message : "اتصال Google Drive ناموفق بود"
+        message.toLowerCase().includes("invalid_client")
+          ? "Google Client ID قدیمی یا نامعتبر است؛ صفحه را با بازکردن دوبارهٔ لینک به‌روز کنید و دوباره تلاش کنید."
+          : message
       );
     }
   }

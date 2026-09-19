@@ -58,16 +58,22 @@ export const PUBLIC_DRIVE_CLIENT_ID =
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 export function getDriveClientId() {
-  return typeof window !== "undefined"
-    ? localStorage.getItem(DRIVE_CLIENT_ID_KEY) || PUBLIC_DRIVE_CLIENT_ID
-    : PUBLIC_DRIVE_CLIENT_ID;
+  if (typeof window === "undefined") return PUBLIC_DRIVE_CLIENT_ID;
+  const stored = localStorage.getItem(DRIVE_CLIENT_ID_KEY) || "";
+  // Do not let a stale/invalid value from an earlier mobile session win.
+  if (!stored || stored !== PUBLIC_DRIVE_CLIENT_ID) {
+    localStorage.setItem(DRIVE_CLIENT_ID_KEY, PUBLIC_DRIVE_CLIENT_ID);
+    return PUBLIC_DRIVE_CLIENT_ID;
+  }
+  return stored;
 }
 
 export function setDriveClientId(clientId: string) {
   if (typeof window === "undefined") return;
   const value = clientId.trim();
-  if (value) localStorage.setItem(DRIVE_CLIENT_ID_KEY, value);
-  else localStorage.removeItem(DRIVE_CLIENT_ID_KEY);
+  if (value === PUBLIC_DRIVE_CLIENT_ID)
+    localStorage.setItem(DRIVE_CLIENT_ID_KEY, PUBLIC_DRIVE_CLIENT_ID);
+  else localStorage.setItem(DRIVE_CLIENT_ID_KEY, PUBLIC_DRIVE_CLIENT_ID);
 }
 
 function loadGoogleIdentityServices() {
