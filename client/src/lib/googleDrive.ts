@@ -52,12 +52,15 @@ type GoogleOAuthWindow = Window & {
 };
 
 const DRIVE_CLIENT_ID_KEY = "accounting-workshop-pwa:google-client-id";
+/** OAuth client IDs are public identifiers; never put a client secret here. */
+export const PUBLIC_DRIVE_CLIENT_ID =
+  "378766848772-o2c4g9p1v46dn6g8ns63jgr2ov4qrke5.apps.googleusercontent.com";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 export function getDriveClientId() {
   return typeof window !== "undefined"
-    ? localStorage.getItem(DRIVE_CLIENT_ID_KEY) || ""
-    : "";
+    ? localStorage.getItem(DRIVE_CLIENT_ID_KEY) || PUBLIC_DRIVE_CLIENT_ID
+    : PUBLIC_DRIVE_CLIENT_ID;
 }
 
 export function setDriveClientId(clientId: string) {

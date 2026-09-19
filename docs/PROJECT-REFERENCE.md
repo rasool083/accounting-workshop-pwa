@@ -338,3 +338,7 @@ Repository اصلی پروژه `rasool083/accounting-workshop-pwa` است. Repos
 ### وضعیت Drive در موبایل
 
 صفحهٔ پشتیبان در viewportهای باریک تک‌ستونه شده و کنترل‌های اتصال، فهرست و لینک‌ها به عرض صفحه محدود می‌شوند. هنگام اتصال OAuth پیام «در حال بازکردن پنجرهٔ مجوز» نمایش داده می‌شود. پس از دریافت توکن، فهرست Drive تازه‌سازی می‌شود. اگر پوشهٔ ثابت قدیمی با `drive.file` قابل مشاهده نباشد، برنامه فهرست و بارگذاری را در فضای فایل‌های ایجادشده توسط خود برنامه امتحان می‌کند و نتیجه را به‌صورت پیام واضح اعلام می‌نماید؛ این fallback جایگزین دسترسی به فایل‌های قدیمی نیست و برای آن بازیابی دستی JSON همچنان معتبر است.
+
+### اعتبارنامهٔ Google Drive
+
+شناسهٔ عمومی OAuth Web برای پروژهٔ `diesel-equator-450911-j4` در `client/src/lib/googleDrive.ts` ثبت شده است و به‌دلیل عمومی‌بودن Client ID، قرارگرفتن آن در bundle خطر افشای credential ندارد. Client Secret هرگز نباید در frontend، GitHub، backup، localStorage یا مستندات ذخیره شود. Client Secret ارسال‌شده در گفتگو باید افشاشده فرض شود؛ مالک پروژه باید از Google Cloud آن Client را حذف یا Secret را rotate کند و پس از آن فقط Client ID جدید/همان Client ID را در برنامه استفاده نماید. امنیت واقعی با Authorized JavaScript origins، OAuth consent screen، Test users و scope محدود `drive.file` کنترل می‌شود.
