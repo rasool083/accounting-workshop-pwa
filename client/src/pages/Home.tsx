@@ -55,11 +55,12 @@ import {
   personName,
   saveState,
   todayJalali,
+  jalaliDateKey,
   transactionLabel,
   calculateLateProfit,
   settleChecksFIFO,
   allocateCheckFIFO,
-  applyCheckFIFO,
+  rebuildCheckAllocations,
   createEmptyState,
   PERSON_TYPES,
   suggestNextNumber,
@@ -1107,13 +1108,13 @@ function Invoices({
       };
     });
     onSave(
-      {
+      rebuildCheckAllocations({
         ...state,
         products,
         invoices: state.invoices.map(item =>
           item.id === invoice.id ? { ...item, status: "باطل" as const } : item
         ),
-      },
+      }),
       `فاکتور ${invoice.number} باطل شد و موجودی اصلاح گردید`
     );
     setSelectedInvoice(null);
@@ -1160,11 +1161,11 @@ function Invoices({
       };
     });
     onSave(
-      {
+      rebuildCheckAllocations({
         ...state,
         products,
         invoices: state.invoices.filter(item => item.id !== invoice.id),
-      },
+      }),
       `فاکتور ${invoice.number} حذف شد و موجودی اصلاح گردید`
     );
   }
@@ -1239,7 +1240,7 @@ function Invoices({
         )
       : [invoice, ...state.invoices];
     onSave(
-      { ...state, products, invoices },
+      rebuildCheckAllocations({ ...state, products, invoices }),
       editingInvoice
         ? `فاکتور ${invoice.number} ویرایش شد و موجودی اصلاح گردید`
         : form.type === "فروش"
@@ -1353,182 +1354,194 @@ function Invoices({
             </thead>
             <tbody>
               {state.invoices.length ? (
-                state.invoices.map(invoice => {
-                  const expanded = expandedInvoiceIds.has(invoice.id);
-                  const allocations = invoiceAllocations.filter(
-                    item => item.invoiceId === invoice.id
-                  );
-                  return (
-                    <Fragment key={invoice.id}>
-                      <tr>
-                        <td>
-                          <button
-                            type="button"
-                            className={`allocation-toggle ${expanded ? "is-expanded" : ""}`}
-                            onClick={() =>
-                              setExpandedInvoiceIds(current => {
-                                const next = new Set(current);
-                                if (next.has(invoice.id))
-                                  next.delete(invoice.id);
-                                else next.add(invoice.id);
-                                return next;
-                              })
-                            }
-                            title="نمایش چک‌های تخصیص‌یافته"
-                          >
-                            <ChevronDown size={14} />
-                            <strong>{invoice.number}</strong>
-                          </button>
-                        </td>
-                        <td>{formatDate(invoice.date)}</td>
-                        <td>{personName(state, invoice.partyId)}</td>
-                        <td>
-                          <div className="invoice-cell-list">
-                            {invoice.items.map((item, index) => (
-                              <span key={`${item.productId}-name-${index}`}>
-                                {state.products.find(
-                                  product => product.id === item.productId
-                                )?.name || "کالا/خدمت آزاد"}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="invoice-cell-list">
-                            {invoice.items.map((item, index) => (
-                              <span key={`${item.productId}-qty-${index}`}>
-                                {formatNumber(Number(item.quantity) || 0)}{" "}
-                                {item.unit}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="invoice-cell-list">
-                            {invoice.items.map((item, index) => (
-                              <span key={`${item.productId}-price-${index}`}>
-                                {formatMoney(
-                                  Number(item.unitPrice) || 0,
-                                  state.settings.currency
-                                )}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="amount-cell">
-                          {formatMoney(invoice.amount, state.settings.currency)}
-                        </td>
-                        <td>
-                          {formatMoney(
-                            invoice.paidAmount,
-                            state.settings.currency
-                          )}
-                        </td>
-                        <td className="amount-cell">
-                          {formatMoney(
-                            Math.max(0, invoice.amount - invoice.paidAmount),
-                            state.settings.currency
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            className="text-button"
-                            onClick={() => setSelectedInvoice(invoice)}
-                          >
-                            جزئیات
-                          </button>{" "}
-                          <span
-                            className={`status-pill ${invoice.status === "تسویه شده" ? "status-success" : invoice.status === "باطل" ? "status-danger" : "status-warning"}`}
-                          >
-                            {invoice.status}
-                          </span>
-                          {invoice.status !== "باطل" && (
+                [...state.invoices]
+                  .sort(
+                    (a, b) =>
+                      jalaliDateKey(a.date).localeCompare(
+                        jalaliDateKey(b.date)
+                      ) || a.id.localeCompare(b.id)
+                  )
+                  .map(invoice => {
+                    const expanded = expandedInvoiceIds.has(invoice.id);
+                    const allocations = invoiceAllocations.filter(
+                      item => item.invoiceId === invoice.id
+                    );
+                    return (
+                      <Fragment key={invoice.id}>
+                        <tr>
+                          <td>
                             <button
-                              className="icon-button row-action"
-                              title="ویرایش فاکتور"
-                              onClick={() => openEdit(invoice)}
+                              type="button"
+                              className={`allocation-toggle ${expanded ? "is-expanded" : ""}`}
+                              onClick={() =>
+                                setExpandedInvoiceIds(current => {
+                                  const next = new Set(current);
+                                  if (next.has(invoice.id))
+                                    next.delete(invoice.id);
+                                  else next.add(invoice.id);
+                                  return next;
+                                })
+                              }
+                              title="نمایش چک‌های تخصیص‌یافته"
                             >
-                              <Pencil size={14} />
+                              <ChevronDown size={14} />
+                              <strong>{invoice.number}</strong>
                             </button>
-                          )}
-                          {invoice.status !== "باطل" && (
+                          </td>
+                          <td>{formatDate(invoice.date)}</td>
+                          <td>{personName(state, invoice.partyId)}</td>
+                          <td>
+                            <div className="invoice-cell-list">
+                              {invoice.items.map((item, index) => (
+                                <span key={`${item.productId}-name-${index}`}>
+                                  {state.products.find(
+                                    product => product.id === item.productId
+                                  )?.name || "کالا/خدمت آزاد"}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="invoice-cell-list">
+                              {invoice.items.map((item, index) => (
+                                <span key={`${item.productId}-qty-${index}`}>
+                                  {formatNumber(Number(item.quantity) || 0)}{" "}
+                                  {item.unit}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="invoice-cell-list">
+                              {invoice.items.map((item, index) => (
+                                <span key={`${item.productId}-price-${index}`}>
+                                  {formatMoney(
+                                    Number(item.unitPrice) || 0,
+                                    state.settings.currency
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="amount-cell">
+                            {formatMoney(
+                              invoice.amount,
+                              state.settings.currency
+                            )}
+                          </td>
+                          <td>
+                            {formatMoney(
+                              invoice.paidAmount,
+                              state.settings.currency
+                            )}
+                          </td>
+                          <td className="amount-cell">
+                            {formatMoney(
+                              Math.max(0, invoice.amount - invoice.paidAmount),
+                              state.settings.currency
+                            )}
+                          </td>
+                          <td>
                             <button
-                              className="icon-button row-action"
-                              title="حذف فاکتور"
-                              onClick={() => deleteInvoice(invoice)}
+                              className="text-button"
+                              onClick={() => setSelectedInvoice(invoice)}
                             >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                      {expanded && (
-                        <tr className="allocation-detail-row">
-                          <td colSpan={10}>
-                            {allocations.length ? (
-                              <div className="invoice-check-allocation-list">
-                                {allocations.map(item => {
-                                  const check = state.checks.find(
-                                    row => row.id === item.checkId
-                                  );
-                                  const tone =
-                                    check?.status === "وصول شده"
-                                      ? "cleared"
-                                      : check?.status === "خرج شده"
-                                        ? "spent"
-                                        : [
-                                              "برگشتی",
-                                              "عودت داده شده",
-                                              "باطل",
-                                            ].includes(check?.status || "")
-                                          ? "bad"
-                                          : check?.status === "جایگزین شده"
-                                            ? "replaced"
-                                            : "open";
-                                  return (
-                                    <div
-                                      className={`allocation-detail-card check-allocation-card check-row-${tone}`}
-                                      key={`${item.checkId}-${item.invoiceId}`}
-                                    >
-                                      <strong>چک {check?.number || "—"}</strong>
-                                      <span>{check?.status || "—"}</span>
-                                      <span>
-                                        {check
-                                          ? formatDate(check.dueDate)
-                                          : "—"}
-                                      </span>
-                                      <span>
-                                        {formatMoney(
-                                          item.amount,
-                                          state.settings.currency
-                                        )}
-                                      </span>
-                                      <span>
-                                        اختلاف: {formatNumber(item.days || 0)}{" "}
-                                        روز
-                                      </span>
-                                      <span>
-                                        سود:{" "}
-                                        {formatMoney(
-                                          item.profit || 0,
-                                          state.settings.currency
-                                        )}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <span className="muted-cell">
-                                چکی برای این فاکتور تخصیص داده نشده است.
-                              </span>
+                              جزئیات
+                            </button>{" "}
+                            <span
+                              className={`status-pill ${invoice.status === "تسویه شده" ? "status-success" : invoice.status === "باطل" ? "status-danger" : "status-warning"}`}
+                            >
+                              {invoice.status}
+                            </span>
+                            {invoice.status !== "باطل" && (
+                              <button
+                                className="icon-button row-action"
+                                title="ویرایش فاکتور"
+                                onClick={() => openEdit(invoice)}
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            )}
+                            {invoice.status !== "باطل" && (
+                              <button
+                                className="icon-button row-action"
+                                title="حذف فاکتور"
+                                onClick={() => deleteInvoice(invoice)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
                             )}
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })
+                        {expanded && (
+                          <tr className="allocation-detail-row">
+                            <td colSpan={10}>
+                              {allocations.length ? (
+                                <div className="invoice-check-allocation-list">
+                                  {allocations.map(item => {
+                                    const check = state.checks.find(
+                                      row => row.id === item.checkId
+                                    );
+                                    const tone =
+                                      check?.status === "وصول شده"
+                                        ? "cleared"
+                                        : check?.status === "خرج شده"
+                                          ? "spent"
+                                          : [
+                                                "برگشتی",
+                                                "عودت داده شده",
+                                                "باطل",
+                                              ].includes(check?.status || "")
+                                            ? "bad"
+                                            : check?.status === "جایگزین شده"
+                                              ? "replaced"
+                                              : "open";
+                                    return (
+                                      <div
+                                        className={`allocation-detail-card check-allocation-card check-row-${tone}`}
+                                        key={`${item.checkId}-${item.invoiceId}`}
+                                      >
+                                        <strong>
+                                          چک {check?.number || "—"}
+                                        </strong>
+                                        <span>{check?.status || "—"}</span>
+                                        <span>
+                                          {check
+                                            ? formatDate(check.dueDate)
+                                            : "—"}
+                                        </span>
+                                        <span>
+                                          {formatMoney(
+                                            item.amount,
+                                            state.settings.currency
+                                          )}
+                                        </span>
+                                        <span>
+                                          اختلاف: {formatNumber(item.days || 0)}{" "}
+                                          روز
+                                        </span>
+                                        <span>
+                                          سود:{" "}
+                                          {formatMoney(
+                                            item.profit || 0,
+                                            state.settings.currency
+                                          )}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <span className="muted-cell">
+                                  چکی برای این فاکتور تخصیص داده نشده است.
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })
               ) : (
                 <tr>
                   <td colSpan={10}>
@@ -3739,15 +3752,24 @@ function Checks({
       state.checks.map(item => item.number)
     );
   }, [state.checks, state.people, form.partyId]);
-  const visibleChecks = state.checks.filter(
-    check =>
-      (statusFilter === "همه" || check.status === statusFilter) &&
-      (bankFilter === "همه" || check.bankAccountId === bankFilter) &&
-      (!receivedFrom || check.receivedDate >= receivedFrom) &&
-      (!receivedTo || check.receivedDate <= receivedTo) &&
-      (!dueFrom || check.dueDate >= dueFrom) &&
-      (!dueTo || check.dueDate <= dueTo)
-  );
+  const visibleChecks = state.checks
+    .filter(
+      check =>
+        (statusFilter === "همه" || check.status === statusFilter) &&
+        (bankFilter === "همه" || check.bankAccountId === bankFilter) &&
+        (!receivedFrom || check.receivedDate >= receivedFrom) &&
+        (!receivedTo || check.receivedDate <= receivedTo) &&
+        (!dueFrom || check.dueDate >= dueFrom) &&
+        (!dueTo || check.dueDate <= dueTo)
+    )
+    .sort(
+      (a, b) =>
+        jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)) ||
+        jalaliDateKey(a.receivedDate).localeCompare(
+          jalaliDateKey(b.receivedDate)
+        ) ||
+        a.id.localeCompare(b.id)
+    );
   const allocationDetails = settleChecksFIFO(
     state.checks,
     state.invoices,
@@ -3755,15 +3777,10 @@ function Checks({
     state.settings.dayBasis
   );
   function recalculateAllocations() {
-    let next = state;
-    const parties = Array.from(
-      new Set(next.checks.map(check => check.partyId).filter(Boolean))
-    ) as string[];
-    parties.forEach(partyId => {
-      const trigger = next.checks.find(check => check.partyId === partyId);
-      if (trigger) next = applyCheckFIFO(next, trigger);
-    });
-    onSave(next, "تخصیص FIFO همه چک‌ها بر اساس سررسید محاسبه شد");
+    onSave(
+      rebuildCheckAllocations(state),
+      "تخصیص FIFO همه چک‌ها بر اساس سررسید محاسبه شد"
+    );
   }
   function exportChecks() {
     const rows = [
@@ -3867,7 +3884,7 @@ function Checks({
         : item;
     });
     onSave(
-      {
+      rebuildCheckAllocations({
         ...state,
         checks,
         accounts,
@@ -3880,7 +3897,7 @@ function Checks({
             note: `چک ${check.number}: ${check.status} ← ${status}`,
           },
         ],
-      },
+      }),
       "وضعیت چک و مرجع آن به‌روزرسانی شد"
     );
   }
@@ -3915,7 +3932,7 @@ function Checks({
           : item
       );
       onSave(
-        {
+        rebuildCheckAllocations({
           ...state,
           checks: [replacement, ...checks],
           audit: [
@@ -3927,7 +3944,7 @@ function Checks({
               note: `چک ${replacement.number} جایگزین چک ${replacementParent.number} ثبت شد`,
             },
           ],
-        },
+        }),
         "چک جایگزین جدید ثبت شد"
       );
       setOpen(false);
@@ -4009,22 +4026,23 @@ function Checks({
         status: "ثبت شده",
         note: `وصول چک ${next.number} __check:${id}`,
       });
+    const nextState = rebuildCheckAllocations({
+      ...state,
+      checks,
+      accounts,
+      transactions,
+      audit: [
+        ...state.audit,
+        {
+          id: createId("check-edit"),
+          at: new Date().toISOString(),
+          action: editingCheck ? "CHECK_EDITED" : "CHECK_CREATED",
+          note: `چک ${next.number} ${editingCheck ? "ویرایش شد" : "ثبت شد"}`,
+        },
+      ],
+    });
     onSave(
-      {
-        ...state,
-        checks,
-        accounts,
-        transactions,
-        audit: [
-          ...state.audit,
-          {
-            id: createId("check-edit"),
-            at: new Date().toISOString(),
-            action: editingCheck ? "CHECK_EDITED" : "CHECK_CREATED",
-            note: `چک ${next.number} ${editingCheck ? "ویرایش شد" : "ثبت شد"}`,
-          },
-        ],
-      },
+      nextState,
       editingCheck ? "تمام اطلاعات چک ویرایش شد" : "چک دریافتی ثبت شد"
     );
     setOpen(false);
@@ -4375,7 +4393,7 @@ function Checks({
                                 if (!window.confirm("چک و ارجاعات آن حذف شود؟"))
                                   return;
                                 onSave(
-                                  {
+                                  rebuildCheckAllocations({
                                     ...state,
                                     checks: state.checks
                                       .filter(item => item.id !== check.id)
@@ -4392,7 +4410,7 @@ function Checks({
                                           `__check:${check.id}`
                                         )
                                     ),
-                                  },
+                                  }),
                                   "چک حذف شد"
                                 );
                               }}
@@ -4707,7 +4725,11 @@ function MonthClose({
         invoice.status !== "باطل" &&
         (!partyId || invoice.partyId === partyId)
     )
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .sort(
+      (a, b) =>
+        jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)) ||
+        a.id.localeCompare(b.id)
+    );
   const partyChecks = state.checks
     .filter(
       check =>
@@ -4715,7 +4737,11 @@ function MonthClose({
         check.status !== "جایگزین شده" &&
         (!partyId || check.partyId === partyId)
     )
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    .sort(
+      (a, b) =>
+        jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)) ||
+        a.id.localeCompare(b.id)
+    );
   const fifoSettlements = settleChecksFIFO(
     partyChecks,
     partyInvoices,

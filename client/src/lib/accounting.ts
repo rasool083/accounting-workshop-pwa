@@ -624,13 +624,19 @@ export function appendAudit(
 }
 
 export function jalaliDayDifference(from: string, to: string) {
-  const parse = (value: string) => {
-    const parts = value.replace(/-/g, "/").split("/").map(Number);
-    return parts.length === 3 && parts.every(Number.isFinite)
-      ? parts[0] * 372 + parts[1] * 31 + parts[2]
-      : 0;
+  const ordinal = (value: string) => {
+    const [year, month, day] = value.replace(/-/g, "/").split("/").map(Number);
+    if (![year, month, day].every(Number.isFinite)) return 0;
+    const completedYears = Math.max(0, year - 1);
+    const cycles = Math.floor(completedYears / 33);
+    const remainder = completedYears % 33;
+    const leapYearsBefore =
+      cycles * 8 +
+      [1, 5, 9, 13, 17, 22, 26, 30].filter(item => item <= remainder).length;
+    const monthDays = month <= 6 ? (month - 1) * 31 : 186 + (month - 7) * 30;
+    return year * 365 + leapYearsBefore + monthDays + day;
   };
-  return Math.max(0, parse(to) - parse(from));
+  return Math.max(0, ordinal(to) - ordinal(from));
 }
 
 export function jalaliDateKey(value: string) {
@@ -673,7 +679,7 @@ export function settleChecksFIFO(
     .sort(
       (a, b) =>
         jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)) ||
-        a.number.localeCompare(b.number)
+        a.id.localeCompare(b.id)
     );
   const eligibleChecks = [...checks]
     .filter(
@@ -688,7 +694,7 @@ export function settleChecksFIFO(
         jalaliDateKey(a.receivedDate).localeCompare(
           jalaliDateKey(b.receivedDate)
         ) ||
-        a.number.localeCompare(b.number)
+        a.id.localeCompare(b.id)
     );
   const remainingByInvoice = new Map(
     eligibleInvoices.map(invoice => [invoice.id, Math.max(0, invoice.amount)])
@@ -781,6 +787,50 @@ export function applyCheckFIFO(state: AppState, check: Check) {
       invoice.status === "باطل"
     )
       return invoice;
+    const rows = byInvoice.get(invoice.id) || [];
+    const paidAmount = Math.min(
+      invoice.amount,
+      rows.reduce((sum, item) => sum + item.principalAmount, 0)
+    );
+    return {
+      ...invoice,
+      paidAmount,
+      allocations: rows.map(item => ({
+        checkId: item.checkId,
+        amount: item.amount,
+        principalAmount: item.principalAmount,
+        profit: item.profit,
+        days: item.days,
+        allocatedAt: now,
+      })),
+      status:
+        paidAmount >= invoice.amount
+          ? ("تسویه شده" as const)
+          : paidAmount > 0
+            ? ("تسویه جزئی" as const)
+            : ("باز" as const),
+    };
+  });
+  return { ...state, invoices };
+}
+
+export function rebuildCheckAllocations(state: AppState): AppState {
+  const settlements = settleChecksFIFO(
+    state.checks,
+    state.invoices,
+    state.paymentRules,
+    state.settings.dayBasis
+  );
+  const byInvoice = new Map<string, FIFOSettlement[]>();
+  settlements.forEach(item => {
+    byInvoice.set(item.invoiceId, [
+      ...(byInvoice.get(item.invoiceId) || []),
+      item,
+    ]);
+  });
+  const now = new Date().toISOString();
+  const invoices = state.invoices.map(invoice => {
+    if (invoice.type !== "فروش" || invoice.status === "باطل") return invoice;
     const rows = byInvoice.get(invoice.id) || [];
     const paidAmount = Math.min(
       invoice.amount,
