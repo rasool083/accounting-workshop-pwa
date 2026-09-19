@@ -6294,6 +6294,53 @@ function Reports({
   state: AppState;
   metrics: ReturnType<typeof calculateMetrics>;
 }) {
+  const cashRows = useMemo(
+    () =>
+      state.transactions
+        .filter(item => item.status !== "باطل")
+        .map(item => {
+          const incoming = ["دریافت", "درآمد", "فروش کالا"].includes(item.type);
+          const account = state.accounts.find(
+            value => value.id === (item.accountId || item.toAccountId)
+          );
+          return {
+            ...item,
+            incoming,
+            accountName: account?.name || "بدون حساب",
+            partyName: personName(state, item.partyId),
+          };
+        })
+        .sort((a, b) =>
+          jalaliDateKey(b.date).localeCompare(jalaliDateKey(a.date))
+        ),
+    [state]
+  );
+  const directStockOperations = state.transactions.filter(
+    item =>
+      item.status !== "باطل" &&
+      (item.type === "خرید کالا" || item.type === "فروش کالا")
+  );
+  const possibleDuplicates = directStockOperations.filter(operation =>
+    state.invoices.some(invoice => {
+      if (
+        invoice.status === "باطل" ||
+        invoice.type !== (operation.type === "خرید کالا" ? "خرید" : "فروش")
+      )
+        return false;
+      const sameParty =
+        !operation.partyId || invoice.partyId === operation.partyId;
+      const sameDate = invoice.date === operation.date;
+      const sameProduct =
+        operation.productId &&
+        invoice.items.some(item => item.productId === operation.productId);
+      return (
+        sameParty &&
+        sameDate &&
+        sameProduct &&
+        Math.abs(invoice.amount - operation.amount) < 0.01
+      );
+    })
+  );
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -6354,6 +6401,75 @@ function Reports({
               {formatMoney(metrics.payments, state.settings.currency)}
             </strong>
           </div>
+        </div>
+      </div>
+      <div className="panel table-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker">دفتر جریان نقدی</span>
+            <h3>ورودی و خروجی به تفکیک حساب</h3>
+          </div>
+          <span className="status-pill status-success">
+            {formatNumber(cashRows.length)} ردیف
+          </span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>تاریخ</th>
+                <th>نوع</th>
+                <th>طرف حساب</th>
+                <th>حساب</th>
+                <th>ورودی</th>
+                <th>خروجی</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cashRows.length ? (
+                cashRows.slice(0, 30).map(row => (
+                  <tr key={row.id}>
+                    <td>{formatDate(row.date)}</td>
+                    <td>{transactionLabel(row.type)}</td>
+                    <td>{row.partyName}</td>
+                    <td>{row.accountName}</td>
+                    <td className="amount-positive">
+                      {row.incoming
+                        ? formatMoney(row.amount, state.settings.currency)
+                        : "—"}
+                    </td>
+                    <td className="amount-negative">
+                      {row.incoming
+                        ? "—"
+                        : formatMoney(row.amount, state.settings.currency)}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6}>هنوز گردش نقدی ثبت نشده است.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {cashRows.length > 30 && (
+          <small className="muted-cell">
+            ۳۰ ردیف اخیر نمایش داده شد؛ دفتر عملیات منبع کامل داده است.
+          </small>
+        )}
+      </div>
+      <div className="panel insight-panel">
+        <div className="mini-icon amber">
+          <ShieldCheck size={18} />
+        </div>
+        <div>
+          <strong>کنترل تداخل فاکتور و عملیات مستقیم</strong>
+          <p>
+            {possibleDuplicates.length
+              ? `${formatNumber(possibleDuplicates.length)} عملیات خرید/فروش مستقیم با یک فاکتور مشابه شناسایی شد؛ برای جلوگیری از دوباره‌شماری، فقط یکی از آن‌ها را مرجع اصلی قرار دهید.`
+              : "مورد مشابهی بین عملیات مستقیم خرید/فروش و فاکتورهای معتبر پیدا نشد."}
+          </p>
         </div>
       </div>
       <div className="panel insight-panel">
