@@ -62,7 +62,6 @@ import {
   applyCheckFIFO,
   createEmptyState,
   PERSON_TYPES,
-  UNIT_OPTIONS,
   suggestNextNumber,
   suggestNextPartyNumber,
 } from "@/lib/accounting";
@@ -1717,6 +1716,14 @@ function Invoices({
                     }
                   >
                     <option value="">واحد پایه</option>
+                    {!state.products.find(
+                      product => product.id === row.productId
+                    ) &&
+                      state.settings.units.map(unit => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
                     {state.products.find(
                       product => product.id === row.productId
                     ) &&
@@ -3020,7 +3027,7 @@ function Inventory({
                 value={form.unit}
                 onChange={e => setForm({ ...form, unit: e.target.value })}
               >
-                {UNIT_OPTIONS.map(unit => (
+                {state.settings.units.map(unit => (
                   <option key={unit}>{unit}</option>
                 ))}
               </select>
@@ -3031,7 +3038,7 @@ function Inventory({
                 value={form.unit2}
                 onChange={e => setForm({ ...form, unit2: e.target.value })}
               >
-                {UNIT_OPTIONS.map(unit => (
+                {state.settings.units.map(unit => (
                   <option key={unit}>{unit}</option>
                 ))}
               </select>
@@ -3320,7 +3327,7 @@ function Prices({
                 value={form.unit}
                 onChange={e => setForm({ ...form, unit: e.target.value })}
               >
-                {UNIT_OPTIONS.map(unit => (
+                {state.settings.units.map(unit => (
                   <option key={unit}>{unit}</option>
                 ))}
               </select>
@@ -5425,14 +5432,20 @@ function Production({
                 }
               >
                 <option value="">واحد پایه</option>
-                {selectedOutput &&
-                  [selectedOutput.unit, selectedOutput.unit2]
-                    .filter(Boolean)
-                    .map(unit => (
-                      <option key={unit} value={unit}>
-                        {unit}
-                      </option>
-                    ))}
+                {Array.from(
+                  new Set(
+                    (selectedOutput
+                      ? [selectedOutput.unit, selectedOutput.unit2]
+                      : []
+                    ).concat(state.settings.units)
+                  )
+                )
+                  .filter(Boolean)
+                  .map(unit => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
               </select>
             </label>
           </div>
@@ -5507,7 +5520,13 @@ function Production({
                       setForm({ ...form, materials });
                     }}
                   >
-                    {[product?.unit, product?.unit2]
+                    {Array.from(
+                      new Set([
+                        product?.unit,
+                        product?.unit2,
+                        ...state.settings.units,
+                      ])
+                    )
                       .filter(Boolean)
                       .map(unit => (
                         <option key={unit} value={unit}>
@@ -5700,6 +5719,7 @@ function SettingsPage({
   const [units, setUnits] = useState(state.settings.units);
   const [unitDraft, setUnitDraft] = useState("");
   const [editingUnit, setEditingUnit] = useState<string | null>(null);
+  const [unitsOpen, setUnitsOpen] = useState(false);
   function saveUnit() {
     const value = unitDraft.trim();
     if (!value) return;
@@ -5762,71 +5782,88 @@ function SettingsPage({
           </label>
         </div>
         <div className="settings-units">
-          <div className="panel-heading">
+          <button
+            className="settings-folder"
+            onClick={() => setUnitsOpen(open => !open)}
+          >
+            <div className="settings-folder-icon">
+              <Boxes size={20} />
+            </div>
             <div>
               <span className="section-kicker">واحدهای کالا</span>
               <h3>مدیریت واحدها</h3>
+              <small>
+                {formatNumber(units.length)} واحد ثبت شده · برای ورود انتخاب
+                کنید
+              </small>
             </div>
-            <span className="soft-tag">{formatNumber(units.length)} واحد</span>
-          </div>
-          <div className="unit-manager-form">
-            <input
-              placeholder="نام واحد جدید"
-              value={unitDraft}
-              onChange={event => setUnitDraft(event.target.value)}
+            <ChevronDown
+              className={unitsOpen ? "folder-chevron open" : "folder-chevron"}
+              size={18}
             />
-            <button
-              className="button button-primary button-small"
-              onClick={saveUnit}
-            >
-              {editingUnit ? "ذخیره اصلاح" : "افزودن واحد"}
-            </button>
-            {editingUnit && (
-              <button
-                className="button button-ghost button-small"
-                onClick={() => {
-                  setEditingUnit(null);
-                  setUnitDraft("");
-                }}
-              >
-                انصراف
-              </button>
-            )}
-          </div>
-          <div className="unit-list">
-            {units.map(unit => (
-              <div className="unit-row" key={unit}>
-                <span>{unit}</span>
-                <div>
+          </button>
+          {unitsOpen && (
+            <div className="settings-units-content">
+              <div className="unit-manager-form">
+                <input
+                  placeholder="نام واحد جدید"
+                  value={unitDraft}
+                  onChange={event => setUnitDraft(event.target.value)}
+                />
+                <button
+                  className="button button-primary button-small"
+                  onClick={saveUnit}
+                >
+                  {editingUnit ? "ذخیره اصلاح" : "افزودن واحد"}
+                </button>
+                {editingUnit && (
                   <button
-                    className="icon-button row-action"
-                    title="ویرایش واحد"
+                    className="button button-ghost button-small"
                     onClick={() => {
-                      setEditingUnit(unit);
-                      setUnitDraft(unit);
+                      setEditingUnit(null);
+                      setUnitDraft("");
                     }}
                   >
-                    <Pencil size={14} />
+                    انصراف
                   </button>
-                  <button
-                    className="icon-button row-action"
-                    title="حذف واحد"
-                    onClick={() => {
-                      if (
-                        units.length > 1 &&
-                        window.confirm(`واحد ${unit} حذف شود؟`)
-                      )
-                        setUnits(current =>
-                          current.filter(item => item !== unit)
-                        );
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
+              <div className="unit-list">
+                {units.map(unit => (
+                  <div className="unit-row" key={unit}>
+                    <span>{unit}</span>
+                    <div>
+                      <button
+                        className="icon-button row-action"
+                        title="ویرایش واحد"
+                        onClick={() => {
+                          setEditingUnit(unit);
+                          setUnitDraft(unit);
+                        }}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        className="icon-button row-action"
+                        title="حذف واحد"
+                        onClick={() => {
+                          if (
+                            units.length > 1 &&
+                            window.confirm(`واحد ${unit} حذف شود؟`)
+                          )
+                            setUnits(current =>
+                              current.filter(item => item !== unit)
+                            );
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="form-actions">
           <button

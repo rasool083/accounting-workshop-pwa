@@ -354,6 +354,25 @@ function migrateBackupData(input: unknown, version: number) {
 
 export function normalizeState(input: unknown): AppState {
   const source = isRecord(input) ? input : {};
+  const sourceProducts = Array.isArray(source.products) ? source.products : [];
+  const discoveredUnits = sourceProducts.flatMap(product =>
+    isRecord(product)
+      ? [product.unit, product.unit2].filter(
+          (unit): unit is string =>
+            typeof unit === "string" && Boolean(unit.trim())
+        )
+      : []
+  );
+  const configuredUnits =
+    isRecord(source.settings) && Array.isArray(source.settings.units)
+      ? source.settings.units.filter(
+          (unit): unit is string =>
+            typeof unit === "string" && Boolean(unit.trim())
+        )
+      : seedState.settings.units;
+  const allUnits = Array.from(
+    new Set([...configuredUnits, ...discoveredUnits])
+  );
   return {
     ...seedState,
     ...source,
@@ -372,13 +391,7 @@ export function normalizeState(input: unknown): AppState {
           typeof source.settings.dayBasis === "number")
           ? source.settings.dayBasis
           : seedState.settings.dayBasis,
-      units:
-        isRecord(source.settings) && Array.isArray(source.settings.units)
-          ? source.settings.units.filter(
-              (unit): unit is string =>
-                typeof unit === "string" && Boolean(unit.trim())
-            )
-          : seedState.settings.units,
+      units: allUnits,
     },
     people: Array.isArray(source.people)
       ? source.people.map(person => ({
