@@ -721,6 +721,7 @@ export default function Home() {
               onClick={undoState}
             >
               <Undo2 size={18} />
+              <span className="history-label">Undo</span>
             </button>
             <button
               className="icon-button history-button"
@@ -730,6 +731,7 @@ export default function Home() {
               onClick={redoState}
             >
               <Redo2 size={18} />
+              <span className="history-label">Redo</span>
             </button>
             <button
               className="icon-button"
@@ -2399,6 +2401,19 @@ function Transactions({
     note: "",
     date: todayJalali(),
   });
+  const [accountOperation, setAccountOperation] = useState({
+    type: "انتقال بین حساب‌ها" as TransactionType,
+    amount: "",
+    fromAccountId: "",
+    toAccountId: "",
+    accountId: "",
+    partyId: "",
+    date: todayJalali(),
+    note: "",
+    partnerEffect: "افزایش طلب شریک" as "افزایش طلب شریک" | "کاهش طلب شریک",
+  });
+  const accounts = state.accounts;
+  const partners = state.people.filter(person => person.roles.includes("شریک"));
   function beginTransactionEdit(item: AppState["transactions"][number]) {
     setEditingTransaction(item);
     setEditForm({
@@ -2409,29 +2424,146 @@ function Transactions({
       date: item.date,
     });
   }
+  function applyAccountEffect(
+    accounts: AppState["accounts"],
+    transaction: AppState["transactions"][number],
+    multiplier: 1 | -1
+  ) {
+    return accounts.map(account => {
+      if (transaction.fromAccountId === account.id)
+        return {
+          ...account,
+          balance: account.balance - transaction.amount * multiplier,
+        };
+      if (transaction.toAccountId === account.id)
+        return {
+          ...account,
+          balance: account.balance + transaction.amount * multiplier,
+        };
+      if (transaction.accountId === account.id && transaction.partnerEffect) {
+        const delta =
+          transaction.partnerEffect === "افزایش طلب شریک"
+            ? transaction.amount
+            : -transaction.amount;
+        return { ...account, balance: account.balance + delta * multiplier };
+      }
+      return account;
+    });
+  }
   function saveTransactionEdit(event: React.FormEvent) {
     event.preventDefault();
     const amount = Number(editForm.amount.replace(/[^0-9.-]/g, ""));
     if (!amount || !editingTransaction) return;
+    const updatedTransaction = {
+      ...editingTransaction,
+      type: editForm.type,
+      amount,
+      partyId: editForm.partyId || undefined,
+      note: editForm.note,
+      date: editForm.date,
+    };
+    let nextAccounts = state.accounts;
+    if (
+      editingTransaction.accountId ||
+      editingTransaction.fromAccountId ||
+      editingTransaction.toAccountId
+    ) {
+      nextAccounts = applyAccountEffect(nextAccounts, editingTransaction, -1);
+      nextAccounts = applyAccountEffect(nextAccounts, updatedTransaction, 1);
+    }
     onSave(
       {
         ...state,
+        accounts: nextAccounts,
         transactions: state.transactions.map(row =>
-          row.id === editingTransaction.id
-            ? {
-                ...row,
-                type: editForm.type,
-                amount,
-                partyId: editForm.partyId || undefined,
-                note: editForm.note,
-                date: editForm.date,
-              }
-            : row
+          row.id === editingTransaction.id ? updatedTransaction : row
         ),
       },
       "تمام اطلاعات عملیات ویرایش شد"
     );
     setEditingTransaction(null);
+  }
+  function saveAccountOperation(event: React.FormEvent) {
+    event.preventDefault();
+    const amount = Number(accountOperation.amount.replace(/[^0-9.-]/g, ""));
+    if (!amount || amount <= 0) return;
+    const isTransfer = accountOperation.type === "انتقال بین حساب‌ها";
+    if (
+      isTransfer &&
+      (!accountOperation.fromAccountId ||
+        !accountOperation.toAccountId ||
+        accountOperation.fromAccountId === accountOperation.toAccountId)
+    ) {
+      window.alert("حساب مبدأ و مقصد را متفاوت انتخاب کنید.");
+      return;
+    }
+    if (
+      !isTransfer &&
+      (!accountOperation.accountId || !accountOperation.partyId)
+    ) {
+      window.alert("حساب شریک و طرف حساب شریک را انتخاب کنید.");
+      return;
+    }
+    const nextAccounts = state.accounts.map(account => {
+      if (isTransfer && account.id === accountOperation.fromAccountId)
+        return { ...account, balance: account.balance - amount };
+      if (isTransfer && account.id === accountOperation.toAccountId)
+        return { ...account, balance: account.balance + amount };
+      if (!isTransfer && account.id === accountOperation.accountId) {
+        const delta =
+          accountOperation.partnerEffect === "افزایش طلب شریک"
+            ? amount
+            : -amount;
+        return { ...account, balance: account.balance + delta };
+      }
+      return account;
+    });
+    const fromName = state.accounts.find(
+      account => account.id === accountOperation.fromAccountId
+    )?.name;
+    const toName = state.accounts.find(
+      account => account.id === accountOperation.toAccountId
+    )?.name;
+    const accountName = state.accounts.find(
+      account => account.id === accountOperation.accountId
+    )?.name;
+    const note = isTransfer
+      ? `انتقال از ${fromName} به ${toName}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`
+      : `${accountOperation.partnerEffect} · ${accountName}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`;
+    const transaction: AppState["transactions"][number] = {
+      id: createId("account-operation"),
+      type: accountOperation.type,
+      date: accountOperation.date,
+      partyId: accountOperation.partyId || undefined,
+      accountId: accountOperation.accountId || undefined,
+      fromAccountId: accountOperation.fromAccountId || undefined,
+      toAccountId: accountOperation.toAccountId || undefined,
+      partnerEffect: isTransfer ? undefined : accountOperation.partnerEffect,
+      amount,
+      status: "ثبت شده",
+      note,
+    };
+    onSave(
+      {
+        ...state,
+        accounts: nextAccounts,
+        transactions: [transaction, ...state.transactions],
+      },
+      isTransfer
+        ? "انتقال بین حساب‌ها ثبت شد"
+        : "عملیات شریک و اثر آن در حساب ثبت شد"
+    );
+    setAccountOperation({
+      type: "انتقال بین حساب‌ها",
+      amount: "",
+      fromAccountId: "",
+      toAccountId: "",
+      accountId: "",
+      partyId: "",
+      date: todayJalali(),
+      note: "",
+      partnerEffect: "افزایش طلب شریک",
+    });
   }
   return (
     <div className="page-stack page-enter">
@@ -2442,6 +2574,182 @@ function Transactions({
         actionLabel="ثبت عملیات"
         onAction={onQuick}
       />
+      <form
+        className="panel form-grid account-operation-panel"
+        onSubmit={saveAccountOperation}
+      >
+        <div className="panel-heading full-field">
+          <div>
+            <span className="section-kicker">گردش حساب و شریک</span>
+            <h3>انتقال و تسویهٔ دوطرفه</h3>
+          </div>
+        </div>
+        <label>
+          نوع عملیات
+          <select
+            value={accountOperation.type}
+            onChange={event =>
+              setAccountOperation({
+                ...accountOperation,
+                type: event.target.value as TransactionType,
+              })
+            }
+          >
+            <option value="انتقال بین حساب‌ها">انتقال بین حساب‌ها</option>
+            <option value="هزینه/خرید توسط شریک">هزینه/خرید توسط شریک</option>
+            <option value="دریافت توسط شریک">دریافت وجه توسط شریک</option>
+            <option value="مساعده/پرداخت به شریک">
+              مساعده / پرداخت به شریک
+            </option>
+            <option value="دریافت تسویه از شریک">دریافت تسویه از شریک</option>
+          </select>
+        </label>
+        <label>
+          مبلغ
+          <input
+            inputMode="numeric"
+            value={accountOperation.amount}
+            onChange={event =>
+              setAccountOperation({
+                ...accountOperation,
+                amount: event.target.value,
+              })
+            }
+            placeholder="مبلغ"
+            required
+          />
+        </label>
+        {accountOperation.type === "انتقال بین حساب‌ها" ? (
+          <>
+            <label>
+              حساب مبدأ
+              <select
+                value={accountOperation.fromAccountId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    fromAccountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">انتخاب مبدأ</option>
+                {accounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} · {account.type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              حساب مقصد
+              <select
+                value={accountOperation.toAccountId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    toAccountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">انتخاب مقصد</option>
+                {accounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} · {account.type}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : (
+          <>
+            <label>
+              حساب شریک
+              <select
+                value={accountOperation.accountId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    accountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">انتخاب حساب شریک</option>
+                {accounts
+                  .filter(account => account.type === "شریک")
+                  .map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              طرف حساب شریک
+              <select
+                value={accountOperation.partyId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    partyId: event.target.value,
+                  })
+                }
+              >
+                <option value="">انتخاب شریک</option>
+                {partners.map(person => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              اثر بر مانده شریک
+              <select
+                value={accountOperation.partnerEffect}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    partnerEffect: event.target
+                      .value as typeof accountOperation.partnerEffect,
+                  })
+                }
+              >
+                <option value="افزایش طلب شریک">
+                  افزایش طلب شریک / بدهی کارگاه
+                </option>
+                <option value="کاهش طلب شریک">کاهش طلب شریک / تسویه</option>
+              </select>
+            </label>
+          </>
+        )}
+        <label>
+          تاریخ
+          <JalaliDatePicker
+            value={accountOperation.date}
+            onChange={date =>
+              setAccountOperation({ ...accountOperation, date })
+            }
+          />
+        </label>
+        <label className="full-field">
+          شرح عملیاتی
+          <input
+            value={accountOperation.note}
+            onChange={event =>
+              setAccountOperation({
+                ...accountOperation,
+                note: event.target.value,
+              })
+            }
+            placeholder="مثلاً خرید مواد اولیه توسط شریک یا مساعده"
+          />
+        </label>
+        <div className="form-actions full-field">
+          <button className="button button-primary" type="submit">
+            ثبت گردش حساب
+          </button>
+        </div>
+      </form>
       <div className="toolbar">
         <div className="search-box">
           <Search size={17} />
@@ -2461,7 +2769,7 @@ function Transactions({
               <tr>
                 <th>نوع عملیات</th>
                 <th>تاریخ</th>
-                <th>طرف حساب</th>
+                <th>طرف حساب / شرح</th>
                 <th>مبلغ</th>
                 <th>وضعیت</th>
               </tr>
@@ -2479,7 +2787,12 @@ function Transactions({
                       </span>
                     </td>
                     <td>{formatDate(item.date)}</td>
-                    <td>{personName(state, item.partyId)}</td>
+                    <td>
+                      <div>{personName(state, item.partyId)}</div>
+                      {item.note && (
+                        <small className="muted-cell">{item.note}</small>
+                      )}
+                    </td>
                     <td className="amount-cell">
                       {formatMoney(item.amount, state.settings.currency)}
                     </td>
@@ -2499,18 +2812,25 @@ function Transactions({
                       <button
                         className="icon-button row-action"
                         title="حذف عملیات"
-                        onClick={() =>
-                          window.confirm("عملیات حذف شود؟") &&
+                        onClick={() => {
+                          if (!window.confirm("عملیات حذف شود؟")) return;
+                          const nextAccounts =
+                            item.accountId ||
+                            item.fromAccountId ||
+                            item.toAccountId
+                              ? applyAccountEffect(state.accounts, item, -1)
+                              : state.accounts;
                           onSave(
                             {
                               ...state,
+                              accounts: nextAccounts,
                               transactions: state.transactions.filter(
                                 row => row.id !== item.id
                               ),
                             },
-                            "عملیات حذف شد"
-                          )
-                        }
+                            "عملیات حذف شد و اثر حسابی آن برگشت داده شد"
+                          );
+                        }}
                       >
                         <Trash2 size={14} />
                       </button>

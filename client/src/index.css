@@ -2887,3 +2887,18 @@ tr:last-child td {
   border-color: #e8ebf0;
   transform: none;
 }
+
+.history-button {
+  width: 44px;
+  height: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+.history-label {
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+}
