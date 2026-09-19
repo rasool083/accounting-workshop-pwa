@@ -6854,6 +6854,86 @@ function Reports({
       });
     return summary;
   }, [state]);
+  const [statementPartyId, setStatementPartyId] = useState("");
+  const statementRows = useMemo(() => {
+    if (!statementPartyId) return [];
+    const raw: Array<{
+      id: string;
+      date: string;
+      reference: string;
+      debit: number;
+      credit: number;
+      note: string;
+    }> = [];
+    state.invoices
+      .filter(
+        invoice =>
+          invoice.partyId === statementPartyId && invoice.status !== "باطل"
+      )
+      .forEach(invoice =>
+        raw.push({
+          id: `statement-invoice-${invoice.id}`,
+          date: invoice.date,
+          reference: `فاکتور ${invoice.type} ${invoice.number}`,
+          debit: invoice.type === "فروش" ? invoice.amount : 0,
+          credit: invoice.type === "خرید" ? invoice.amount : 0,
+          note: invoice.note || "",
+        })
+      );
+    state.checks
+      .filter(
+        check => check.partyId === statementPartyId && check.status !== "باطل"
+      )
+      .forEach(check =>
+        raw.push({
+          id: `statement-check-${check.id}`,
+          date: check.receivedDate || check.dueDate,
+          reference: `چک دریافتی ${check.number}`,
+          debit: ["برگشتی", "عودت داده شده"].includes(check.status)
+            ? check.amount
+            : 0,
+          credit: ["برگشتی", "عودت داده شده"].includes(check.status)
+            ? 0
+            : check.amount,
+          note: check.status,
+        })
+      );
+    return raw
+      .sort((a, b) =>
+        jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date))
+      )
+      .map((row, index, all) => ({
+        ...row,
+        balance: all
+          .slice(0, index + 1)
+          .reduce((sum, item) => sum + item.debit - item.credit, 0),
+      }));
+  }, [statementPartyId, state]);
+  function downloadStatement() {
+    if (!statementPartyId || !statementRows.length) return;
+    const person = state.people.find(item => item.id === statementPartyId);
+    const csv = [
+      "تاریخ,مرجع,بدهکار,بستانکار,مانده,شرح",
+      ...statementRows.map(row =>
+        [
+          row.date,
+          row.reference,
+          row.debit,
+          row.credit,
+          row.balance,
+          row.note,
+        ].join(",")
+      ),
+    ].join("\n");
+    const url = URL.createObjectURL(
+      new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" })
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `statement-${person?.code || statementPartyId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -7049,6 +7129,95 @@ function Reports({
                 <tr>
                   <td colSpan={5}>
                     برای طرف حساب‌ها فاکتور یا وصولی ثبت نشده است.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="panel table-panel customer-statement-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker">صورت‌حساب تفصیلی</span>
+            <h3>گردش کامل مشتری</h3>
+          </div>
+          <div className="panel-heading-actions">
+            <button
+              className="button button-ghost"
+              onClick={() => window.print()}
+            >
+              چاپ
+            </button>
+            <button className="button button-ghost" onClick={downloadStatement}>
+              خروجی CSV
+            </button>
+          </div>
+        </div>
+        <div className="statement-controls">
+          <label>
+            مشتری
+            <select
+              value={statementPartyId}
+              onChange={event => setStatementPartyId(event.target.value)}
+            >
+              <option value="">انتخاب مشتری</option>
+              {state.people
+                .filter(
+                  person =>
+                    person.roles?.includes("مشتری") || person.type === "مشتری"
+                )
+                .map(person => (
+                  <option key={person.id} value={person.id}>
+                    {person.code} · {person.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <span className="soft-tag">
+            بدهکار: فروش · بستانکار: خرید و چک دریافتی
+          </span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>تاریخ</th>
+                <th>مرجع</th>
+                <th>بدهکار</th>
+                <th>بستانکار</th>
+                <th>مانده تجمعی</th>
+                <th>شرح</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statementRows.length ? (
+                statementRows.map(row => (
+                  <tr key={row.id}>
+                    <td>{formatDate(row.date)}</td>
+                    <td>
+                      <strong>{row.reference}</strong>
+                    </td>
+                    <td>{formatMoney(row.debit, state.settings.currency)}</td>
+                    <td>{formatMoney(row.credit, state.settings.currency)}</td>
+                    <td
+                      className={
+                        row.balance >= 0 ? "amount-negative" : "amount-positive"
+                      }
+                    >
+                      {formatMoney(
+                        Math.abs(row.balance),
+                        state.settings.currency
+                      )}
+                    </td>
+                    <td>{row.note || "—"}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6}>
+                    مشتری را انتخاب کنید تا صورت‌حساب فاکتورها و چک‌های او نمایش
+                    داده شود.
                   </td>
                 </tr>
               )}

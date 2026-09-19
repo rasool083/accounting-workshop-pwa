@@ -3103,3 +3103,25 @@ tr:last-child td {
   font-size: 10px;
   line-height: 1.8;
 }
+
+.statement-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 0;
+}
+.statement-controls label {
+  min-width: 220px;
+  display: grid;
+  gap: 5px;
+  color: #5d6b7a;
+  font-size: 11px;
+}
+.statement-controls select {
+  width: 100%;
+}
+.customer-statement-panel small {
+  display: block;
+  margin-top: 3px;
+}
