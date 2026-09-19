@@ -3092,3 +3092,14 @@ tr:last-child td {
     min-width: 88px;
   }
 }
+
+.partner-settlement-hint {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border: 1px solid #d8ebe2;
+  border-radius: 9px;
+  background: #f1faf6;
+  color: #4e7568;
+  font-size: 10px;
+  line-height: 1.8;
+}

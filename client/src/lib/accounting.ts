@@ -109,6 +109,9 @@ export type TransactionType =
   | "دریافت توسط شریک"
   | "مساعده/پرداخت به شریک"
   | "دریافت تسویه از شریک";
+export type PartnerSettlementDirection =
+  | "پرداخت بدهی کارگاه به شریک"
+  | "دریافت طلب کارگاه از شریک";
 export type CheckStatus =
   | "نزد ما"
   | "وصول شده"
@@ -193,7 +196,15 @@ export interface Transaction {
   quantity?: number;
   unit?: string;
   checkId?: string;
-  partnerEffect?: "افزایش طلب شریک" | "کاهش طلب شریک";
+  partnerEffect?:
+    | "افزایش طلب شریک"
+    | "کاهش طلب شریک"
+    | "افزایش طلب کارگاه از شریک"
+    | "کاهش طلب کارگاه از شریک";
+  settlementDirection?: PartnerSettlementDirection;
+  referenceType?: "فاکتور خرید" | "چک" | "هزینه" | "سایر";
+  referenceId?: string;
+  referenceLabel?: string;
   amount: number;
   status: "ثبت شده" | "باطل";
   note: string;

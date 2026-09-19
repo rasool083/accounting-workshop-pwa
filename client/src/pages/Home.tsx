@@ -42,6 +42,7 @@ import {
   ProductionMaterial,
   ProductionFormula,
   Product,
+  PartnerSettlementDirection,
   PageId,
   TransactionType,
   appendAudit,
@@ -2457,14 +2458,26 @@ function Transactions({
     quantity: "",
     unit: "",
     checkId: "",
+    settlementDirection:
+      "پرداخت بدهی کارگاه به شریک" as PartnerSettlementDirection,
+    referenceType: "سایر" as "فاکتور خرید" | "چک" | "هزینه" | "سایر",
+    referenceId: "",
     date: todayJalali(),
     note: "",
-    partnerEffect: "افزایش طلب شریک" as "افزایش طلب شریک" | "کاهش طلب شریک",
+    partnerEffect: "افزایش طلب شریک" as
+      | "افزایش طلب شریک"
+      | "کاهش طلب شریک"
+      | "افزایش طلب کارگاه از شریک"
+      | "کاهش طلب کارگاه از شریک",
   });
   const accounts = state.accounts;
   const partners = state.people.filter(person => person.roles.includes("شریک"));
   const operationProducts = state.products;
   const operationChecks = state.checks.filter(check => check.status !== "باطل");
+  const isPartnerSettlementType = [
+    "مساعده/پرداخت به شریک",
+    "دریافت تسویه از شریک",
+  ].includes(accountOperation.type);
   function beginTransactionEdit(item: AppState["transactions"][number]) {
     setEditingTransaction(item);
     setEditForm({
@@ -2493,7 +2506,8 @@ function Transactions({
         };
       if (transaction.accountId === account.id && transaction.partnerEffect) {
         const delta =
-          transaction.partnerEffect === "افزایش طلب شریک"
+          transaction.partnerEffect === "افزایش طلب شریک" ||
+          transaction.partnerEffect === "افزایش طلب کارگاه از شریک"
             ? transaction.amount
             : -transaction.amount;
         return { ...account, balance: account.balance + delta * multiplier };
@@ -2563,6 +2577,10 @@ function Transactions({
     const isStockOperation = ["خرید کالا", "فروش کالا"].includes(
       accountOperation.type
     );
+    const isPartnerSettlement = [
+      "مساعده/پرداخت به شریک",
+      "دریافت تسویه از شریک",
+    ].includes(accountOperation.type);
     const selectedProduct = state.products.find(
       product => product.id === accountOperation.productId
     );
@@ -2585,6 +2603,15 @@ function Transactions({
       return;
     }
     if (
+      isPartnerSettlement &&
+      (!accountOperation.fromAccountId ||
+        !accountOperation.toAccountId ||
+        accountOperation.fromAccountId === accountOperation.toAccountId)
+    ) {
+      window.alert("حساب مبدأ و مقصد تسویه شریک را متفاوت انتخاب کنید.");
+      return;
+    }
+    if (
       isStockOperation &&
       (!selectedProduct ||
         !accountOperation.warehouseId ||
@@ -2598,6 +2625,10 @@ function Transactions({
       return;
     }
     const nextAccounts = state.accounts.map(account => {
+      if (isPartnerSettlement && account.id === accountOperation.fromAccountId)
+        return { ...account, balance: account.balance - amount };
+      if (isPartnerSettlement && account.id === accountOperation.toAccountId)
+        return { ...account, balance: account.balance + amount };
       if (isTransfer && account.id === accountOperation.fromAccountId)
         return { ...account, balance: account.balance - amount };
       if (isTransfer && account.id === accountOperation.toAccountId)
@@ -2613,10 +2644,12 @@ function Transactions({
       if (
         !isTransfer &&
         !isStockOperation &&
+        !isPartnerSettlement &&
         account.id === accountOperation.accountId
       ) {
         const delta =
-          accountOperation.partnerEffect === "افزایش طلب شریک"
+          accountOperation.partnerEffect === "افزایش طلب شریک" ||
+          accountOperation.partnerEffect === "افزایش طلب کارگاه از شریک"
             ? amount
             : -amount;
         return { ...account, balance: account.balance + delta };
@@ -2652,11 +2685,21 @@ function Transactions({
       warehouse => warehouse.id === accountOperation.warehouseId
     )?.name;
     const productName = selectedProduct?.name;
+    const referenceLabel =
+      accountOperation.referenceType === "فاکتور خرید"
+        ? state.invoices.find(
+            invoice => invoice.id === accountOperation.referenceId
+          )?.number
+        : accountOperation.referenceType === "چک"
+          ? state.checks.find(
+              check => check.id === accountOperation.referenceId
+            )?.number
+          : undefined;
     const note = isTransfer
       ? `انتقال از ${fromName} به ${toName}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`
       : isStockOperation
         ? `${accountOperation.type} · ${productName} · ${quantity} ${accountOperation.unit || selectedProduct?.unit} · انبار ${warehouseName} · حساب ${accountName}${accountOperation.checkId ? ` · چک ${state.checks.find(check => check.id === accountOperation.checkId)?.number || ""}` : ""}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`
-        : `${accountOperation.partnerEffect} · ${accountName}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`;
+        : `${accountOperation.settlementDirection || accountOperation.partnerEffect} · ${accountName}${referenceLabel ? ` · مرجع ${accountOperation.referenceType}: ${referenceLabel}` : ""}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`;
     const transaction: AppState["transactions"][number] = {
       id: createId("account-operation"),
       type: accountOperation.type,
@@ -2671,6 +2714,16 @@ function Transactions({
       unit: accountOperation.unit || undefined,
       checkId: accountOperation.checkId || undefined,
       partnerEffect: isTransfer ? undefined : accountOperation.partnerEffect,
+      settlementDirection: isPartnerSettlement
+        ? accountOperation.settlementDirection
+        : undefined,
+      referenceType: isPartnerSettlement
+        ? accountOperation.referenceType
+        : undefined,
+      referenceId: isPartnerSettlement
+        ? accountOperation.referenceId || undefined
+        : undefined,
+      referenceLabel: isPartnerSettlement ? referenceLabel : undefined,
       amount,
       status: "ثبت شده",
       note,
@@ -2700,6 +2753,9 @@ function Transactions({
       quantity: "",
       unit: "",
       checkId: "",
+      settlementDirection: "پرداخت بدهی کارگاه به شریک",
+      referenceType: "سایر",
+      referenceId: "",
       date: todayJalali(),
       note: "",
       partnerEffect: "افزایش طلب شریک",
@@ -2979,7 +3035,7 @@ function Transactions({
         ) : (
           <>
             <label>
-              حساب شریک
+              حساب مالی شریک
               <select
                 value={accountOperation.accountId}
                 onChange={event =>
@@ -3000,7 +3056,7 @@ function Transactions({
               </select>
             </label>
             <label>
-              طرف حساب شریک
+              طرف حساب شریک / ذی‌نفع
               <select
                 value={accountOperation.partyId}
                 onChange={event =>
@@ -3034,8 +3090,165 @@ function Transactions({
                   افزایش طلب شریک / بدهی کارگاه
                 </option>
                 <option value="کاهش طلب شریک">کاهش طلب شریک / تسویه</option>
+                <option value="افزایش طلب کارگاه از شریک">
+                  افزایش طلب کارگاه از شریک
+                </option>
+                <option value="کاهش طلب کارگاه از شریک">
+                  کاهش طلب کارگاه از شریک / بازپرداخت
+                </option>
               </select>
             </label>
+            {isPartnerSettlementType && (
+              <>
+                <div className="partner-settlement-hint full-field">
+                  پرداخت بدهی کارگاه به شریک یعنی پول از حساب کارگاه به حساب
+                  شریک می‌رود؛ دریافت طلب کارگاه از شریک یعنی وجه فاکتور/چک از
+                  حساب شریک به حساب کارگاه منتقل می‌شود.
+                </div>
+                <label>
+                  جهت تسویه
+                  <select
+                    value={accountOperation.settlementDirection}
+                    onChange={event =>
+                      setAccountOperation({
+                        ...accountOperation,
+                        settlementDirection: event.target
+                          .value as PartnerSettlementDirection,
+                        partnerEffect:
+                          event.target.value === "پرداخت بدهی کارگاه به شریک"
+                            ? "کاهش طلب شریک"
+                            : "کاهش طلب کارگاه از شریک",
+                      })
+                    }
+                  >
+                    <option value="پرداخت بدهی کارگاه به شریک">
+                      پرداخت بدهی کارگاه به شریک
+                    </option>
+                    <option value="دریافت طلب کارگاه از شریک">
+                      دریافت طلب کارگاه از شریک
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  حساب مبدأ تسویه
+                  <select
+                    value={accountOperation.fromAccountId}
+                    onChange={event =>
+                      setAccountOperation({
+                        ...accountOperation,
+                        fromAccountId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">انتخاب حساب مبدأ</option>
+                    {accounts.map(account => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} · {account.type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  حساب مقصد تسویه
+                  <select
+                    value={accountOperation.toAccountId}
+                    onChange={event =>
+                      setAccountOperation({
+                        ...accountOperation,
+                        toAccountId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">انتخاب حساب مقصد</option>
+                    {accounts.map(account => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} · {account.type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  نوع مرجع
+                  <select
+                    value={accountOperation.referenceType}
+                    onChange={event =>
+                      setAccountOperation({
+                        ...accountOperation,
+                        referenceType: event.target
+                          .value as typeof accountOperation.referenceType,
+                        referenceId: "",
+                      })
+                    }
+                  >
+                    <option value="فاکتور خرید">فاکتور خرید</option>
+                    <option value="چک">چک</option>
+                    <option value="هزینه">هزینه</option>
+                    <option value="سایر">سایر</option>
+                  </select>
+                </label>
+                {accountOperation.referenceType === "فاکتور خرید" && (
+                  <label>
+                    فاکتور مرجع
+                    <select
+                      value={accountOperation.referenceId}
+                      onChange={event =>
+                        setAccountOperation({
+                          ...accountOperation,
+                          referenceId: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">انتخاب فاکتور خرید</option>
+                      {state.invoices
+                        .filter(
+                          invoice =>
+                            invoice.type === "خرید" &&
+                            invoice.status !== "باطل" &&
+                            (!accountOperation.partyId ||
+                              invoice.partyId === accountOperation.partyId)
+                        )
+                        .map(invoice => (
+                          <option key={invoice.id} value={invoice.id}>
+                            {invoice.number} ·{" "}
+                            {formatMoney(
+                              invoice.amount,
+                              state.settings.currency
+                            )}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                {accountOperation.referenceType === "چک" && (
+                  <label>
+                    چک مرجع
+                    <select
+                      value={accountOperation.referenceId}
+                      onChange={event =>
+                        setAccountOperation({
+                          ...accountOperation,
+                          referenceId: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">انتخاب چک</option>
+                      {operationChecks
+                        .filter(
+                          check =>
+                            !accountOperation.partyId ||
+                            check.partyId === accountOperation.partyId
+                        )
+                        .map(check => (
+                          <option key={check.id} value={check.id}>
+                            {check.number} ·{" "}
+                            {formatMoney(check.amount, state.settings.currency)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            )}
           </>
         )}
         <label>
@@ -6396,16 +6609,25 @@ function Reports({
         ledgerMode === "account"
           ? item.toAccountId === ledgerAccountId ||
             ["دریافت", "درآمد", "فروش کالا"].includes(item.type)
-          : ["خرید", "هزینه/خرید توسط شریک", "دریافت توسط شریک"].includes(
-              item.type
-            );
+          : item.partnerEffect === "افزایش طلب شریک" ||
+            item.partnerEffect === "کاهش طلب کارگاه از شریک" ||
+            item.type === "خرید" ||
+            item.type === "هزینه/خرید توسط شریک";
       rows.push({
         id: item.id,
         date: item.date,
         title: transactionLabel(item.type),
         increase: increase ? item.amount : 0,
         decrease: increase ? 0 : item.amount,
-        note: item.note || "",
+        note: [
+          item.settlementDirection,
+          item.referenceLabel
+            ? `مرجع ${item.referenceType}: ${item.referenceLabel}`
+            : "",
+          item.note || "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
       });
     });
     if (ledgerMode === "account") {
