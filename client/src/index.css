@@ -2902,3 +2902,94 @@ tr:last-child td {
   font-weight: 700;
   letter-spacing: 0.1px;
 }
+
+/* Linked financial operations and Drive auth stay inside the mobile viewport. */
+.account-operation-panel,
+.drive-auth-box,
+.backup-main,
+.cloud-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.inline-form-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(86px, 0.8fr);
+  gap: 6px;
+  width: 100%;
+}
+.drive-auth-box {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #e4e8f2;
+  border-radius: 12px;
+  background: #fbfcff;
+  text-align: right;
+}
+.drive-auth-box strong,
+.drive-auth-box small {
+  display: block;
+}
+.drive-auth-box strong {
+  color: #49526e;
+  font-size: 11px;
+}
+.drive-auth-box small {
+  margin-top: 5px;
+  color: #8d96a8;
+  font-size: 9px;
+  line-height: 1.8;
+}
+.drive-auth-box input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 9px 0;
+  padding: 9px 10px;
+  border: 1px solid #dde3ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #36435a;
+  font: inherit;
+  font-size: 10px;
+}
+.drive-auth-box .button {
+  max-width: 100%;
+  white-space: normal;
+}
+@media (max-width: 760px) {
+  .content-wrap {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+  .backup-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .backup-main,
+  .cloud-panel {
+    padding: 14px;
+  }
+  .backup-hero {
+    gap: 9px;
+  }
+  .backup-hero h3,
+  .cloud-panel h3 {
+    font-size: 13px;
+  }
+  .backup-hero p,
+  .cloud-panel p {
+    font-size: 9px;
+    line-height: 1.8;
+  }
+  .cloud-panel .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cloud-panel .form-actions .button,
+  .cloud-panel .form-actions a {
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+  }
+}

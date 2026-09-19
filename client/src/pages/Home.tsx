@@ -524,12 +524,18 @@ export default function Home() {
       return;
     }
     try {
-      const adapter = createGoogleDriveAdapter(
-        token,
-        PROJECT_BACKUPS_FOLDER_ID
-      );
+      let adapter = createGoogleDriveAdapter(token, PROJECT_BACKUPS_FOLDER_ID);
       const dateKey = backupDateKey();
-      const existing = await adapter.listBackups();
+      let existing: DriveBackupFile[];
+      try {
+        existing = await adapter.listBackups();
+      } catch {
+        adapter = createGoogleDriveAdapter(token);
+        existing = await adapter.listBackups();
+        setNotice(
+          "پوشه قدیمی Drive قابل دسترسی نبود؛ نسخه در فضای برنامه ذخیره می‌شود"
+        );
+      }
       const sequence = nextDriveBackupSequence(existing, dateKey);
       const filename = backupFilename(dateKey, sequence);
       const uploaded = await adapter.uploadBackup(
@@ -551,6 +557,7 @@ export default function Home() {
   }
 
   async function handleDriveConnect(clientId: string) {
+    setNotice("در حال بازکردن پنجرهٔ مجوز Google Drive...");
     try {
       setDriveClientId(clientId);
       setDriveClientIdState(clientId.trim());
@@ -575,10 +582,18 @@ export default function Home() {
     }
     setDriveLoading(true);
     try {
-      const files = await createGoogleDriveAdapter(
-        token,
-        PROJECT_BACKUPS_FOLDER_ID
-      ).listBackups();
+      let files: DriveBackupFile[];
+      try {
+        files = await createGoogleDriveAdapter(
+          token,
+          PROJECT_BACKUPS_FOLDER_ID
+        ).listBackups();
+      } catch {
+        files = await createGoogleDriveAdapter(token).listBackups();
+        setNotice(
+          "پوشه قدیمی قابل خواندن نبود؛ فهرست فایل‌های برنامه خوانده شد"
+        );
+      }
       setDriveBackups(files.length ? files : [LAST_VERIFIED_BACKUP]);
       setNotice(
         `${formatNumber(files.length)} نسخهٔ پشتیبان از Drive خوانده شد`
@@ -2431,12 +2446,19 @@ function Transactions({
     toAccountId: "",
     accountId: "",
     partyId: "",
+    productId: "",
+    warehouseId: "",
+    quantity: "",
+    unit: "",
+    checkId: "",
     date: todayJalali(),
     note: "",
     partnerEffect: "افزایش طلب شریک" as "افزایش طلب شریک" | "کاهش طلب شریک",
   });
   const accounts = state.accounts;
   const partners = state.people.filter(person => person.roles.includes("شریک"));
+  const operationProducts = state.products;
+  const operationChecks = state.checks.filter(check => check.status !== "باطل");
   function beginTransactionEdit(item: AppState["transactions"][number]) {
     setEditingTransaction(item);
     setEditForm({
@@ -2473,6 +2495,23 @@ function Transactions({
       return account;
     });
   }
+  function applyProductEffect(
+    products: AppState["products"],
+    transaction: AppState["transactions"][number],
+    multiplier: 1 | -1
+  ) {
+    if (!transaction.productId || !transaction.quantity) return products;
+    const direction = transaction.type === "خرید کالا" ? 1 : -1;
+    return products.map(product =>
+      product.id === transaction.productId
+        ? {
+            ...product,
+            stock:
+              product.stock + direction * transaction.quantity! * multiplier,
+          }
+        : product
+    );
+  }
   function saveTransactionEdit(event: React.FormEvent) {
     event.preventDefault();
     const amount = Number(editForm.amount.replace(/[^0-9.-]/g, ""));
@@ -2486,6 +2525,7 @@ function Transactions({
       date: editForm.date,
     };
     let nextAccounts = state.accounts;
+    let nextProducts = state.products;
     if (
       editingTransaction.accountId ||
       editingTransaction.fromAccountId ||
@@ -2494,10 +2534,13 @@ function Transactions({
       nextAccounts = applyAccountEffect(nextAccounts, editingTransaction, -1);
       nextAccounts = applyAccountEffect(nextAccounts, updatedTransaction, 1);
     }
+    nextProducts = applyProductEffect(nextProducts, editingTransaction, -1);
+    nextProducts = applyProductEffect(nextProducts, updatedTransaction, 1);
     onSave(
       {
         ...state,
         accounts: nextAccounts,
+        products: nextProducts,
         transactions: state.transactions.map(row =>
           row.id === editingTransaction.id ? updatedTransaction : row
         ),
@@ -2511,6 +2554,13 @@ function Transactions({
     const amount = Number(accountOperation.amount.replace(/[^0-9.-]/g, ""));
     if (!amount || amount <= 0) return;
     const isTransfer = accountOperation.type === "انتقال بین حساب‌ها";
+    const isStockOperation = ["خرید کالا", "فروش کالا"].includes(
+      accountOperation.type
+    );
+    const selectedProduct = state.products.find(
+      product => product.id === accountOperation.productId
+    );
+    const quantity = Number(accountOperation.quantity.replace(/[^0-9.-]/g, ""));
     if (
       isTransfer &&
       (!accountOperation.fromAccountId ||
@@ -2522,9 +2572,23 @@ function Transactions({
     }
     if (
       !isTransfer &&
+      !isStockOperation &&
       (!accountOperation.accountId || !accountOperation.partyId)
     ) {
       window.alert("حساب شریک و طرف حساب شریک را انتخاب کنید.");
+      return;
+    }
+    if (
+      isStockOperation &&
+      (!selectedProduct ||
+        !accountOperation.warehouseId ||
+        !accountOperation.partyId ||
+        !accountOperation.accountId ||
+        !quantity)
+    ) {
+      window.alert(
+        "برای خرید یا فروش، کالا، انبار، طرف حساب و حساب مالی را انتخاب کنید."
+      );
       return;
     }
     const nextAccounts = state.accounts.map(account => {
@@ -2532,7 +2596,19 @@ function Transactions({
         return { ...account, balance: account.balance - amount };
       if (isTransfer && account.id === accountOperation.toAccountId)
         return { ...account, balance: account.balance + amount };
-      if (!isTransfer && account.id === accountOperation.accountId) {
+      if (isStockOperation && account.id === accountOperation.accountId) {
+        return {
+          ...account,
+          balance:
+            account.balance +
+            (accountOperation.type === "خرید کالا" ? -amount : amount),
+        };
+      }
+      if (
+        !isTransfer &&
+        !isStockOperation &&
+        account.id === accountOperation.accountId
+      ) {
         const delta =
           accountOperation.partnerEffect === "افزایش طلب شریک"
             ? amount
@@ -2541,6 +2617,22 @@ function Transactions({
       }
       return account;
     });
+    const nextProducts =
+      isStockOperation && selectedProduct
+        ? state.products.map(product =>
+            product.id === selectedProduct.id
+              ? {
+                  ...product,
+                  warehouseId: accountOperation.warehouseId,
+                  stock:
+                    product.stock +
+                    (accountOperation.type === "خرید کالا"
+                      ? quantity
+                      : -quantity),
+                }
+              : product
+          )
+        : state.products;
     const fromName = state.accounts.find(
       account => account.id === accountOperation.fromAccountId
     )?.name;
@@ -2550,9 +2642,15 @@ function Transactions({
     const accountName = state.accounts.find(
       account => account.id === accountOperation.accountId
     )?.name;
+    const warehouseName = state.warehouses.find(
+      warehouse => warehouse.id === accountOperation.warehouseId
+    )?.name;
+    const productName = selectedProduct?.name;
     const note = isTransfer
       ? `انتقال از ${fromName} به ${toName}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`
-      : `${accountOperation.partnerEffect} · ${accountName}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`;
+      : isStockOperation
+        ? `${accountOperation.type} · ${productName} · ${quantity} ${accountOperation.unit || selectedProduct?.unit} · انبار ${warehouseName} · حساب ${accountName}${accountOperation.checkId ? ` · چک ${state.checks.find(check => check.id === accountOperation.checkId)?.number || ""}` : ""}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`
+        : `${accountOperation.partnerEffect} · ${accountName}${accountOperation.note ? ` · ${accountOperation.note}` : ""}`;
     const transaction: AppState["transactions"][number] = {
       id: createId("account-operation"),
       type: accountOperation.type,
@@ -2561,6 +2659,11 @@ function Transactions({
       accountId: accountOperation.accountId || undefined,
       fromAccountId: accountOperation.fromAccountId || undefined,
       toAccountId: accountOperation.toAccountId || undefined,
+      productId: accountOperation.productId || undefined,
+      warehouseId: accountOperation.warehouseId || undefined,
+      quantity: isStockOperation ? quantity : undefined,
+      unit: accountOperation.unit || undefined,
+      checkId: accountOperation.checkId || undefined,
       partnerEffect: isTransfer ? undefined : accountOperation.partnerEffect,
       amount,
       status: "ثبت شده",
@@ -2570,11 +2673,14 @@ function Transactions({
       {
         ...state,
         accounts: nextAccounts,
+        products: nextProducts,
         transactions: [transaction, ...state.transactions],
       },
       isTransfer
         ? "انتقال بین حساب‌ها ثبت شد"
-        : "عملیات شریک و اثر آن در حساب ثبت شد"
+        : isStockOperation
+          ? `${accountOperation.type} با لینک کالا، انبار و حساب ثبت شد`
+          : "عملیات شریک و اثر آن در حساب ثبت شد"
     );
     setAccountOperation({
       type: "انتقال بین حساب‌ها",
@@ -2583,6 +2689,11 @@ function Transactions({
       toAccountId: "",
       accountId: "",
       partyId: "",
+      productId: "",
+      warehouseId: "",
+      quantity: "",
+      unit: "",
+      checkId: "",
       date: todayJalali(),
       note: "",
       partnerEffect: "افزایش طلب شریک",
@@ -2619,6 +2730,8 @@ function Transactions({
             }
           >
             <option value="انتقال بین حساب‌ها">انتقال بین حساب‌ها</option>
+            <option value="خرید کالا">خرید کالا / ورود به انبار</option>
+            <option value="فروش کالا">فروش کالا / خروج از انبار</option>
             <option value="هزینه/خرید توسط شریک">هزینه/خرید توسط شریک</option>
             <option value="دریافت توسط شریک">دریافت وجه توسط شریک</option>
             <option value="مساعده/پرداخت به شریک">
@@ -2678,6 +2791,153 @@ function Transactions({
                 {accounts.map(account => (
                   <option key={account.id} value={account.id}>
                     {account.name} · {account.type}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : ["خرید کالا", "فروش کالا"].includes(accountOperation.type) ? (
+          <>
+            <label>
+              کالا
+              <select
+                value={accountOperation.productId}
+                onChange={event => {
+                  const product = state.products.find(
+                    item => item.id === event.target.value
+                  );
+                  setAccountOperation({
+                    ...accountOperation,
+                    productId: event.target.value,
+                    unit: product?.unit || "",
+                    warehouseId: product?.warehouseId || "",
+                  });
+                }}
+              >
+                <option value="">انتخاب کالا</option>
+                {operationProducts.map(product => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} · {product.code}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              انبار نگهداری
+              <select
+                value={accountOperation.warehouseId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    warehouseId: event.target.value,
+                  })
+                }
+              >
+                <option value="">انتخاب انبار</option>
+                {state.warehouses.map(warehouse => (
+                  <option key={warehouse.id} value={warehouse.id}>
+                    {warehouse.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              طرف حساب
+              <select
+                value={accountOperation.partyId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    partyId: event.target.value,
+                  })
+                }
+              >
+                <option value="">انتخاب مشتری / تأمین‌کننده</option>
+                {state.people.map(person => (
+                  <option key={person.id} value={person.id}>
+                    {person.name} · {person.roles.join("، ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              حساب پرداخت / دریافت
+              <select
+                value={accountOperation.accountId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    accountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">انتخاب حساب</option>
+                {accounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name} · {account.type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              تعداد و واحد
+              <div className="inline-form-fields">
+                <input
+                  inputMode="decimal"
+                  value={accountOperation.quantity}
+                  onChange={event =>
+                    setAccountOperation({
+                      ...accountOperation,
+                      quantity: event.target.value,
+                    })
+                  }
+                  placeholder="تعداد"
+                />
+                <select
+                  value={accountOperation.unit}
+                  onChange={event =>
+                    setAccountOperation({
+                      ...accountOperation,
+                      unit: event.target.value,
+                    })
+                  }
+                >
+                  <option value="">واحد</option>
+                  {[
+                    accountOperation.productId &&
+                      operationProducts.find(
+                        product => product.id === accountOperation.productId
+                      )?.unit,
+                    accountOperation.productId &&
+                      operationProducts.find(
+                        product => product.id === accountOperation.productId
+                      )?.unit2,
+                  ]
+                    .filter(Boolean)
+                    .map(unit => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </label>
+            <label>
+              چک پرداختی (اختیاری)
+              <select
+                value={accountOperation.checkId}
+                onChange={event =>
+                  setAccountOperation({
+                    ...accountOperation,
+                    checkId: event.target.value,
+                  })
+                }
+              >
+                <option value="">بدون چک</option>
+                {operationChecks.map(check => (
+                  <option key={check.id} value={check.id}>
+                    {check.number} ·{" "}
+                    {formatMoney(check.amount, state.settings.currency)}
                   </option>
                 ))}
               </select>
@@ -2843,10 +3103,16 @@ function Transactions({
                             item.toAccountId
                               ? applyAccountEffect(state.accounts, item, -1)
                               : state.accounts;
+                          const nextProducts = applyProductEffect(
+                            state.products,
+                            item,
+                            -1
+                          );
                           onSave(
                             {
                               ...state,
                               accounts: nextAccounts,
+                              products: nextProducts,
                               transactions: state.transactions.filter(
                                 row => row.id !== item.id
                               ),

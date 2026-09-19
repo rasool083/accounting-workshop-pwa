@@ -103,6 +103,8 @@ export type TransactionType =
   | "درآمد"
   | "اصلاحیه"
   | "انتقال بین حساب‌ها"
+  | "خرید کالا"
+  | "فروش کالا"
   | "هزینه/خرید توسط شریک"
   | "دریافت توسط شریک"
   | "مساعده/پرداخت به شریک"
@@ -186,6 +188,11 @@ export interface Transaction {
   accountId?: string;
   fromAccountId?: string;
   toAccountId?: string;
+  productId?: string;
+  warehouseId?: string;
+  quantity?: number;
+  unit?: string;
+  checkId?: string;
   partnerEffect?: "افزایش طلب شریک" | "کاهش طلب شریک";
   amount: number;
   status: "ثبت شده" | "باطل";
@@ -567,6 +574,8 @@ export function transactionLabel(type: TransactionType) {
     درآمد: "درآمد",
     اصلاحیه: "اصلاحیه",
     "انتقال بین حساب‌ها": "انتقال بین حساب‌ها",
+    "خرید کالا": "خرید کالا",
+    "فروش کالا": "فروش کالا",
     "هزینه/خرید توسط شریک": "هزینه/خرید توسط شریک",
     "دریافت توسط شریک": "دریافت توسط شریک",
     "مساعده/پرداخت به شریک": "مساعده/پرداخت به شریک",
