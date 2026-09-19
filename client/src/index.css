@@ -167,3 +167,15 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .manual-restore-box p { margin:0; color:#718884; }
 .manual-restore-box textarea { min-height:90px; direction:ltr; text-align:left; font-family:monospace; font-size:11px; }
 @media (max-width:620px) { .check-allocation-card { flex-wrap:wrap; gap:7px; } .invoice-cell-list { min-width:90px; } }
+
+/* عملیات ردیف: دکمه‌های کوچک و هم‌تراز در یک ردیف */
+.table-panel td:last-child { white-space: nowrap; }
+.row-action { display:inline-grid !important; place-items:center; width:29px !important; height:29px !important; min-width:29px; padding:0 !important; margin:0 2px !important; vertical-align:middle; border-radius:9px !important; }
+.row-action[title*="ویرایش"] { color:#27966b !important; background:#effaf4 !important; border-color:#bfe7d2 !important; }
+.row-action[title*="ویرایش"]:hover { color:#14734e !important; background:#dff5e9 !important; }
+.row-action[title*="حذف"] { color:#d24f55 !important; background:#fff1f1 !important; border-color:#f0c5c7 !important; }
+.row-action[title*="حذف"]:hover { color:#a9323b !important; background:#ffe1e2 !important; }
+.warehouse-tabs { display:flex; flex-wrap:wrap; gap:8px; padding:5px 0 2px; border-bottom:1px solid #e5efeb; }
+.warehouse-tab { border:1px solid #dceae5; background:#fff; color:#60756e; border-radius:999px; padding:8px 13px; font:inherit; font-size:11px; cursor:pointer; transition:all .18s ease; }
+.warehouse-tab:hover { border-color:#a9d6c5; color:#287665; transform:translateY(-1px); }
+.warehouse-tab.active { background:#2d7566; color:#fff; border-color:#2d7566; box-shadow:0 5px 14px rgba(45,117,102,.18); }

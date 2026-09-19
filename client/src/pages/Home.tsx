@@ -1122,7 +1122,7 @@ function Invoices({
     });
   }
   function openEdit(invoice: AppState["invoices"][number]) {
-    if (invoice.status === "باطل" || invoice.paidAmount > 0) return;
+    if (invoice.status === "باطل") return;
     setEditingInvoice(invoice);
     setForm({
       number: invoice.number,
@@ -1142,6 +1142,26 @@ function Invoices({
     });
     setSelectedInvoice(null);
     setOpen(true);
+  }
+  function deleteInvoice(invoice: AppState["invoices"][number]) {
+    if (!window.confirm(`فاکتور ${invoice.number} حذف شود؟`)) return;
+    const products = state.products.map(product => {
+      const movement = invoice.items
+        .filter(item => item.productId === product.id)
+        .reduce((sum, item) => sum + (item.quantityBase ?? item.quantity), 0);
+      return {
+        ...product,
+        stock: product.stock + (invoice.type === "فروش" ? movement : -movement),
+      };
+    });
+    onSave(
+      {
+        ...state,
+        products,
+        invoices: state.invoices.filter(item => item.id !== invoice.id),
+      },
+      `فاکتور ${invoice.number} حذف شد و موجودی اصلاح گردید`
+    );
   }
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -1180,8 +1200,13 @@ function Invoices({
       allocations: editingInvoice?.allocations || [],
       discountAmount: discount,
       amount: calculatedAmount,
-      paidAmount: editingInvoice?.paidAmount || 0,
-      status: editingInvoice?.status || ("باز" as const),
+      paidAmount: Math.min(editingInvoice?.paidAmount || 0, calculatedAmount),
+      status:
+        editingInvoice && editingInvoice.paidAmount >= calculatedAmount
+          ? ("تسویه شده" as const)
+          : editingInvoice && editingInvoice.paidAmount > 0
+            ? ("تسویه جزئی" as const)
+            : ("باز" as const),
       note: form.note,
     };
     const products = state.products.map(product => {
@@ -1412,37 +1437,24 @@ function Invoices({
                           >
                             {invoice.status}
                           </span>
-                          {invoice.paidAmount === 0 &&
-                            invoice.status !== "باطل" && (
-                              <button
-                                className="icon-button row-action"
-                                title="ویرایش فاکتور"
-                                onClick={() => openEdit(invoice)}
-                              >
-                                <Pencil size={14} />
-                              </button>
-                            )}
-                          {invoice.paidAmount === 0 &&
-                            invoice.status !== "باطل" && (
-                              <button
-                                className="icon-button row-action"
-                                title="حذف فاکتور"
-                                onClick={() =>
-                                  window.confirm("فاکتور حذف شود؟") &&
-                                  onSave(
-                                    {
-                                      ...state,
-                                      invoices: state.invoices.filter(
-                                        item => item.id !== invoice.id
-                                      ),
-                                    },
-                                    "فاکتور حذف شد"
-                                  )
-                                }
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
+                          {invoice.status !== "باطل" && (
+                            <button
+                              className="icon-button row-action"
+                              title="ویرایش فاکتور"
+                              onClick={() => openEdit(invoice)}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          )}
+                          {invoice.status !== "باطل" && (
+                            <button
+                              className="icon-button row-action"
+                              title="حذف فاکتور"
+                              onClick={() => deleteInvoice(invoice)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </td>
                       </tr>
                       {expanded && (
@@ -1483,6 +1495,17 @@ function Invoices({
                                       <span>
                                         {formatMoney(
                                           item.amount,
+                                          state.settings.currency
+                                        )}
+                                      </span>
+                                      <span>
+                                        اختلاف: {formatNumber(item.days || 0)}{" "}
+                                        روز
+                                      </span>
+                                      <span>
+                                        سود:{" "}
+                                        {formatMoney(
+                                          item.profit || 0,
                                           state.settings.currency
                                         )}
                                       </span>
@@ -2394,6 +2417,7 @@ function Inventory({
     AppState["products"][number] | null
   >(null);
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [warehouseFilter, setWarehouseFilter] = useState("همه");
   const [adjustForm, setAdjustForm] = useState({
     productId: "",
     amount: "",
@@ -2451,6 +2475,13 @@ function Inventory({
   }
   const selectedProduct = state.products.find(
     product => product.id === selectedProductId
+  );
+  const visibleProducts = state.products.filter(product =>
+    warehouseFilter === "همه"
+      ? true
+      : warehouseFilter === "بدون انبار"
+        ? !product.warehouseId
+        : product.warehouseId === warehouseFilter
   );
   const movements = selectedProduct
     ? state.invoices
@@ -2565,6 +2596,48 @@ function Inventory({
           </span>
         ))}
       </div>
+      <div className="warehouse-tabs" role="tablist" aria-label="فیلتر انبار">
+        <button
+          className={
+            warehouseFilter === "همه" ? "warehouse-tab active" : "warehouse-tab"
+          }
+          onClick={() => setWarehouseFilter("همه")}
+        >
+          همه کالاها ({formatNumber(state.products.length)})
+        </button>
+        {state.warehouses.map(warehouse => {
+          const count = state.products.filter(
+            product => product.warehouseId === warehouse.id
+          ).length;
+          return (
+            <button
+              key={warehouse.id}
+              className={
+                warehouseFilter === warehouse.id
+                  ? "warehouse-tab active"
+                  : "warehouse-tab"
+              }
+              onClick={() => setWarehouseFilter(warehouse.id)}
+            >
+              {warehouse.name} ({formatNumber(count)})
+            </button>
+          );
+        })}
+        <button
+          className={
+            warehouseFilter === "بدون انبار"
+              ? "warehouse-tab active"
+              : "warehouse-tab"
+          }
+          onClick={() => setWarehouseFilter("بدون انبار")}
+        >
+          بدون انبار (
+          {formatNumber(
+            state.products.filter(product => !product.warehouseId).length
+          )}
+          )
+        </button>
+      </div>
       <div className="inventory-summary">
         <div>
           <Boxes size={19} />
@@ -2598,7 +2671,14 @@ function Inventory({
         <div className="panel-heading">
           <div>
             <span className="section-kicker">دفتر کالا</span>
-            <h3>وضعیت فعلی انبار</h3>
+            <h3>
+              {warehouseFilter === "همه"
+                ? "وضعیت فعلی انبار"
+                : warehouseFilter === "بدون انبار"
+                  ? "کالاهای بدون انبار"
+                  : state.warehouses.find(item => item.id === warehouseFilter)
+                      ?.name}
+            </h3>
           </div>
           <span className="soft-tag">واحد اول / واحد دوم</span>
         </div>
@@ -2616,8 +2696,8 @@ function Inventory({
               </tr>
             </thead>
             <tbody>
-              {state.products.length ? (
-                state.products.map(product => (
+              {visibleProducts.length ? (
+                visibleProducts.map(product => (
                   <tr key={product.id}>
                     <td className="muted-cell">{product.code}</td>
                     <td>
@@ -4345,7 +4425,10 @@ function Checks({
                                         state.settings.currency
                                       )}
                                     </span>
-                                    <span>{formatNumber(item.days)} روز</span>
+                                    <span>
+                                      اختلاف تاریخ:{" "}
+                                      {formatNumber(item.days || 0)} روز
+                                    </span>
                                   </div>
                                 );
                               })
