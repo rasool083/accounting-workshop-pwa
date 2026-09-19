@@ -1238,6 +1238,7 @@ function Invoices({
         ? `فاکتور باطل ${invoice.number} حذف شد`
         : `فاکتور ${invoice.number} حذف شد و موجودی اصلاح گردید`
     );
+    setSelectedInvoice(null);
   }
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -1946,30 +1947,44 @@ function Invoices({
                 {formatMoney(selectedInvoice.amount, state.settings.currency)}
               </strong>
             </div>
-            {selectedInvoice.status !== "باطل" && (
-              <div className="form-actions">
-                <button
-                  className="button button-ghost"
-                  onClick={() => window.print()}
-                >
-                  چاپ فاکتور
-                </button>
-                {selectedInvoice.paidAmount === 0 && (
+            <div className="form-actions">
+              {selectedInvoice.status !== "باطل" ? (
+                <>
                   <button
                     className="button button-ghost"
-                    onClick={() => openEdit(selectedInvoice)}
+                    onClick={() => window.print()}
                   >
-                    ویرایش فاکتور
+                    چاپ فاکتور
                   </button>
-                )}
-                <button
-                  className="button button-danger"
-                  onClick={() => voidInvoice(selectedInvoice)}
-                >
-                  ابطال فاکتور و اصلاح موجودی
-                </button>
-              </div>
-            )}
+                  {selectedInvoice.paidAmount === 0 && (
+                    <button
+                      className="button button-ghost"
+                      onClick={() => openEdit(selectedInvoice)}
+                    >
+                      ویرایش فاکتور
+                    </button>
+                  )}
+                  <button
+                    className="button button-danger"
+                    onClick={() => voidInvoice(selectedInvoice)}
+                  >
+                    ابطال فاکتور و اصلاح موجودی
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="status-pill status-danger">
+                    این فاکتور باطل است
+                  </span>
+                  <button
+                    className="button button-danger"
+                    onClick={() => deleteInvoice(selectedInvoice)}
+                  >
+                    حذف کامل فاکتور باطل
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </Dialog>
       )}
