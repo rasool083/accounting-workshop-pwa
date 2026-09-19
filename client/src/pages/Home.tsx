@@ -2131,7 +2131,7 @@ function BankAccounts({
   }
 
   return (
-    <div className="page-stack page-enter">
+    <div className="page-stack page-enter bank-page">
       <PageIntro
         kicker="مدیریت نقدینگی"
         title="بانک‌ها و صندوق‌ها"

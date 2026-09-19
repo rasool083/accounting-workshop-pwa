@@ -2790,3 +2790,89 @@ tr:last-child td {
   border-radius: 7px;
   background: #f5f9f7;
 }
+
+/* Bank accounts: keep the ledger inside the viewport on narrow RTL screens. */
+.bank-page,
+.bank-page .dashboard-grid,
+.bank-page .panel,
+.bank-page .table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+.bank-page .table-wrap {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.bank-page .table-wrap table {
+  min-width: 0;
+  table-layout: fixed;
+}
+.bank-page .table-wrap th,
+.bank-page .table-wrap td {
+  overflow-wrap: anywhere;
+}
+.bank-page .metric-copy,
+.bank-page .metric-copy strong {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  .main-area,
+  .content-wrap,
+  .page-stack {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .bank-page .panel {
+    padding: 14px;
+  }
+  .bank-page .table-panel {
+    overflow: hidden;
+  }
+  .bank-page .table-wrap table {
+    width: 100%;
+    font-size: 10px;
+  }
+  .bank-page .table-wrap th,
+  .bank-page .table-wrap td {
+    padding: 9px 5px;
+  }
+  .bank-page .table-wrap th:nth-child(4),
+  .bank-page .table-wrap td:nth-child(4) {
+    display: none;
+  }
+  .bank-page .table-wrap th:nth-child(1),
+  .bank-page .table-wrap td:nth-child(1) {
+    width: 31%;
+  }
+  .bank-page .table-wrap th:nth-child(2),
+  .bank-page .table-wrap td:nth-child(2) {
+    width: 18%;
+  }
+  .bank-page .table-wrap th:nth-child(3),
+  .bank-page .table-wrap td:nth-child(3) {
+    width: 27%;
+  }
+  .bank-page .table-wrap th:nth-child(5),
+  .bank-page .table-wrap td:nth-child(5) {
+    width: 24%;
+  }
+  .sidebar {
+    left: auto !important;
+    right: 0 !important;
+    transform: translateX(100%) !important;
+  }
+  .sidebar.sidebar-open {
+    left: auto !important;
+    right: 0 !important;
+    transform: translateX(0) !important;
+  }
+}
