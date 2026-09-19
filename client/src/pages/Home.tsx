@@ -109,6 +109,33 @@ function statusClass(status: string) {
   return "status-warning";
 }
 
+function backupDateKey() {
+  return todayJalali().replace(/\//g, "-");
+}
+
+function backupFilename(dateKey: string, sequence: number) {
+  return `accounting-workshop-backup-${dateKey}-${String(sequence).padStart(3, "0")}.json`;
+}
+
+function nextLocalBackupSequence(dateKey: string) {
+  const key = `accounting-workshop-pwa:backup-sequence:${dateKey}`;
+  const next = (Number(localStorage.getItem(key)) || 0) + 1;
+  localStorage.setItem(key, String(next));
+  return next;
+}
+
+function nextDriveBackupSequence(files: DriveBackupFile[], dateKey: string) {
+  const prefix = `accounting-workshop-backup-${dateKey}-`;
+  return (
+    (files.reduce((max, file) => {
+      if (!file.name.startsWith(prefix) || !file.name.endsWith(".json"))
+        return max;
+      const sequence = Number(file.name.slice(prefix.length, -".json".length));
+      return Number.isFinite(sequence) ? Math.max(max, sequence) : max;
+    }, 0) || 0) + 1
+  );
+}
+
 function SortControl({
   direction,
   onChange,
@@ -362,16 +389,20 @@ export default function Home() {
   }
 
   function handleExport() {
+    const dateKey = backupDateKey();
+    const sequence = nextLocalBackupSequence(dateKey);
     const blob = new Blob([exportPayload(state)], {
       type: "application/json;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `backup-accounting-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = backupFilename(dateKey, sequence);
     link.click();
     URL.revokeObjectURL(url);
-    setNotice("فایل پشتیبان با موفقیت آماده شد");
+    setNotice(
+      `نسخهٔ پشتیبان ${dateKey} · ردیف ${formatNumber(sequence)} آماده شد`
+    );
   }
 
   function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
@@ -428,16 +459,25 @@ export default function Home() {
       return;
     }
     try {
-      const filename = `accounting-workshop-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-      const uploaded = await createGoogleDriveAdapter(
+      const adapter = createGoogleDriveAdapter(
         token,
         PROJECT_BACKUPS_FOLDER_ID
-      ).uploadBackup(filename, exportPayload(state));
+      );
+      const dateKey = backupDateKey();
+      const existing = await adapter.listBackups();
+      const sequence = nextDriveBackupSequence(existing, dateKey);
+      const filename = backupFilename(dateKey, sequence);
+      const uploaded = await adapter.uploadBackup(
+        filename,
+        exportPayload(state)
+      );
       setDriveBackups(current => [
         uploaded,
         ...current.filter(file => file.id !== uploaded.id),
       ]);
-      setNotice("پشتیبان در پوشه اختصاصی Google Drive ذخیره شد");
+      setNotice(
+        `پشتیبان ${dateKey} · ردیف ${formatNumber(sequence)} در Drive ذخیره شد`
+      );
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "بارگذاری در Drive ناموفق بود"
@@ -6343,7 +6383,8 @@ function BackupPage({
             )}
           </div>
           <span className="coming-tag">
-            آخرین نسخه تأییدشده: ۱۴۰۵/۰۶/۲۶ · آماده برای همگام‌سازی
+            نام نسخه‌های جدید: تاریخ شمسی امروز ({todayJalali()}) + شمارهٔ ردیف
+            سه‌رقمی؛ نسخه‌های قبلی حذف نمی‌شوند.
           </span>
         </div>
       </div>
