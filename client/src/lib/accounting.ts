@@ -374,6 +374,9 @@ export function normalizeState(input: unknown): AppState {
   const allUnits = Array.from(
     new Set([...configuredUnits, ...discoveredUnits])
   );
+  const availableAccounts = Array.isArray(source.accounts)
+    ? source.accounts
+    : seedState.accounts;
   return {
     ...seedState,
     ...source,
@@ -438,7 +441,10 @@ export function normalizeState(input: unknown): AppState {
           bankAccountId:
             typeof check.bankAccountId === "string"
               ? check.bankAccountId
-              : undefined,
+              : availableAccounts.find(
+                  account =>
+                    account.type === "بانک" && account.name === check.bank
+                )?.id,
           returnPartyId:
             typeof check.returnPartyId === "string"
               ? check.returnPartyId
@@ -460,9 +466,7 @@ export function normalizeState(input: unknown): AppState {
               : undefined,
         }))
       : [],
-    accounts: Array.isArray(source.accounts)
-      ? source.accounts
-      : seedState.accounts,
+    accounts: availableAccounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
     productionFormulas: Array.isArray(source.productionFormulas)
       ? source.productionFormulas

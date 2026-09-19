@@ -4273,6 +4273,12 @@ function Checks({
     status: CheckStatus,
     targetId: string
   ) {
+    if (["نزد ما", "وصول شده", "برگشتی"].includes(status) && !targetId) {
+      window.alert(
+        "برای این وضعیت، ابتدا حساب بانکی مرجع را از ستون بعدی یا فرم ویرایش انتخاب کنید."
+      );
+      return;
+    }
     const accountId = ["نزد ما", "وصول شده", "برگشتی"].includes(status)
       ? targetId
       : check.bankAccountId;
@@ -4750,7 +4756,11 @@ function Checks({
                                 )
                               }
                             >
-                              <option value="">انتخاب بانک</option>
+                              <option value="">
+                                {check.bankAccountId
+                                  ? "تغییر حساب بانکی"
+                                  : "انتخاب حساب بانکی *"}
+                              </option>
                               {state.accounts
                                 .filter(account => account.type === "بانک")
                                 .map(account => (
@@ -5038,14 +5048,21 @@ function Checks({
                     })
                   }
                 >
-                  <option value="">انتخاب حساب بانکی</option>
-                  {state.accounts
-                    .filter(account => account.type === "بانک")
-                    .map(account => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
+                  <option value="">انتخاب حساب بانکی *</option>
+                  {state.accounts.filter(account => account.type === "بانک")
+                    .length ? (
+                    state.accounts
+                      .filter(account => account.type === "بانک")
+                      .map(account => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))
+                  ) : (
+                    <option value="" disabled>
+                      ابتدا در صفحه بانک‌ها حساب بسازید
+                    </option>
+                  )}
                 </select>
               ) : (
                 <select
