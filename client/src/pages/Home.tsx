@@ -89,6 +89,7 @@ const iconMap = {
   tags: Tags,
   percent: Percent,
   "lock-keyhole": LockKeyhole,
+  "wallet-cards": WalletCards,
 } as const;
 
 function Icon({
@@ -690,6 +691,12 @@ export default function Home() {
             <Transactions
               state={state}
               onQuick={() => setQuickOpen(true)}
+              onSave={(next, msg) => updateState(next, msg)}
+            />
+          )}
+          {activePage === "banks" && (
+            <BankAccounts
+              state={state}
               onSave={(next, msg) => updateState(next, msg)}
             />
           )}
@@ -2031,6 +2038,275 @@ function Invoices({
     </div>
   );
 }
+function BankAccounts({
+  state,
+  onSave,
+}: {
+  state: AppState;
+  onSave: (next: AppState, message: string) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: "",
+    type: "بانک" as "بانک" | "صندوق" | "شریک",
+    balance: "0",
+  });
+  const [sort, setSort] = useState<"asc" | "desc">("asc");
+
+  const accounts = useMemo(
+    () =>
+      [...state.accounts].sort(
+        (a, b) => (sort === "asc" ? 1 : -1) * a.name.localeCompare(b.name, "fa")
+      ),
+    [state.accounts, sort]
+  );
+  const totals = useMemo(
+    () => ({
+      all: state.accounts.reduce((sum, account) => sum + account.balance, 0),
+      banks: state.accounts
+        .filter(account => account.type === "بانک")
+        .reduce((sum, account) => sum + account.balance, 0),
+      cash: state.accounts
+        .filter(account => account.type === "صندوق")
+        .reduce((sum, account) => sum + account.balance, 0),
+    }),
+    [state.accounts]
+  );
+
+  function reset() {
+    setEditingId(null);
+    setForm({ name: "", type: "بانک", balance: "0" });
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const name = form.name.trim();
+    if (!name) return;
+    const balance = Number(form.balance.replace(/,/g, "")) || 0;
+    const nextAccounts = editingId
+      ? state.accounts.map(account =>
+          account.id === editingId
+            ? { ...account, name, type: form.type, balance }
+            : account
+        )
+      : [
+          ...state.accounts,
+          { id: createId("account"), name, type: form.type, balance },
+        ];
+    onSave(
+      { ...state, accounts: nextAccounts },
+      editingId ? "حساب بانکی اصلاح شد" : "حساب جدید اضافه شد"
+    );
+    reset();
+  }
+
+  function edit(account: AppState["accounts"][number]) {
+    setEditingId(account.id);
+    setForm({
+      name: account.name,
+      type: account.type,
+      balance: String(account.balance),
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function remove(account: AppState["accounts"][number]) {
+    const referenced = state.checks.some(
+      check => check.bankAccountId === account.id
+    );
+    if (referenced) {
+      window.alert(
+        "این حساب در چک‌ها استفاده شده و برای حفظ یکپارچگی قابل حذف نیست."
+      );
+      return;
+    }
+    if (!window.confirm(`حساب «${account.name}» حذف شود؟`)) return;
+    onSave(
+      {
+        ...state,
+        accounts: state.accounts.filter(item => item.id !== account.id),
+      },
+      "حساب حذف شد"
+    );
+  }
+
+  return (
+    <div className="page-stack page-enter">
+      <PageIntro
+        kicker="مدیریت نقدینگی"
+        title="بانک‌ها و صندوق‌ها"
+        description="حساب‌های بانکی، صندوق و شریک را جداگانه مدیریت کنید؛ موجودی وصول چک‌ها در همین صفحه قابل ردیابی است."
+        actionLabel={editingId ? "انصراف از ویرایش" : "حساب جدید"}
+        onAction={reset}
+      />
+      <div className="metric-grid">
+        <div className="metric-card">
+          <div className="metric-icon mint">
+            <WalletCards size={19} />
+          </div>
+          <div className="metric-copy">
+            <span>مجموع نقدینگی</span>
+            <strong>{formatMoney(totals.all, state.settings.currency)}</strong>
+            <small>{formatNumber(state.accounts.length)} حساب</small>
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-icon indigo">
+            <Banknote size={19} />
+          </div>
+          <div className="metric-copy">
+            <span>موجودی بانک‌ها</span>
+            <strong>
+              {formatMoney(totals.banks, state.settings.currency)}
+            </strong>
+            <small>پس از ثبت وصول چک به‌روزرسانی می‌شود</small>
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-icon amber">
+            <WalletCards size={19} />
+          </div>
+          <div className="metric-copy">
+            <span>موجودی صندوق</span>
+            <strong>{formatMoney(totals.cash, state.settings.currency)}</strong>
+            <small>صندوق‌های فعال</small>
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-icon violet">
+            <FileClock size={19} />
+          </div>
+          <div className="metric-copy">
+            <span>چک‌های متصل به بانک</span>
+            <strong>
+              {formatNumber(
+                state.checks.filter(check => check.bankAccountId).length
+              )}
+            </strong>
+            <small>مرجع حساب بانکی ثبت‌شده</small>
+          </div>
+        </div>
+      </div>
+      <div className="dashboard-grid">
+        <div className="panel table-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">دفتر حساب‌ها</span>
+              <h3>حساب‌های ثبت‌شده</h3>
+            </div>
+            <SortControl direction={sort} onChange={setSort} />
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>نام حساب</th>
+                  <th>نوع</th>
+                  <th>موجودی</th>
+                  <th>چک‌های مرتبط</th>
+                  <th>عملیات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.map(account => {
+                  const linkedChecks = state.checks.filter(
+                    check => check.bankAccountId === account.id
+                  );
+                  return (
+                    <tr key={account.id}>
+                      <td>
+                        <strong>{account.name}</strong>
+                      </td>
+                      <td>
+                        <span className="soft-tag">{account.type}</span>
+                      </td>
+                      <td className="amount-cell">
+                        {formatMoney(account.balance, state.settings.currency)}
+                      </td>
+                      <td>{formatNumber(linkedChecks.length)}</td>
+                      <td>
+                        <button
+                          className="icon-button row-action edit-action"
+                          title="ویرایش حساب"
+                          onClick={() => edit(account)}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          className="icon-button row-action delete-action"
+                          title="حذف حساب"
+                          onClick={() => remove(account)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <form className="panel form-grid" onSubmit={submit}>
+          <div className="panel-heading full-field">
+            <div>
+              <span className="section-kicker">ثبت و اصلاح</span>
+              <h3>{editingId ? "ویرایش حساب" : "افزودن حساب جدید"}</h3>
+            </div>
+          </div>
+          <label>
+            نام حساب
+            <input
+              value={form.name}
+              onChange={event => setForm({ ...form, name: event.target.value })}
+              placeholder="مثلاً بانک ملت"
+              required
+            />
+          </label>
+          <label>
+            نوع حساب
+            <select
+              value={form.type}
+              onChange={event =>
+                setForm({
+                  ...form,
+                  type: event.target.value as typeof form.type,
+                })
+              }
+            >
+              <option value="بانک">بانک</option>
+              <option value="صندوق">صندوق</option>
+              <option value="شریک">شریک</option>
+            </select>
+          </label>
+          <label className="full-field">
+            موجودی اولیه / اصلاحی
+            <input
+              inputMode="decimal"
+              value={form.balance}
+              onChange={event =>
+                setForm({ ...form, balance: event.target.value })
+              }
+            />
+          </label>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={reset}
+            >
+              پاک‌کردن فرم
+            </button>
+            <button type="submit" className="button button-primary">
+              {editingId ? "ذخیره اصلاح" : "افزودن حساب"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Transactions({
   state,
   onQuick,

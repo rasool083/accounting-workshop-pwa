@@ -5,6 +5,7 @@ export type PageId =
   | "dashboard"
   | "invoices"
   | "transactions"
+  | "banks"
   | "people"
   | "inventory"
   | "production"
@@ -955,6 +956,12 @@ export const navItems: Array<{
     label: "عملیات مالی",
     caption: "فروش و دریافت",
     icon: "arrow-left-right",
+  },
+  {
+    id: "banks",
+    label: "بانک‌ها و صندوق‌ها",
+    caption: "موجودی و حساب‌ها",
+    icon: "wallet-cards",
   },
   {
     id: "people",
