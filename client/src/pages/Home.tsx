@@ -2745,6 +2745,33 @@ function Transactions({
             </option>
             <option value="دریافت تسویه از شریک">دریافت تسویه از شریک</option>
           </select>
+          <div
+            className="operation-type-grid"
+            aria-label="انتخاب سریع نوع عملیات"
+          >
+            {(
+              [
+                ["انتقال بین حساب‌ها", "انتقال"],
+                ["خرید کالا", "خرید کالا"],
+                ["فروش کالا", "فروش کالا"],
+                ["هزینه/خرید توسط شریک", "خرید شریک"],
+                ["دریافت توسط شریک", "دریافت شریک"],
+                ["مساعده/پرداخت به شریک", "مساعده"],
+                ["دریافت تسویه از شریک", "تسویه شریک"],
+              ] as Array<[TransactionType, string]>
+            ).map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                className={accountOperation.type === value ? "active" : ""}
+                onClick={() =>
+                  setAccountOperation({ ...accountOperation, type: value })
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </label>
         <label>
           مبلغ

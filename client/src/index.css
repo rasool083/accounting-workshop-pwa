@@ -3063,3 +3063,32 @@ tr:last-child td {
     flex: 1;
   }
 }
+
+.operation-type-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.operation-type-grid button {
+  border: 1px solid #dce8e4;
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: #fbfefd;
+  color: #6f817c;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+.operation-type-grid button:hover,
+.operation-type-grid button.active {
+  border-color: #78aa99;
+  background: #eaf6f0;
+  color: #327462;
+}
+@media (max-width: 720px) {
+  .operation-type-grid button {
+    flex: 1 1 30%;
+    min-width: 88px;
+  }
+}
