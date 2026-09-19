@@ -364,6 +364,22 @@ export default function Home() {
     event.target.value = "";
   }
 
+  function handleManualImport(payload: string) {
+    try {
+      const next = importPayload(payload.trim());
+      if (!window.confirm("اطلاعات فعلی با این متن پشتیبان جایگزین شود؟"))
+        return;
+      setState(
+        saveState(appendAudit(next, "RESTORE_MANUAL", "بازیابی با متن JSON"))
+      );
+      setNotice("بازیابی دستی با موفقیت انجام شد");
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "متن پشتیبان معتبر نیست"
+      );
+    }
+  }
+
   function handleClearAll() {
     handleExport();
     const cleared = createEmptyState(state);
@@ -400,7 +416,12 @@ export default function Home() {
 
   async function handleDriveRefresh() {
     const token = getDriveAccessToken();
-    if (!token) return;
+    if (!token) {
+      setNotice(
+        "این مرورگر مجوز موقت Drive ندارد؛ از پوشه Drive فایل JSON را دانلود و با بازیابی دستی وارد کنید"
+      );
+      return;
+    }
     setDriveLoading(true);
     try {
       const files = await createGoogleDriveAdapter(
@@ -430,7 +451,7 @@ export default function Home() {
     const token = getDriveAccessToken();
     if (!token) {
       setNotice(
-        "مجوز موقت Drive در این مرورگر تزریق نشده است؛ از لینک پوشه استفاده کنید"
+        "این مرورگر مجوز موقت Drive ندارد. از لینک پوشه، فایل JSON را دانلود کنید و در بخش بازیابی دستی Paste کنید"
       );
       return;
     }
@@ -651,6 +672,7 @@ export default function Home() {
               state={state}
               onExport={handleExport}
               onImport={() => fileInput.current?.click()}
+              onManualImport={handleManualImport}
               onClearAll={handleClearAll}
               onDriveRestore={handleDriveRestore}
               onDriveUpload={handleDriveUpload}
@@ -985,6 +1007,9 @@ function Invoices({
   const [selectedInvoice, setSelectedInvoice] = useState<
     AppState["invoices"][number] | null
   >(null);
+  const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Set<string>>(
+    new Set()
+  );
   const blankItem = { productId: "", quantity: "1", unit: "", unitPrice: "" };
   const [form, setForm] = useState({
     number: "",
@@ -998,6 +1023,26 @@ function Invoices({
     note: "",
   });
   const party = state.people.find(item => item.id === form.partyId);
+  const invoiceProducts = useMemo(() => {
+    const allowedWarehouses = state.warehouses.filter(warehouse =>
+      form.type === "خرید"
+        ? warehouse.name.includes("مواد")
+        : warehouse.name.includes("محصول") ||
+          warehouse.name.includes("بازرگانی")
+    );
+    const allowedIds = new Set(
+      allowedWarehouses.map(warehouse => warehouse.id)
+    );
+    return state.products.filter(product => {
+      if (product.category === "بسته تولید" && form.type === "فروش")
+        return false;
+      return product.warehouseId ? allowedIds.has(product.warehouseId) : true;
+    });
+  }, [state.products, state.warehouses, form.type]);
+  const invoiceAllocations = useMemo(
+    () => settleChecksFIFO(state.checks, state.invoices, state.paymentRules),
+    [state.checks, state.invoices, state.paymentRules]
+  );
   const nextInvoiceNumber = useMemo(
     () =>
       suggestNextPartyNumber(
@@ -1267,7 +1312,9 @@ function Invoices({
                 <th>شماره</th>
                 <th>تاریخ</th>
                 <th>طرف حساب</th>
-                <th>اقلام</th>
+                <th>نام کالا</th>
+                <th>تعداد</th>
+                <th>قیمت واحد</th>
                 <th>مبلغ</th>
                 <th>تسویه</th>
                 <th>مانده</th>
@@ -1276,75 +1323,187 @@ function Invoices({
             </thead>
             <tbody>
               {state.invoices.length ? (
-                state.invoices.map(invoice => (
-                  <tr key={invoice.id}>
-                    <td>
-                      <strong>{invoice.number}</strong>
-                    </td>
-                    <td>{formatDate(invoice.date)}</td>
-                    <td>{personName(state, invoice.partyId)}</td>
-                    <td>{formatNumber(invoice.items.length)} قلم</td>
-                    <td className="amount-cell">
-                      {formatMoney(invoice.amount, state.settings.currency)}
-                    </td>
-                    <td>
-                      {formatMoney(invoice.paidAmount, state.settings.currency)}
-                    </td>
-                    <td className="amount-cell">
-                      {formatMoney(
-                        Math.max(0, invoice.amount - invoice.paidAmount),
-                        state.settings.currency
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        className="text-button"
-                        onClick={() => setSelectedInvoice(invoice)}
-                      >
-                        جزئیات
-                      </button>{" "}
-                      <span
-                        className={`status-pill ${invoice.status === "تسویه شده" ? "status-success" : invoice.status === "باطل" ? "status-danger" : "status-warning"}`}
-                      >
-                        {invoice.status}
-                      </span>
-                      {invoice.paidAmount === 0 &&
-                        invoice.status !== "باطل" && (
+                state.invoices.map(invoice => {
+                  const expanded = expandedInvoiceIds.has(invoice.id);
+                  const allocations = invoiceAllocations.filter(
+                    item => item.invoiceId === invoice.id
+                  );
+                  return (
+                    <Fragment key={invoice.id}>
+                      <tr>
+                        <td>
                           <button
-                            className="icon-button row-action"
-                            title="ویرایش فاکتور"
-                            onClick={() => openEdit(invoice)}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                        )}
-                      {invoice.paidAmount === 0 &&
-                        invoice.status !== "باطل" && (
-                          <button
-                            className="icon-button row-action"
-                            title="حذف فاکتور"
+                            type="button"
+                            className={`allocation-toggle ${expanded ? "is-expanded" : ""}`}
                             onClick={() =>
-                              window.confirm("فاکتور حذف شود؟") &&
-                              onSave(
-                                {
-                                  ...state,
-                                  invoices: state.invoices.filter(
-                                    item => item.id !== invoice.id
-                                  ),
-                                },
-                                "فاکتور حذف شد"
-                              )
+                              setExpandedInvoiceIds(current => {
+                                const next = new Set(current);
+                                if (next.has(invoice.id))
+                                  next.delete(invoice.id);
+                                else next.add(invoice.id);
+                                return next;
+                              })
                             }
+                            title="نمایش چک‌های تخصیص‌یافته"
                           >
-                            <Trash2 size={14} />
+                            <ChevronDown size={14} />
+                            <strong>{invoice.number}</strong>
                           </button>
-                        )}
-                    </td>
-                  </tr>
-                ))
+                        </td>
+                        <td>{formatDate(invoice.date)}</td>
+                        <td>{personName(state, invoice.partyId)}</td>
+                        <td>
+                          <div className="invoice-cell-list">
+                            {invoice.items.map((item, index) => (
+                              <span key={`${item.productId}-name-${index}`}>
+                                {state.products.find(
+                                  product => product.id === item.productId
+                                )?.name || "کالا/خدمت آزاد"}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="invoice-cell-list">
+                            {invoice.items.map((item, index) => (
+                              <span key={`${item.productId}-qty-${index}`}>
+                                {formatNumber(Number(item.quantity) || 0)}{" "}
+                                {item.unit}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="invoice-cell-list">
+                            {invoice.items.map((item, index) => (
+                              <span key={`${item.productId}-price-${index}`}>
+                                {formatMoney(
+                                  Number(item.unitPrice) || 0,
+                                  state.settings.currency
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="amount-cell">
+                          {formatMoney(invoice.amount, state.settings.currency)}
+                        </td>
+                        <td>
+                          {formatMoney(
+                            invoice.paidAmount,
+                            state.settings.currency
+                          )}
+                        </td>
+                        <td className="amount-cell">
+                          {formatMoney(
+                            Math.max(0, invoice.amount - invoice.paidAmount),
+                            state.settings.currency
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            className="text-button"
+                            onClick={() => setSelectedInvoice(invoice)}
+                          >
+                            جزئیات
+                          </button>{" "}
+                          <span
+                            className={`status-pill ${invoice.status === "تسویه شده" ? "status-success" : invoice.status === "باطل" ? "status-danger" : "status-warning"}`}
+                          >
+                            {invoice.status}
+                          </span>
+                          {invoice.paidAmount === 0 &&
+                            invoice.status !== "باطل" && (
+                              <button
+                                className="icon-button row-action"
+                                title="ویرایش فاکتور"
+                                onClick={() => openEdit(invoice)}
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            )}
+                          {invoice.paidAmount === 0 &&
+                            invoice.status !== "باطل" && (
+                              <button
+                                className="icon-button row-action"
+                                title="حذف فاکتور"
+                                onClick={() =>
+                                  window.confirm("فاکتور حذف شود؟") &&
+                                  onSave(
+                                    {
+                                      ...state,
+                                      invoices: state.invoices.filter(
+                                        item => item.id !== invoice.id
+                                      ),
+                                    },
+                                    "فاکتور حذف شد"
+                                  )
+                                }
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr className="allocation-detail-row">
+                          <td colSpan={10}>
+                            {allocations.length ? (
+                              <div className="invoice-check-allocation-list">
+                                {allocations.map(item => {
+                                  const check = state.checks.find(
+                                    row => row.id === item.checkId
+                                  );
+                                  const tone =
+                                    check?.status === "وصول شده"
+                                      ? "cleared"
+                                      : check?.status === "خرج شده"
+                                        ? "spent"
+                                        : [
+                                              "برگشتی",
+                                              "عودت داده شده",
+                                              "باطل",
+                                            ].includes(check?.status || "")
+                                          ? "bad"
+                                          : check?.status === "جایگزین شده"
+                                            ? "replaced"
+                                            : "open";
+                                  return (
+                                    <div
+                                      className={`allocation-detail-card check-allocation-card check-row-${tone}`}
+                                      key={`${item.checkId}-${item.invoiceId}`}
+                                    >
+                                      <strong>چک {check?.number || "—"}</strong>
+                                      <span>{check?.status || "—"}</span>
+                                      <span>
+                                        {check
+                                          ? formatDate(check.dueDate)
+                                          : "—"}
+                                      </span>
+                                      <span>
+                                        {formatMoney(
+                                          item.amount,
+                                          state.settings.currency
+                                        )}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span className="muted-cell">
+                                چکی برای این فاکتور تخصیص داده نشده است.
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={10}>
                     <EmptyState
                       title="فاکتوری ثبت نشده"
                       description="اولین فاکتور را با چند ردیف کالا ثبت کنید."
@@ -1487,7 +1646,7 @@ function Invoices({
                     }}
                   >
                     <option value="">کالا/خدمت آزاد</option>
-                    {state.products.map(product => (
+                    {invoiceProducts.map(product => (
                       <option value={product.id} key={product.id}>
                         {product.name}
                       </option>
@@ -4118,18 +4277,31 @@ function Checks({
                             <button
                               className="icon-button row-action"
                               title="حذف چک"
-                              onClick={() =>
-                                window.confirm("چک حذف شود؟") &&
+                              onClick={() => {
+                                if (!window.confirm("چک و ارجاعات آن حذف شود؟"))
+                                  return;
                                 onSave(
                                   {
                                     ...state,
-                                    checks: state.checks.filter(
-                                      item => item.id !== check.id
+                                    checks: state.checks
+                                      .filter(item => item.id !== check.id)
+                                      .map(item => ({
+                                        ...item,
+                                        replacementIds:
+                                          item.replacementIds?.filter(
+                                            id => id !== check.id
+                                          ),
+                                      })),
+                                    transactions: state.transactions.filter(
+                                      item =>
+                                        !item.note?.includes(
+                                          `__check:${check.id}`
+                                        )
                                     ),
                                   },
                                   "چک حذف شد"
-                                )
-                              }
+                                );
+                              }}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -5509,6 +5681,7 @@ function BackupPage({
   state,
   onExport,
   onImport,
+  onManualImport,
   onClearAll,
   onDriveRestore,
   onDriveUpload,
@@ -5519,6 +5692,7 @@ function BackupPage({
   state: AppState;
   onExport: () => void;
   onImport: () => void;
+  onManualImport: (payload: string) => void;
   onClearAll: () => void;
   onDriveRestore: (fileId?: string) => void;
   onDriveUpload: () => void;
@@ -5528,6 +5702,7 @@ function BackupPage({
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const [manualPayload, setManualPayload] = useState("");
   const [driveQuery, setDriveQuery] = useState("");
   const [driveSort, setDriveSort] = useState<"newest" | "oldest" | "largest">(
     "newest"
@@ -5608,6 +5783,26 @@ function BackupPage({
                 <small>اعتبارسنجی قبل از جایگزینی</small>
               </span>
               <ArrowLeftRight size={16} />
+            </button>
+          </div>
+          <div className="manual-restore-box">
+            <strong>بازیابی دستی در گوشی یا مرورگر دیگر</strong>
+            <p>
+              اگر Drive در این مرورگر مجوز موقت ندارد، فایل JSON را از Drive
+              دانلود کنید و متن آن را اینجا بچسبانید.
+            </p>
+            <textarea
+              value={manualPayload}
+              onChange={event => setManualPayload(event.target.value)}
+              placeholder="محتوای فایل backup-accounting-....json را اینجا Paste کنید"
+              rows={4}
+            />
+            <button
+              className="button button-primary"
+              disabled={!manualPayload.trim()}
+              onClick={() => onManualImport(manualPayload)}
+            >
+              اعتبارسنجی و بازیابی متن
             </button>
           </div>
           <div className="danger-zone">

@@ -154,3 +154,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .backup-scope-note small { color:#78918b; }
 @media (max-width: 900px) { .production-layout { grid-template-columns:1fr; } }
 @media (max-width: 620px) { .production-row { grid-template-columns:1fr 1fr; }.production-row select:first-child { grid-column:1 / -1; }.production-row strong { font-size:10px; } }
+
+.invoice-cell-list { display:flex; flex-direction:column; gap:4px; min-width:120px; }
+.invoice-cell-list span { white-space:nowrap; }
+.invoice-check-allocation-list { display:flex; flex-direction:column; gap:7px; }
+.check-allocation-card { display:flex; align-items:center; gap:14px; border-right:4px solid #9bcabb; }
+.check-allocation-card.check-row-cleared { border-right-color:#43a674; background:#eefaf2; }
+.check-allocation-card.check-row-bad { border-right-color:#d66c6c; background:#fff1f1; }
+.check-allocation-card.check-row-replaced { border-right-color:#e2a14b; background:#fff7e8; }
+.check-allocation-card.check-row-spent { border-right-color:#5790c3; background:#eef6ff; }
+.manual-restore-box { display:flex; flex-direction:column; gap:8px; margin-top:14px; padding:14px; border:1px dashed #9bcabb; border-radius:14px; background:#f7fcfa; color:#4f6963; font-size:11px; }
+.manual-restore-box p { margin:0; color:#718884; }
+.manual-restore-box textarea { min-height:90px; direction:ltr; text-align:left; font-family:monospace; font-size:11px; }
+@media (max-width:620px) { .check-allocation-card { flex-wrap:wrap; gap:7px; } .invoice-cell-list { min-width:90px; } }
