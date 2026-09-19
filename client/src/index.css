@@ -179,3 +179,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .warehouse-tab { border:1px solid #dceae5; background:#fff; color:#60756e; border-radius:999px; padding:8px 13px; font:inherit; font-size:11px; cursor:pointer; transition:all .18s ease; }
 .warehouse-tab:hover { border-color:#a9d6c5; color:#287665; transform:translateY(-1px); }
 .warehouse-tab.active { background:#2d7566; color:#fff; border-color:#2d7566; box-shadow:0 5px 14px rgba(45,117,102,.18); }
+
+.settings-units { margin-top:22px; padding-top:18px; border-top:1px solid #e7efec; }
+.unit-manager-form { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.unit-manager-form input { flex:1; min-width:180px; }
+.unit-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+.unit-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid #e2ece8; border-radius:10px; background:#fbfdfc; color:#4f6963; font-size:11px; }
+.unit-row > div { display:flex; gap:3px; }
+.unit-row .row-action { width:26px !important; height:26px !important; min-width:26px; }

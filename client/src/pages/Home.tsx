@@ -1040,8 +1040,14 @@ function Invoices({
     });
   }, [state.products, state.warehouses, form.type]);
   const invoiceAllocations = useMemo(
-    () => settleChecksFIFO(state.checks, state.invoices, state.paymentRules),
-    [state.checks, state.invoices, state.paymentRules]
+    () =>
+      settleChecksFIFO(
+        state.checks,
+        state.invoices,
+        state.paymentRules,
+        state.settings.dayBasis
+      ),
+    [state.checks, state.invoices, state.paymentRules, state.settings.dayBasis]
   );
   const nextInvoiceNumber = useMemo(
     () =>
@@ -3738,7 +3744,8 @@ function Checks({
   const allocationDetails = settleChecksFIFO(
     state.checks,
     state.invoices,
-    state.paymentRules
+    state.paymentRules,
+    state.settings.dayBasis
   );
   function recalculateAllocations() {
     let next = state;
@@ -4705,7 +4712,8 @@ function MonthClose({
   const fifoSettlements = settleChecksFIFO(
     partyChecks,
     partyInvoices,
-    state.paymentRules
+    state.paymentRules,
+    state.settings.dayBasis
   );
   const settlement = new Map<
     string,
@@ -4759,7 +4767,8 @@ function MonthClose({
       state.paymentRules.find(item => item.id === invoice.paymentRuleId) ||
         state.paymentRules.find(item => item.active),
       invoice.date,
-      baseRemaining
+      baseRemaining,
+      state.settings.dayBasis
     );
     const key = invoice.date.slice(0, 7);
     const previous = settlement.get(key) || {
@@ -5688,6 +5697,22 @@ function SettingsPage({
   const [businessName, setBusinessName] = useState(state.settings.businessName);
   const [currency, setCurrency] = useState(state.settings.currency);
   const [dayBasis, setDayBasis] = useState(String(state.settings.dayBasis));
+  const [units, setUnits] = useState(state.settings.units);
+  const [unitDraft, setUnitDraft] = useState("");
+  const [editingUnit, setEditingUnit] = useState<string | null>(null);
+  function saveUnit() {
+    const value = unitDraft.trim();
+    if (!value) return;
+    if (editingUnit) {
+      setUnits(current =>
+        current.map(unit => (unit === editingUnit ? value : unit))
+      );
+    } else if (!units.includes(value)) {
+      setUnits(current => [...current, value]);
+    }
+    setUnitDraft("");
+    setEditingUnit(null);
+  }
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -5726,13 +5751,82 @@ function SettingsPage({
           </label>
           <label>
             مبنای روزشمار سود
-            <input
-              type="number"
-              min="1"
+            <select
               value={dayBasis}
               onChange={event => setDayBasis(event.target.value)}
-            />
+            >
+              <option value="شمسی">تقویم شمسی واقعی (۳۱، ۳۰، ۲۹/۳۰)</option>
+              <option value="30">ماه ثابت ۳۰ روزه</option>
+              <option value="365">سال ثابت ۳۶۵ روزه</option>
+            </select>
           </label>
+        </div>
+        <div className="settings-units">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">واحدهای کالا</span>
+              <h3>مدیریت واحدها</h3>
+            </div>
+            <span className="soft-tag">{formatNumber(units.length)} واحد</span>
+          </div>
+          <div className="unit-manager-form">
+            <input
+              placeholder="نام واحد جدید"
+              value={unitDraft}
+              onChange={event => setUnitDraft(event.target.value)}
+            />
+            <button
+              className="button button-primary button-small"
+              onClick={saveUnit}
+            >
+              {editingUnit ? "ذخیره اصلاح" : "افزودن واحد"}
+            </button>
+            {editingUnit && (
+              <button
+                className="button button-ghost button-small"
+                onClick={() => {
+                  setEditingUnit(null);
+                  setUnitDraft("");
+                }}
+              >
+                انصراف
+              </button>
+            )}
+          </div>
+          <div className="unit-list">
+            {units.map(unit => (
+              <div className="unit-row" key={unit}>
+                <span>{unit}</span>
+                <div>
+                  <button
+                    className="icon-button row-action"
+                    title="ویرایش واحد"
+                    onClick={() => {
+                      setEditingUnit(unit);
+                      setUnitDraft(unit);
+                    }}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    className="icon-button row-action"
+                    title="حذف واحد"
+                    onClick={() => {
+                      if (
+                        units.length > 1 &&
+                        window.confirm(`واحد ${unit} حذف شود؟`)
+                      )
+                        setUnits(current =>
+                          current.filter(item => item !== unit)
+                        );
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="form-actions">
           <button
@@ -5745,7 +5839,11 @@ function SettingsPage({
                     ...state.settings,
                     businessName: businessName.trim() || "کارگاه من",
                     currency: currency.trim() || "ریال",
-                    dayBasis: Math.max(1, Number(dayBasis) || 30),
+                    dayBasis:
+                      dayBasis === "شمسی"
+                        ? "شمسی"
+                        : Math.max(1, Number(dayBasis) || 30),
+                    units,
                   },
                 },
                 "تنظیمات برنامه ذخیره شد"

@@ -242,7 +242,8 @@ export interface AppState {
   settings: {
     businessName: string;
     currency: string;
-    dayBasis: number;
+    dayBasis: number | "شمسی";
+    units: string[];
   };
   people: Person[];
   products: Product[];
@@ -264,7 +265,12 @@ const seedState: AppState = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
   revision: 1,
   updatedAt: new Date().toISOString(),
-  settings: { businessName: "کارگاه من", currency: "ریال", dayBasis: 30 },
+  settings: {
+    businessName: "کارگاه من",
+    currency: "ریال",
+    dayBasis: "شمسی",
+    units: ["عدد", "کیلوگرم", "گرم", "متر", "لیتر", "کیسه", "بسته", "کارتن"],
+  },
   people: [],
   products: [],
   warehouses: [
@@ -360,6 +366,19 @@ export function normalizeState(input: unknown): AppState {
     settings: {
       ...seedState.settings,
       ...(isRecord(source.settings) ? source.settings : {}),
+      dayBasis:
+        isRecord(source.settings) &&
+        (source.settings.dayBasis === "شمسی" ||
+          typeof source.settings.dayBasis === "number")
+          ? source.settings.dayBasis
+          : seedState.settings.dayBasis,
+      units:
+        isRecord(source.settings) && Array.isArray(source.settings.units)
+          ? source.settings.units.filter(
+              (unit): unit is string =>
+                typeof unit === "string" && Boolean(unit.trim())
+            )
+          : seedState.settings.units,
     },
     people: Array.isArray(source.people)
       ? source.people.map(person => ({
@@ -608,6 +627,17 @@ export function jalaliDateKey(value: string) {
   }
   return parts.map(part => String(part).padStart(2, "0")).join("/");
 }
+export function jalaliMonthDayBasis(date: string) {
+  const [year, month] = date.replace(/-/g, "/").split("/").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return 30;
+  if (month <= 6) return 31;
+  if (month <= 11) return 30;
+  return isJalaliLeapYear(year) ? 30 : 29;
+}
+export function isJalaliLeapYear(year: number) {
+  const remainder = year % 33;
+  return [1, 5, 9, 13, 17, 22, 26, 30].includes(remainder);
+}
 
 export interface FIFOSettlement {
   checkId: string;
@@ -621,7 +651,8 @@ export interface FIFOSettlement {
 export function settleChecksFIFO(
   checks: Check[],
   invoices: Invoice[],
-  paymentRules: PaymentRule[] = []
+  paymentRules: PaymentRule[] = [],
+  dayBasis: number | "شمسی" = 30
 ) {
   const settlements: FIFOSettlement[] = [];
   const eligibleInvoices = [...invoices]
@@ -666,7 +697,8 @@ export function settleChecksFIFO(
         { ...check, amount: checkRemaining },
         rule,
         invoice.date,
-        baseRemaining
+        baseRemaining,
+        dayBasis
       );
       const amount = Math.min(checkRemaining, probe.settled);
       const factor = baseRemaining > 0 ? probe.settled / baseRemaining : 1;
@@ -718,7 +750,8 @@ export function applyCheckFIFO(state: AppState, check: Check) {
   const settlements = settleChecksFIFO(
     partyChecks,
     state.invoices,
-    state.paymentRules
+    state.paymentRules,
+    state.settings.dayBasis
   );
   const byInvoice = new Map<string, FIFOSettlement[]>();
   settlements.forEach(item =>
@@ -766,7 +799,8 @@ export function calculateLateProfit(
   check: Check,
   rule?: PaymentRule,
   invoiceDate?: string,
-  invoiceBaseAmount = check.amount
+  invoiceBaseAmount = check.amount,
+  dayBasisOverride: number | "شمسی" = 30
 ) {
   const days = jalaliDayDifference(
     invoiceDate || check.invoiceDate || check.receivedDate,
@@ -784,12 +818,17 @@ export function calculateLateProfit(
       .find(item => overdueDays <= item.maxDays) ||
     activeRule.tiers[activeRule.tiers.length - 1];
   const rate = tier?.rate || 0;
-  const profit =
-    invoiceBaseAmount * ((rate * overdueDays) / activeRule.dayBasis);
+  const basis =
+    dayBasisOverride === "شمسی"
+      ? jalaliMonthDayBasis(
+          invoiceDate || check.invoiceDate || check.receivedDate
+        )
+      : Math.max(1, Number(dayBasisOverride) || activeRule.dayBasis || 30);
+  const profit = invoiceBaseAmount * ((rate * overdueDays) / basis);
   const settled = invoiceBaseAmount + profit;
   const remaining = Math.max(0, settled - check.amount);
   const remainingBase = settled
-    ? remaining / (1 + (rate * overdueDays) / activeRule.dayBasis)
+    ? remaining / (1 + (rate * overdueDays) / basis)
     : 0;
   return {
     days,
