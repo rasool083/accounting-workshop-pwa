@@ -58,6 +58,7 @@ import {
   personName,
   saveState,
   todayJalali,
+  jalaliDayDifference,
   jalaliDateKey,
   transactionLabel,
   calculateLateProfit,
@@ -6824,6 +6825,35 @@ function Reports({
       receivables,
     };
   }, [state]);
+  const agingReport = useMemo(() => {
+    const buckets = [
+      { key: "0-30", label: "۰ تا ۳۰ روز" },
+      { key: "31-60", label: "۳۱ تا ۶۰ روز" },
+      { key: "61-90", label: "۶۱ تا ۹۰ روز" },
+      { key: "90+", label: "بیش از ۹۰ روز" },
+    ];
+    const summary = buckets.map(bucket => ({
+      ...bucket,
+      receivable: 0,
+      payable: 0,
+      count: 0,
+    }));
+    state.invoices
+      .filter(invoice => invoice.status !== "باطل")
+      .forEach(invoice => {
+        const outstanding = Math.max(
+          0,
+          invoice.amount - (invoice.paidAmount || 0)
+        );
+        if (!outstanding) return;
+        const age = jalaliDayDifference(invoice.date, todayJalali());
+        const index = age <= 30 ? 0 : age <= 60 ? 1 : age <= 90 ? 2 : 3;
+        summary[index].count += 1;
+        if (invoice.type === "فروش") summary[index].receivable += outstanding;
+        else summary[index].payable += outstanding;
+      });
+    return summary;
+  }, [state]);
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -6884,6 +6914,50 @@ function Reports({
               {formatMoney(metrics.payments, state.settings.currency)}
             </strong>
           </div>
+        </div>
+      </div>
+      <div className="panel table-panel aging-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker">گزارش سررسید</span>
+            <h3>سن مطالبات و بدهی فاکتورها</h3>
+          </div>
+          <span className="soft-tag">تا {todayJalali()}</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>بازه</th>
+                <th>تعداد سند</th>
+                <th>مطالبات فروش</th>
+                <th>بدهی خرید</th>
+                <th>خالص باز</th>
+              </tr>
+            </thead>
+            <tbody>
+              {agingReport.map(row => (
+                <tr key={row.key}>
+                  <td>
+                    <strong>{row.label}</strong>
+                  </td>
+                  <td>{formatNumber(row.count)}</td>
+                  <td className="amount-negative">
+                    {formatMoney(row.receivable, state.settings.currency)}
+                  </td>
+                  <td className="amount-positive">
+                    {formatMoney(row.payable, state.settings.currency)}
+                  </td>
+                  <td>
+                    {formatMoney(
+                      row.receivable - row.payable,
+                      state.settings.currency
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
       <section className="metric-grid profit-metric-grid">
