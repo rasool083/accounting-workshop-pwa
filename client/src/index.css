@@ -2876,3 +2876,14 @@ tr:last-child td {
     transform: translateX(0) !important;
   }
 }
+
+.history-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+}
+.history-button:disabled:hover {
+  color: #68768a;
+  border-color: #e8ebf0;
+  transform: none;
+}

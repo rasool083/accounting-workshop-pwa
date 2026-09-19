@@ -29,6 +29,8 @@ import {
   ShieldCheck,
   Upload,
   Trash2,
+  Undo2,
+  Redo2,
   Users,
   WalletCards,
   X,
@@ -363,6 +365,8 @@ export default function Home() {
     LAST_VERIFIED_BACKUP,
   ]);
   const [driveLoading, setDriveLoading] = useState(false);
+  const [pastStates, setPastStates] = useState<AppState[]>([]);
+  const [futureStates, setFutureStates] = useState<AppState[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -379,14 +383,71 @@ export default function Home() {
   useEffect(() => {
     setMobileNav(false);
   }, [activePage]);
+  useEffect(() => {
+    function handleHistoryShortcut(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT" ||
+        target?.isContentEditable;
+      if (isTyping || !(event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undoState();
+      } else if (
+        event.key.toLowerCase() === "y" ||
+        (event.key.toLowerCase() === "z" && event.shiftKey)
+      ) {
+        event.preventDefault();
+        redoState();
+      }
+    }
+    window.addEventListener("keydown", handleHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleHistoryShortcut);
+  });
 
   const metrics = useMemo(() => calculateMetrics(state), [state]);
   const activeNav =
     navItems.find(item => item.id === activePage) || navItems[0];
 
-  function updateState(next: AppState, message: string) {
-    setState(saveState(appendAudit(next, "UPDATE", message)));
+  function commitState(
+    next: AppState,
+    message: string,
+    action: string = "UPDATE"
+  ) {
+    setPastStates(items => [...items.slice(-49), state]);
+    setFutureStates([]);
+    setState(saveState(appendAudit(next, action, message)));
     setNotice(message);
+  }
+
+  function updateState(next: AppState, message: string) {
+    commitState(next, message);
+  }
+
+  function undoState() {
+    if (!pastStates.length) {
+      setNotice("تغییری برای بازگشت وجود ندارد");
+      return;
+    }
+    const previous = pastStates[pastStates.length - 1];
+    setPastStates(items => items.slice(0, -1));
+    setFutureStates(items => [state, ...items].slice(0, 50));
+    setState(saveState(previous));
+    setNotice("آخرین تغییر بازگردانده شد");
+  }
+
+  function redoState() {
+    if (!futureStates.length) {
+      setNotice("تغییری برای انجام دوباره وجود ندارد");
+      return;
+    }
+    const next = futureStates[0];
+    setFutureStates(items => items.slice(1));
+    setPastStates(items => [...items.slice(-49), state]);
+    setState(saveState(next));
+    setNotice("تغییر دوباره اعمال شد");
   }
 
   function handleExport() {
@@ -413,10 +474,7 @@ export default function Home() {
     reader.onload = () => {
       try {
         const next = importPayload(String(reader.result));
-        setState(
-          saveState(appendAudit(next, "RESTORE", `بازیابی از ${file.name}`))
-        );
-        setNotice("بازیابی با موفقیت انجام شد");
+        commitState(next, `بازیابی از ${file.name}`, "RESTORE");
       } catch (error) {
         setNotice(
           error instanceof Error ? error.message : "خواندن فایل ناموفق بود"
@@ -432,10 +490,7 @@ export default function Home() {
       const next = importPayload(payload.trim());
       if (!window.confirm("اطلاعات فعلی با این متن پشتیبان جایگزین شود؟"))
         return;
-      setState(
-        saveState(appendAudit(next, "RESTORE_MANUAL", "بازیابی با متن JSON"))
-      );
-      setNotice("بازیابی دستی با موفقیت انجام شد");
+      commitState(next, "بازیابی با متن JSON", "RESTORE_MANUAL");
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "متن پشتیبان معتبر نیست"
@@ -446,8 +501,11 @@ export default function Home() {
   function handleClearAll() {
     handleExport();
     const cleared = createEmptyState(state);
-    setState(saveState(cleared));
-    setNotice("ابتدا بکاپ دانلود و سپس اطلاعات کسب‌وکار پاک شد");
+    commitState(
+      cleared,
+      "ابتدا بکاپ دانلود و سپس اطلاعات کسب‌وکار پاک شد",
+      "CLEAR_ALL"
+    );
   }
 
   async function handleDriveUpload() {
@@ -535,10 +593,7 @@ export default function Home() {
         PROJECT_BACKUPS_FOLDER_ID
       ).downloadBackup(file.id);
       const next = importPayload(payload);
-      setState(
-        saveState(appendAudit(next, "RESTORE_DRIVE", `بازیابی از ${file.name}`))
-      );
-      setNotice("بازیابی از Google Drive با موفقیت انجام شد");
+      commitState(next, `بازیابی از ${file.name}`, "RESTORE_DRIVE");
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "بازیابی از Drive ناموفق بود"
@@ -658,6 +713,24 @@ export default function Home() {
               <span />
               <span>ذخیره خودکار فعال</span>
             </div>
+            <button
+              className="icon-button history-button"
+              title="برگشت یک مرحله (Ctrl/Cmd+Z)"
+              aria-label="برگشت یک مرحله"
+              disabled={!pastStates.length}
+              onClick={undoState}
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
+              className="icon-button history-button"
+              title="انجام دوباره (Ctrl/Cmd+Y)"
+              aria-label="انجام دوباره"
+              disabled={!futureStates.length}
+              onClick={redoState}
+            >
+              <Redo2 size={18} />
+            </button>
             <button
               className="icon-button"
               title="پشتیبان‌گیری"
@@ -4492,7 +4565,7 @@ function Checks({
   }
   function targetLabel(status: CheckStatus) {
     if (["نزد ما", "وصول شده", "برگشتی"].includes(status))
-      return status === "برگشتی" ? "حساب امانت بانک" : "حساب بانکی مقصد";
+      return status === "برگشتی" ? "حساب امانت" : "حساب مرجع";
     if (["عودت داده شده", "خرج شده"].includes(status))
       return status === "خرج شده"
         ? "شخص/تأمین‌کننده بابت هزینه"
@@ -4559,14 +4632,16 @@ function Checks({
           </select>
         </label>
         <label>
-          فیلتر بانک
+          فیلتر حساب مرجع
           <select
             value={bankFilter}
             onChange={e => setBankFilter(e.target.value)}
           >
-            <option value="همه">همه بانک‌ها</option>
+            <option value="همه">همه حساب‌ها</option>
             {state.accounts
-              .filter(account => account.type === "بانک")
+              .filter(account =>
+                ["بانک", "صندوق", "شریک"].includes(account.type)
+              )
               .map(account => (
                 <option key={account.id} value={account.id}>
                   {account.name}
@@ -4758,11 +4833,15 @@ function Checks({
                             >
                               <option value="">
                                 {check.bankAccountId
-                                  ? "تغییر حساب بانکی"
-                                  : "انتخاب حساب بانکی *"}
+                                  ? "تغییر حساب مرجع"
+                                  : "انتخاب حساب مرجع *"}
                               </option>
                               {state.accounts
-                                .filter(account => account.type === "بانک")
+                                .filter(account =>
+                                  ["بانک", "صندوق", "شریک"].includes(
+                                    account.type
+                                  )
+                                )
                                 .map(account => (
                                   <option key={account.id} value={account.id}>
                                     {account.name}
@@ -5048,11 +5127,14 @@ function Checks({
                     })
                   }
                 >
-                  <option value="">انتخاب حساب بانکی *</option>
-                  {state.accounts.filter(account => account.type === "بانک")
-                    .length ? (
+                  <option value="">انتخاب حساب مرجع *</option>
+                  {state.accounts.filter(account =>
+                    ["بانک", "صندوق", "شریک"].includes(account.type)
+                  ).length ? (
                     state.accounts
-                      .filter(account => account.type === "بانک")
+                      .filter(account =>
+                        ["بانک", "صندوق", "شریک"].includes(account.type)
+                      )
                       .map(account => (
                         <option key={account.id} value={account.id}>
                           {account.name}
@@ -5060,7 +5142,7 @@ function Checks({
                       ))
                   ) : (
                     <option value="" disabled>
-                      ابتدا در صفحه بانک‌ها حساب بسازید
+                      ابتدا در صفحه بانک‌ها و صندوق‌ها حساب بسازید
                     </option>
                   )}
                 </select>
