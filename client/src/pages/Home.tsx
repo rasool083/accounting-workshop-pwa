@@ -6760,6 +6760,70 @@ function Reports({
     (sum, row) => sum + row.increase - row.decrease,
     0
   );
+  const profitReport = useMemo(() => {
+    const validInvoices = state.invoices.filter(
+      invoice => invoice.status !== "باطل"
+    );
+    const sales = validInvoices
+      .filter(invoice => invoice.type === "فروش")
+      .reduce((sum, invoice) => sum + invoice.amount, 0);
+    const purchases = validInvoices
+      .filter(invoice => invoice.type === "خرید")
+      .reduce((sum, invoice) => sum + invoice.amount, 0);
+    const estimatedCost = validInvoices
+      .filter(invoice => invoice.type === "فروش")
+      .reduce(
+        (sum, invoice) =>
+          sum +
+          invoice.items.reduce((lineSum, item) => {
+            const product = state.products.find(
+              value => value.id === item.productId
+            );
+            return (
+              lineSum +
+              (item.quantityBase || item.quantity) *
+                (product?.price || item.unitPrice)
+            );
+          }, 0),
+        0
+      );
+    const receivables = state.people
+      .map(person => {
+        const invoices = validInvoices.filter(
+          invoice => invoice.partyId === person.id
+        );
+        const salesBase = invoices
+          .filter(invoice => invoice.type === "فروش")
+          .reduce((sum, invoice) => sum + invoice.amount, 0);
+        const purchasesBase = invoices
+          .filter(invoice => invoice.type === "خرید")
+          .reduce((sum, invoice) => sum + invoice.amount, 0);
+        const collected = invoices.reduce(
+          (sum, invoice) => sum + (invoice.paidAmount || 0),
+          0
+        );
+        return {
+          person,
+          salesBase,
+          purchasesBase,
+          collected,
+          balance: salesBase - purchasesBase - collected,
+        };
+      })
+      .filter(row => row.salesBase || row.purchasesBase || row.collected)
+      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+    return {
+      sales,
+      purchases,
+      estimatedCost,
+      grossProfit: sales - estimatedCost,
+      inventoryValue: state.products.reduce(
+        (sum, product) => sum + product.stock * product.price,
+        0
+      ),
+      receivables,
+    };
+  }, [state]);
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -6820,6 +6884,102 @@ function Reports({
               {formatMoney(metrics.payments, state.settings.currency)}
             </strong>
           </div>
+        </div>
+      </div>
+      <section className="metric-grid profit-metric-grid">
+        <MetricCard
+          label="فروش معتبر"
+          value={formatMoney(profitReport.sales, state.settings.currency)}
+          helper="فاکتورهای فروش بدون ابطال"
+          icon={<ArrowDownLeft size={20} />}
+          tone="mint"
+        />
+        <MetricCard
+          label="بهای تقریبی فروش"
+          value={formatMoney(
+            profitReport.estimatedCost,
+            state.settings.currency
+          )}
+          helper="بر اساس قیمت پایه فعلی کالا"
+          icon={<Boxes size={20} />}
+          tone="amber"
+        />
+        <MetricCard
+          label="سود ناخالص تقریبی"
+          value={formatMoney(profitReport.grossProfit, state.settings.currency)}
+          helper="فروش منهای بهای تقریبی"
+          icon={<ChartNoAxesCombined size={20} />}
+          tone={profitReport.grossProfit >= 0 ? "indigo" : "rose"}
+        />
+        <MetricCard
+          label="ارزش موجودی"
+          value={formatMoney(
+            profitReport.inventoryValue,
+            state.settings.currency
+          )}
+          helper="موجودی فعلی × قیمت پایه"
+          icon={<WalletCards size={20} />}
+          tone="violet"
+        />
+      </section>
+      <div className="panel table-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker">مطالبات و ماندهٔ طرف حساب</span>
+            <h3>بدهکاران و بستانکاران</h3>
+          </div>
+          <span className="soft-tag">فاکتور معتبر و مبلغ تخصیص‌یافته</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>طرف حساب</th>
+                <th>فروش</th>
+                <th>خرید</th>
+                <th>وصول/تسویه</th>
+                <th>مانده</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profitReport.receivables.length ? (
+                profitReport.receivables.map(row => (
+                  <tr key={row.person.id}>
+                    <td>
+                      <strong>{row.person.name}</strong>
+                      <small className="muted-cell">{row.person.code}</small>
+                    </td>
+                    <td>
+                      {formatMoney(row.salesBase, state.settings.currency)}
+                    </td>
+                    <td>
+                      {formatMoney(row.purchasesBase, state.settings.currency)}
+                    </td>
+                    <td>
+                      {formatMoney(row.collected, state.settings.currency)}
+                    </td>
+                    <td
+                      className={
+                        row.balance >= 0 ? "amount-negative" : "amount-positive"
+                      }
+                    >
+                      {formatMoney(
+                        Math.abs(row.balance),
+                        state.settings.currency
+                      )}{" "}
+                      {row.balance >= 0 ? "بدهکار" : "بستانکار"}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5}>
+                    برای طرف حساب‌ها فاکتور یا وصولی ثبت نشده است.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
       <div className="panel ledger-panel">
