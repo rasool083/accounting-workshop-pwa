@@ -75,6 +75,9 @@ import {
   PROJECT_BACKUPS_FOLDER_ID,
   PROJECT_BACKUPS_FOLDER_URL,
   PROJECT_DRIVE_FOLDER_URL,
+  getDriveClientId,
+  requestDriveAccessToken,
+  setDriveClientId,
   type DriveBackupFile,
 } from "@/lib/googleDrive";
 
@@ -365,6 +368,9 @@ export default function Home() {
     LAST_VERIFIED_BACKUP,
   ]);
   const [driveLoading, setDriveLoading] = useState(false);
+  const [driveClientId, setDriveClientIdState] = useState(() =>
+    getDriveClientId()
+  );
   const [pastStates, setPastStates] = useState<AppState[]>([]);
   const [futureStates, setFutureStates] = useState<AppState[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -540,6 +546,21 @@ export default function Home() {
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "بارگذاری در Drive ناموفق بود"
+      );
+    }
+  }
+
+  async function handleDriveConnect(clientId: string) {
+    try {
+      setDriveClientId(clientId);
+      setDriveClientIdState(clientId.trim());
+      const token = await requestDriveAccessToken(clientId);
+      window.__ACCOUNTING_DRIVE_ACCESS_TOKEN__ = token;
+      setNotice("Google Drive با موفقیت برای این مرورگر متصل شد");
+      await handleDriveRefresh();
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "اتصال Google Drive ناموفق بود"
       );
     }
   }
@@ -832,6 +853,8 @@ export default function Home() {
               driveBackups={driveBackups}
               driveLoading={driveLoading}
               onDriveRefresh={handleDriveRefresh}
+              driveClientId={driveClientId}
+              onDriveConnect={handleDriveConnect}
             />
           )}
           {activePage === "settings" && (
@@ -6819,6 +6842,8 @@ function BackupPage({
   driveBackups,
   driveLoading,
   onDriveRefresh,
+  driveClientId,
+  onDriveConnect,
 }: {
   state: AppState;
   onExport: () => void;
@@ -6830,6 +6855,8 @@ function BackupPage({
   driveBackups: DriveBackupFile[];
   driveLoading: boolean;
   onDriveRefresh: () => void;
+  driveClientId: string;
+  onDriveConnect: (clientId: string) => void;
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -6838,6 +6865,7 @@ function BackupPage({
   const [driveSort, setDriveSort] = useState<"newest" | "oldest" | "largest">(
     "newest"
   );
+  const [clientIdDraft, setClientIdDraft] = useState(driveClientId);
   const recordCount =
     state.people.length +
     state.products.length +
@@ -6998,6 +7026,30 @@ function BackupPage({
             این قابلیت فقط زمانی کار می‌کند که همین مرورگر مجوز OAuth موقت Drive
             داشته باشد. پشتیبان محلی همچنان بدون وابستگی به اینترنت کار می‌کند.
           </p>
+          <div className="drive-auth-box">
+            <strong>اتصال امن این مرورگر</strong>
+            <small>
+              Client ID از نوع Web را از Google Cloud وارد کنید؛ این مقدار رمز
+              نیست و توکن دسترسی در فایل پشتیبان ذخیره نمی‌شود.
+            </small>
+            <input
+              value={clientIdDraft}
+              onChange={event => setClientIdDraft(event.target.value)}
+              placeholder="Google OAuth Web Client ID"
+              dir="ltr"
+            />
+            <button
+              className="button button-primary"
+              onClick={() => onDriveConnect(clientIdDraft)}
+              disabled={!clientIdDraft.trim()}
+            >
+              اتصال به Google Drive
+            </button>
+            <small>
+              دسترسی در هر نشست کوتاه‌مدت است؛ در صورت انقضا دوباره اتصال را
+              بزنید.
+            </small>
+          </div>
           <div className="drive-path-card">
             <strong>حسابداری کارگاه — پشتیبان‌های PWA</strong>
             <small>زیرپوشه: نسخه‌های پشتیبان JSON</small>
