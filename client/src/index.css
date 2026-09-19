@@ -2993,3 +2993,73 @@ tr:last-child td {
     white-space: normal;
   }
 }
+
+.ledger-panel {
+  min-width: 0;
+}
+.ledger-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 12px 0;
+}
+.ledger-controls select {
+  min-width: 230px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #dce8e4;
+  border-radius: 9px;
+  background: #fff;
+  color: #405067;
+  font: inherit;
+  font-size: 10px;
+}
+.segmented-control {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: #eef5f2;
+}
+.segmented-control button {
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: transparent;
+  color: #71847e;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.segmented-control button.active {
+  background: #fff;
+  color: #327462;
+  box-shadow: 0 2px 7px rgba(56, 105, 88, 0.1);
+}
+.ledger-controls > strong {
+  margin-right: auto;
+  font-size: 11px;
+}
+.ledger-panel td small {
+  display: block;
+  margin-top: 3px;
+}
+@media (max-width: 720px) {
+  .ledger-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .ledger-controls select,
+  .ledger-controls > strong {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+  .segmented-control {
+    width: 100%;
+  }
+  .segmented-control button {
+    flex: 1;
+  }
+}

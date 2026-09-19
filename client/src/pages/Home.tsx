@@ -6341,6 +6341,94 @@ function Reports({
       );
     })
   );
+  const [ledgerMode, setLedgerMode] = useState<"account" | "party">("account");
+  const [ledgerAccountId, setLedgerAccountId] = useState("");
+  const [ledgerPartyId, setLedgerPartyId] = useState("");
+  const ledgerRows = useMemo(() => {
+    if (ledgerMode === "account" && !ledgerAccountId) return [];
+    if (ledgerMode === "party" && !ledgerPartyId) return [];
+    const rows: Array<{
+      id: string;
+      date: string;
+      title: string;
+      increase: number;
+      decrease: number;
+      note: string;
+    }> = [];
+    state.transactions.forEach(item => {
+      if (item.status === "باطل") return;
+      if (ledgerMode === "party" && item.partyId !== ledgerPartyId) return;
+      if (
+        ledgerMode === "account" &&
+        item.accountId !== ledgerAccountId &&
+        item.fromAccountId !== ledgerAccountId &&
+        item.toAccountId !== ledgerAccountId
+      )
+        return;
+      const increase =
+        ledgerMode === "account"
+          ? item.toAccountId === ledgerAccountId ||
+            ["دریافت", "درآمد", "فروش کالا"].includes(item.type)
+          : ["خرید", "هزینه/خرید توسط شریک", "دریافت توسط شریک"].includes(
+              item.type
+            );
+      rows.push({
+        id: item.id,
+        date: item.date,
+        title: transactionLabel(item.type),
+        increase: increase ? item.amount : 0,
+        decrease: increase ? 0 : item.amount,
+        note: item.note || "",
+      });
+    });
+    if (ledgerMode === "account") {
+      state.checks.forEach(check => {
+        if (
+          check.status === "وصول شده" &&
+          check.bankAccountId === ledgerAccountId
+        )
+          rows.push({
+            id: `check-${check.id}`,
+            date: check.dueDate,
+            title: `وصول چک ${check.number}`,
+            increase: check.amount,
+            decrease: 0,
+            note: personName(state, check.partyId),
+          });
+      });
+    } else {
+      state.invoices.forEach(invoice => {
+        if (invoice.status === "باطل" || invoice.partyId !== ledgerPartyId)
+          return;
+        rows.push({
+          id: `invoice-${invoice.id}`,
+          date: invoice.date,
+          title: `فاکتور ${invoice.type} ${invoice.number}`,
+          increase: invoice.type === "فروش" ? invoice.amount : 0,
+          decrease: invoice.type === "خرید" ? invoice.amount : 0,
+          note: invoice.note || "",
+        });
+      });
+      state.checks.forEach(check => {
+        if (check.partyId !== ledgerPartyId || check.status === "باطل") return;
+        rows.push({
+          id: `check-party-${check.id}`,
+          date: check.receivedDate,
+          title: `چک دریافتی ${check.number}`,
+          increase: 0,
+          decrease: check.amount,
+          note: check.status,
+        });
+      });
+    }
+    return rows.sort((a, b) =>
+      jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date))
+    );
+  }, [ledgerAccountId, ledgerMode, ledgerPartyId, state]);
+  const ledgerBalance = ledgerRows.reduce(
+    (sum, row) => sum + row.increase - row.decrease,
+    0
+  );
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -6401,6 +6489,124 @@ function Reports({
               {formatMoney(metrics.payments, state.settings.currency)}
             </strong>
           </div>
+        </div>
+      </div>
+      <div className="panel ledger-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker">دفتر معین و تفصیلی</span>
+            <h3>گردش حساب و طرف حساب</h3>
+          </div>
+          <button
+            className="button button-ghost"
+            onClick={() => window.print()}
+          >
+            چاپ دفتر
+          </button>
+        </div>
+        <div className="ledger-controls">
+          <div className="segmented-control">
+            <button
+              className={ledgerMode === "account" ? "active" : ""}
+              onClick={() => setLedgerMode("account")}
+            >
+              حساب‌ها
+            </button>
+            <button
+              className={ledgerMode === "party" ? "active" : ""}
+              onClick={() => setLedgerMode("party")}
+            >
+              طرف حساب‌ها
+            </button>
+          </div>
+          {ledgerMode === "account" ? (
+            <select
+              value={ledgerAccountId}
+              onChange={event => setLedgerAccountId(event.target.value)}
+            >
+              <option value="">انتخاب بانک، صندوق یا شریک</option>
+              {state.accounts.map(account => (
+                <option key={account.id} value={account.id}>
+                  {account.name} · {account.type}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={ledgerPartyId}
+              onChange={event => setLedgerPartyId(event.target.value)}
+            >
+              <option value="">انتخاب طرف حساب</option>
+              {state.people.map(person => (
+                <option key={person.id} value={person.id}>
+                  {person.code} · {person.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <strong
+            className={
+              ledgerBalance >= 0 ? "amount-positive" : "amount-negative"
+            }
+          >
+            مانده:{" "}
+            {formatMoney(Math.abs(ledgerBalance), state.settings.currency)}
+          </strong>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>تاریخ</th>
+                <th>شرح</th>
+                <th>افزایش</th>
+                <th>کاهش</th>
+                <th>مانده</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ledgerRows.length ? (
+                (() => {
+                  let running = 0;
+                  return ledgerRows.map(row => {
+                    running += row.increase - row.decrease;
+                    return (
+                      <tr key={row.id}>
+                        <td>{formatDate(row.date)}</td>
+                        <td>
+                          <strong>{row.title}</strong>
+                          <small className="muted-cell">{row.note}</small>
+                        </td>
+                        <td className="amount-positive">
+                          {row.increase
+                            ? formatMoney(row.increase, state.settings.currency)
+                            : "—"}
+                        </td>
+                        <td className="amount-negative">
+                          {row.decrease
+                            ? formatMoney(row.decrease, state.settings.currency)
+                            : "—"}
+                        </td>
+                        <td>
+                          {formatMoney(
+                            Math.abs(running),
+                            state.settings.currency
+                          )}{" "}
+                          {running < 0 ? "(کاهش)" : "(افزایش)"}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()
+              ) : (
+                <tr>
+                  <td colSpan={5}>
+                    برای مشاهدهٔ دفتر، حساب یا طرف حساب را انتخاب کنید.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
       <div className="panel table-panel">
