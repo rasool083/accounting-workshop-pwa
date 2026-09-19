@@ -453,7 +453,7 @@ export default function Home() {
     const token = getDriveAccessToken();
     if (!token) {
       setNotice(
-        "مجوز موقت Drive در این مرورگر تزریق نشده است؛ بکاپ محلی آماده دانلود است"
+        "Google Drive به این مرورگر متصل نیست؛ مجوز OAuth موقت دریافت نشده است. بکاپ محلی آماده دانلود است."
       );
       handleExport();
       return;
@@ -489,7 +489,7 @@ export default function Home() {
     const token = getDriveAccessToken();
     if (!token) {
       setNotice(
-        "این مرورگر مجوز موقت Drive ندارد؛ از پوشه Drive فایل JSON را دانلود و با بازیابی دستی وارد کنید"
+        "Google Drive به این مرورگر متصل نیست؛ برای بازیابی، فایل JSON را از پوشه Drive دانلود و در بخش بازیابی دستی وارد کنید."
       );
       return;
     }
@@ -522,7 +522,7 @@ export default function Home() {
     const token = getDriveAccessToken();
     if (!token) {
       setNotice(
-        "این مرورگر مجوز موقت Drive ندارد. از لینک پوشه، فایل JSON را دانلود کنید و در بخش بازیابی دستی Paste کنید"
+        "Google Drive به این مرورگر متصل نیست؛ از لینک پوشه فایل JSON را دانلود و در بخش بازیابی دستی وارد کنید."
       );
       return;
     }
@@ -6297,12 +6297,11 @@ function BackupPage({
           <div className="cloud-illustration">
             <Cloud size={28} />
           </div>
-          <span className="section-kicker">اتصال ابری فعال</span>
+          <span className="section-kicker">اتصال ابری اختیاری</span>
           <h3>پشتیبان روی Google Drive</h3>
           <p>
-            مجوز Drive فعال است و مسیر اختصاصی پروژه برای نگهداری نسخه‌های JSON
-            آماده شده است. پشتیبان محلی همچنان بدون وابستگی به اینترنت کار
-            می‌کند.
+            این قابلیت فقط زمانی کار می‌کند که همین مرورگر مجوز OAuth موقت Drive
+            داشته باشد. پشتیبان محلی همچنان بدون وابستگی به اینترنت کار می‌کند.
           </p>
           <div className="drive-path-card">
             <strong>حسابداری کارگاه — پشتیبان‌های PWA</strong>
