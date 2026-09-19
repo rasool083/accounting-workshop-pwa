@@ -197,3 +197,5 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .folder-chevron { transition:transform .2s ease; color:#6b9084; }
 .folder-chevron.open { transform:rotate(180deg); }
 .settings-units-content { padding-top:13px; }
+
+.sort-control{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid #dce9e4;background:#f7fbf9;border-radius:9px;white-space:nowrap}.sort-control button{border:0;background:transparent;color:#70827c;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer}.sort-control button.active{background:#d8eee6;color:#286b5b;font-weight:700}.panel-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.scope-audit{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 14px;color:#61766f;font-size:11px}.scope-audit strong{color:#315c51}.scope-audit span{padding:5px 9px;border-radius:7px;background:#f5f9f7}

@@ -109,6 +109,37 @@ function statusClass(status: string) {
   return "status-warning";
 }
 
+function SortControl({
+  direction,
+  onChange,
+  ascLabel = "از ابتدا",
+  descLabel = "از انتها",
+}: {
+  direction: "asc" | "desc";
+  onChange: (direction: "asc" | "desc") => void;
+  ascLabel?: string;
+  descLabel?: string;
+}) {
+  return (
+    <div className="sort-control" role="group" aria-label="مرتب‌سازی">
+      <button
+        type="button"
+        className={direction === "asc" ? "active" : ""}
+        onClick={() => onChange("asc")}
+      >
+        {ascLabel}
+      </button>
+      <button
+        type="button"
+        className={direction === "desc" ? "active" : ""}
+        onClick={() => onChange("desc")}
+      >
+        {descLabel}
+      </button>
+    </div>
+  );
+}
+
 function JalaliDatePicker({
   value,
   onChange,
@@ -1010,6 +1041,9 @@ function Invoices({
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Set<string>>(
     new Set()
   );
+  const [invoiceSortDirection, setInvoiceSortDirection] = useState<
+    "asc" | "desc"
+  >("asc");
   const blankItem = { productId: "", quantity: "1", unit: "", unitPrice: "" };
   const [form, setForm] = useState({
     number: "",
@@ -1048,6 +1082,32 @@ function Invoices({
         state.settings.dayBasis
       ),
     [state.checks, state.invoices, state.paymentRules, state.settings.dayBasis]
+  );
+  const validSales = useMemo(
+    () =>
+      state.invoices.filter(
+        invoice => invoice.type === "فروش" && invoice.status !== "باطل"
+      ),
+    [state.invoices]
+  );
+  const paidByInvoice = useMemo(() => {
+    const result = new Map<string, number>();
+    invoiceAllocations.forEach(item => {
+      result.set(
+        item.invoiceId,
+        (result.get(item.invoiceId) || 0) + item.principalAmount
+      );
+    });
+    return result;
+  }, [invoiceAllocations]);
+  const registeredSales = validSales.reduce(
+    (sum, invoice) => sum + invoice.amount,
+    0
+  );
+  const outstandingSales = validSales.reduce(
+    (sum, invoice) =>
+      sum + Math.max(0, invoice.amount - (paidByInvoice.get(invoice.id) || 0)),
+    0
   );
   const nextInvoiceNumber = useMemo(
     () =>
@@ -1151,22 +1211,32 @@ function Invoices({
   }
   function deleteInvoice(invoice: AppState["invoices"][number]) {
     if (!window.confirm(`فاکتور ${invoice.number} حذف شود؟`)) return;
-    const products = state.products.map(product => {
-      const movement = invoice.items
-        .filter(item => item.productId === product.id)
-        .reduce((sum, item) => sum + (item.quantityBase ?? item.quantity), 0);
-      return {
-        ...product,
-        stock: product.stock + (invoice.type === "فروش" ? movement : -movement),
-      };
-    });
+    const products =
+      invoice.status === "باطل"
+        ? state.products
+        : state.products.map(product => {
+            const movement = invoice.items
+              .filter(item => item.productId === product.id)
+              .reduce(
+                (sum, item) => sum + (item.quantityBase ?? item.quantity),
+                0
+              );
+            return {
+              ...product,
+              stock:
+                product.stock +
+                (invoice.type === "فروش" ? movement : -movement),
+            };
+          });
     onSave(
       rebuildCheckAllocations({
         ...state,
         products,
         invoices: state.invoices.filter(item => item.id !== invoice.id),
       }),
-      `فاکتور ${invoice.number} حذف شد و موجودی اصلاح گردید`
+      invoice.status === "باطل"
+        ? `فاکتور باطل ${invoice.number} حذف شد`
+        : `فاکتور ${invoice.number} حذف شد و موجودی اصلاح گردید`
     );
   }
   function submit(event: React.FormEvent) {
@@ -1290,27 +1360,15 @@ function Invoices({
           tone="amber"
         />
         <MetricCard
-          label="مانده فاکتورها"
-          value={formatMoney(
-            state.invoices.reduce(
-              (sum, invoice) =>
-                sum + Math.max(0, invoice.amount - invoice.paidAmount),
-              0
-            ),
-            state.settings.currency
-          )}
-          helper="مبلغ قابل وصول"
+          label="مانده فروش معتبر"
+          value={formatMoney(outstandingSales, state.settings.currency)}
+          helper="پس از تخصیص FIFO و حذف فاکتور باطل"
           icon={<WalletCards size={20} />}
           tone="rose"
         />
         <MetricCard
-          label="فروش ثبت‌شده"
-          value={formatMoney(
-            state.invoices
-              .filter(invoice => invoice.type === "فروش")
-              .reduce((sum, invoice) => sum + invoice.amount, 0),
-            state.settings.currency
-          )}
+          label="فروش معتبر ثبت‌شده"
+          value={formatMoney(registeredSales, state.settings.currency)}
           helper="قبل از تسویه"
           icon={<ArrowDownLeft size={20} />}
           tone="mint"
@@ -1334,7 +1392,15 @@ function Invoices({
             <span className="section-kicker">دفتر فاکتور</span>
             <h3>{formatNumber(state.invoices.length)} فاکتور</h3>
           </div>
-          <span className="soft-tag">FIFO چک‌ها و ماندهٔ واقعی</span>
+          <div className="panel-heading-actions">
+            <SortControl
+              direction={invoiceSortDirection}
+              onChange={setInvoiceSortDirection}
+              ascLabel="قدیمی‌تر"
+              descLabel="جدیدتر"
+            />
+            <span className="soft-tag">FIFO چک‌ها و ماندهٔ واقعی</span>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -1357,9 +1423,10 @@ function Invoices({
                 [...state.invoices]
                   .sort(
                     (a, b) =>
-                      jalaliDateKey(a.date).localeCompare(
+                      (invoiceSortDirection === "asc" ? 1 : -1) *
+                      (jalaliDateKey(a.date).localeCompare(
                         jalaliDateKey(b.date)
-                      ) || a.id.localeCompare(b.id)
+                      ) || a.id.localeCompare(b.id))
                   )
                   .map(invoice => {
                     const expanded = expandedInvoiceIds.has(invoice.id);
@@ -1462,15 +1529,13 @@ function Invoices({
                                 <Pencil size={14} />
                               </button>
                             )}
-                            {invoice.status !== "باطل" && (
-                              <button
-                                className="icon-button row-action"
-                                title="حذف فاکتور"
-                                onClick={() => deleteInvoice(invoice)}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
+                            <button
+                              className="icon-button row-action"
+                              title="حذف فاکتور"
+                              onClick={() => deleteInvoice(invoice)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </td>
                         </tr>
                         {expanded && (
@@ -2175,6 +2240,9 @@ function People({
   const [editingPerson, setEditingPerson] = useState<
     AppState["people"][number] | null
   >(null);
+  const [peopleSortDirection, setPeopleSortDirection] = useState<
+    "asc" | "desc"
+  >("asc");
   const [form, setForm] = useState(blank);
   const nextPersonCode = useMemo(
     () =>
@@ -2248,9 +2316,17 @@ function People({
             <span className="section-kicker">دفتر اشخاص</span>
             <h3>{formatNumber(state.people.length)} رکورد</h3>
           </div>
-          <div className="search-box compact">
-            <Search size={16} />
-            <input placeholder="جست‌وجو..." />
+          <div className="panel-heading-actions">
+            <SortControl
+              direction={peopleSortDirection}
+              onChange={setPeopleSortDirection}
+              ascLabel="الفبایی"
+              descLabel="معکوس"
+            />
+            <div className="search-box compact">
+              <Search size={16} />
+              <input placeholder="جست‌وجو..." />
+            </div>
           </div>
         </div>
         <div className="table-wrap">
@@ -2267,63 +2343,69 @@ function People({
             </thead>
             <tbody>
               {state.people.length ? (
-                state.people.map(person => (
-                  <tr key={person.id}>
-                    <td className="muted-cell">{person.code}</td>
-                    <td>
-                      <strong>{person.name}</strong>
-                    </td>
-                    <td>
-                      <div className="role-tags">
-                        {(person.roles?.length
-                          ? person.roles
-                          : [person.type]
-                        ).map(role => (
-                          <span className="soft-tag" key={role}>
-                            {role}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>{person.phone || "—"}</td>
-                    <td
-                      className={
-                        person.balance > 0 ? "amount-negative" : "muted-cell"
-                      }
-                    >
-                      {person.balance
-                        ? formatMoney(person.balance, state.settings.currency)
-                        : "بدون مانده"}
-                    </td>
-                    <td>
-                      <button
-                        className="icon-button row-action"
-                        title="ویرایش کامل طرف حساب"
-                        onClick={() => beginEdit(person)}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        className="icon-button row-action"
-                        title="حذف طرف حساب"
-                        onClick={() =>
-                          window.confirm("طرف حساب حذف شود؟") &&
-                          onSave(
-                            {
-                              ...state,
-                              people: state.people.filter(
-                                item => item.id !== person.id
-                              ),
-                            },
-                            "طرف حساب حذف شد"
-                          )
+                [...state.people]
+                  .sort(
+                    (a, b) =>
+                      (peopleSortDirection === "asc" ? 1 : -1) *
+                      a.name.localeCompare(b.name, "fa")
+                  )
+                  .map(person => (
+                    <tr key={person.id}>
+                      <td className="muted-cell">{person.code}</td>
+                      <td>
+                        <strong>{person.name}</strong>
+                      </td>
+                      <td>
+                        <div className="role-tags">
+                          {(person.roles?.length
+                            ? person.roles
+                            : [person.type]
+                          ).map(role => (
+                            <span className="soft-tag" key={role}>
+                              {role}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td>{person.phone || "—"}</td>
+                      <td
+                        className={
+                          person.balance > 0 ? "amount-negative" : "muted-cell"
                         }
                       >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                        {person.balance
+                          ? formatMoney(person.balance, state.settings.currency)
+                          : "بدون مانده"}
+                      </td>
+                      <td>
+                        <button
+                          className="icon-button row-action"
+                          title="ویرایش کامل طرف حساب"
+                          onClick={() => beginEdit(person)}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          className="icon-button row-action"
+                          title="حذف طرف حساب"
+                          onClick={() =>
+                            window.confirm("طرف حساب حذف شود؟") &&
+                            onSave(
+                              {
+                                ...state,
+                                people: state.people.filter(
+                                  item => item.id !== person.id
+                                ),
+                              },
+                              "طرف حساب حذف شد"
+                            )
+                          }
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
               ) : (
                 <tr>
                   <td colSpan={6}>
@@ -2444,6 +2526,9 @@ function Inventory({
   >(null);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("همه");
+  const [productSortDirection, setProductSortDirection] = useState<
+    "asc" | "desc"
+  >("asc");
   const [adjustForm, setAdjustForm] = useState({
     productId: "",
     amount: "",
@@ -2502,13 +2587,19 @@ function Inventory({
   const selectedProduct = state.products.find(
     product => product.id === selectedProductId
   );
-  const visibleProducts = state.products.filter(product =>
-    warehouseFilter === "همه"
-      ? true
-      : warehouseFilter === "بدون انبار"
-        ? !product.warehouseId
-        : product.warehouseId === warehouseFilter
-  );
+  const visibleProducts = state.products
+    .filter(product =>
+      warehouseFilter === "همه"
+        ? true
+        : warehouseFilter === "بدون انبار"
+          ? !product.warehouseId
+          : product.warehouseId === warehouseFilter
+    )
+    .sort(
+      (a, b) =>
+        (productSortDirection === "asc" ? 1 : -1) *
+        a.name.localeCompare(b.name, "fa")
+    );
   const movements = selectedProduct
     ? state.invoices
         .filter(invoice => invoice.status !== "باطل")
@@ -2706,7 +2797,15 @@ function Inventory({
                       ?.name}
             </h3>
           </div>
-          <span className="soft-tag">واحد اول / واحد دوم</span>
+          <div className="panel-heading-actions">
+            <SortControl
+              direction={productSortDirection}
+              onChange={setProductSortDirection}
+              ascLabel="الفبایی"
+              descLabel="معکوس"
+            />
+            <span className="soft-tag">واحد اول / واحد دوم</span>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -3728,6 +3827,9 @@ function Checks({
   const [expandedCheckIds, setExpandedCheckIds] = useState<Set<string>>(
     new Set()
   );
+  const [checkSortDirection, setCheckSortDirection] = useState<"asc" | "desc">(
+    "asc"
+  );
   const blank = {
     number: "",
     partyId: "",
@@ -3764,11 +3866,12 @@ function Checks({
     )
     .sort(
       (a, b) =>
-        jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)) ||
-        jalaliDateKey(a.receivedDate).localeCompare(
-          jalaliDateKey(b.receivedDate)
-        ) ||
-        a.id.localeCompare(b.id)
+        (checkSortDirection === "asc" ? 1 : -1) *
+        (jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)) ||
+          jalaliDateKey(a.receivedDate).localeCompare(
+            jalaliDateKey(b.receivedDate)
+          ) ||
+          a.id.localeCompare(b.id))
     );
   const allocationDetails = settleChecksFIFO(
     state.checks,
@@ -4195,7 +4298,15 @@ function Checks({
             <span className="section-kicker">دفتر چک</span>
             <h3>پیگیری و تغییر وضعیت چک‌ها</h3>
           </div>
-          <span className="soft-tag">مرجع وابسته به وضعیت</span>
+          <div className="panel-heading-actions">
+            <SortControl
+              direction={checkSortDirection}
+              onChange={setCheckSortDirection}
+              ascLabel="سررسید نزدیک‌تر"
+              descLabel="سررسید دورتر"
+            />
+            <span className="soft-tag">مرجع وابسته به وضعیت</span>
+          </div>
         </div>
         <div className="table-wrap">
           <table>
@@ -4748,6 +4859,17 @@ function MonthClose({
     state.paymentRules,
     state.settings.dayBasis
   );
+  const allValidSalesTotal = state.invoices
+    .filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل")
+    .reduce((sum, invoice) => sum + invoice.amount, 0);
+  const selectedValidSalesTotal = partyInvoices.reduce(
+    (sum, invoice) => sum + invoice.amount,
+    0
+  );
+  const excludedSalesTotal = Math.max(
+    0,
+    allValidSalesTotal - selectedValidSalesTotal
+  );
   const settlement = new Map<
     string,
     {
@@ -4943,6 +5065,21 @@ function MonthClose({
         <span className="close-hint">
           نرخ دیرکرد از شرایط پرداخت فاکتور خوانده می‌شود؛ چک‌های بزرگ‌تر به
           فاکتورهای قدیمی‌تر شکسته می‌شوند.
+        </span>
+      </div>
+      <div className="scope-audit panel">
+        <strong>کنترل دامنهٔ محاسبه</strong>
+        <span>
+          کل فروش معتبر:{" "}
+          {formatMoney(allValidSalesTotal, state.settings.currency)}
+        </span>
+        <span>
+          فروش مشتری انتخاب‌شده:{" "}
+          {formatMoney(selectedValidSalesTotal, state.settings.currency)}
+        </span>
+        <span className={excludedSalesTotal ? "amount-negative" : "muted-cell"}>
+          خارج از این گزارش:{" "}
+          {formatMoney(excludedSalesTotal, state.settings.currency)}
         </span>
       </div>
       <section className="metric-grid">
