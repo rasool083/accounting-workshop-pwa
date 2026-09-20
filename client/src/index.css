@@ -3175,3 +3175,42 @@ tr:last-child td {
 .production-batch-row strong {
   color: var(--foreground);
 }
+
+
+.production-register-item {
+  margin-top: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.production-register-item summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 1rem;
+  padding: 0.75rem;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.production-register-item summary strong {
+  margin-inline-start: auto;
+  color: var(--foreground);
+}
+
+.production-register-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted) 45%, var(--card));
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+
+.production-register-details .form-actions {
+  flex-basis: 100%;
+}

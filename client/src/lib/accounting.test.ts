@@ -201,6 +201,41 @@ describe("production execution", () => {
     expect(restored.productionRecords).toHaveLength(0);
   });
 
+  it("keeps a production row self-contained after its formula engine is removed", () => {
+    const raw = {
+      id: "snapshot-raw", code: "SR", name: "ماده snapshot", unit: "گرم", unit2: "گرم",
+      conversionRate: 1, stock: 1000, minStock: 0, price: 1, category: "مواد اولیه" as const,
+    };
+    const output = {
+      id: "snapshot-output", code: "SO", name: "محصول snapshot", unit: "عدد", unit2: "عدد",
+      conversionRate: 1, stock: 0, minStock: 0, price: 200, category: "محصول تولیدی" as const,
+    };
+    const formula = {
+      id: "snapshot-formula", name: "موتور موقت", formulaType: "قطعه" as const,
+      outputProductId: output.id, outputName: output.name, outputQuantity: 1, outputUnit: "عدد",
+      materials: [{ id: "snapshot-line", productId: raw.id, quantity: 100, unit: "گرم" }],
+      costs: [], note: "",
+    };
+    const state = {
+      schemaVersion: 2, revision: 1, updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "عدد"] },
+      people: [], products: [raw, output], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [formula], productionRecords: [],
+    };
+    const produced = executeProduction(state, formula.id, 1, "عدد", "1405/07/01", {
+      batchNumber: "B-SNAPSHOT",
+    }).state;
+    const engineRemoved = {
+      ...produced,
+      productionFormulas: [],
+    };
+    expect(engineRemoved.productionRecords[0].formulaSnapshot?.name).toBe("موتور موقت");
+    const restored = removeProductionRun(engineRemoved, engineRemoved.productionRecords[0].id);
+    expect(restored.products.find(item => item.id === raw.id)?.stock).toBeCloseTo(1000, 6);
+    expect(restored.products.find(item => item.id === output.id)?.stock).toBeCloseTo(0, 6);
+  });
+
   it("scales material usage by actual piece weight and records batch adjustments", () => {
     const raw = {
       id: "weighted-raw",

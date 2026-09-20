@@ -207,6 +207,10 @@ export interface ProductionRecord {
   formulaRevision?: string;
   /** شناسه مشترک بچ اصلی و تمام بسته‌های خودکار همان اجرا. */
   executionId?: string;
+  /** snapshot مستقل برای اینکه حذف/ویرایش موتور، سابقهٔ بچ را تغییر ندهد. */
+  formulaSnapshot?: ProductionFormula;
+  outputProductId?: string;
+  outputProductName?: string;
   note: string;
 }
 
@@ -479,6 +483,9 @@ export function executeProduction(
       materialUsage,
       formulaRevision: formula.id,
       executionId,
+      formulaSnapshot: structuredClone(formula),
+      outputProductId: formula.outputProductId,
+      outputProductName: outputProduct.name,
       note: currentFormulaId === formulaId && runOptions.note ? runOptions.note : formula.note,
     });
     visiting.delete(currentFormulaId);
@@ -507,6 +514,7 @@ export function reverseProductionRun(state: AppState, productionRecordId: string
   const productById = (id: string) => products.find(product => product.id === id);
   for (const record of runRecords) {
     const output = productById(
+      record.outputProductId || record.formulaSnapshot?.outputProductId ||
       state.productionFormulas.find(formula => formula.id === record.formulaId)?.outputProductId || ""
     );
     const outputQuantity = record.outputQuantityBase ?? record.outputQuantity;
