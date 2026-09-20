@@ -7670,6 +7670,8 @@ function Production({
     outputProductId: "",
     outputQuantity: "1",
     outputUnit: "",
+    standardPieceWeight: "",
+    standardPieceWeightUnit: "گرم",
     materials: [blankMaterial],
     costs: [blankCost],
     note: "",
@@ -7680,10 +7682,22 @@ function Production({
     formula: ProductionFormula;
     quantity: string;
     unit: string;
+    batchNumber: string;
+    pieceWeight: string;
+    pieceWeightUnit: string;
+    wastePercent: string;
+    adjustments: Record<string, string>;
+    note: string;
   } | null>(null);
   const selectedOutput = state.products.find(
     product => product.id === form.outputProductId
   );
+  const quantityValue = (value: string) => {
+    const latin = String(value || "")
+      .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+      .replace(/[٫٬,]/g, ".");
+    return Number(latin) || 0;
+  };
   const unitPrice = (productId: string, unit: string) => {
     const product = state.products.find(item => item.id === productId);
     if (!product) return 0;
@@ -7713,7 +7727,7 @@ function Production({
   );
   const totalCost = materialCost + overheadCost;
   const formulaCostPerUnit =
-    totalCost / Math.max(1, Number(form.outputQuantity) || 1);
+    totalCost / Math.max(1, quantityValue(form.outputQuantity) || 1);
   const currentFormulaCost = (formula: ProductionFormula) => {
     const materialTotal = formula.materials.reduce((sum, material) => {
       const product = state.products.find(
@@ -7736,7 +7750,7 @@ function Production({
 
   function saveProduction(event: React.FormEvent) {
     event.preventDefault();
-    const quantity = Number(form.outputQuantity) || 0;
+    const quantity = quantityValue(form.outputQuantity);
     const materials = form.materials.filter(
       item => item.productId && Number(item.quantity) > 0
     );
@@ -7747,21 +7761,7 @@ function Production({
       !materials.length
     )
       return;
-    const insufficient = materials.find(material => {
-      const product = state.products.find(
-        item => item.id === material.productId
-      );
-      return (
-        (product?.stock || 0) <
-        (product
-          ? quantityInBase(product, material.quantity, material.unit)
-          : 0)
-      );
-    });
-    if (insufficient) {
-      window.alert("موجودی یکی از مواد اولیه کافی نیست.");
-      return;
-    }
+
     const outputProduct =
       selectedOutput ||
       (form.formulaType === "بسته تولید"
@@ -7775,16 +7775,12 @@ function Production({
             warehouseId: rawWarehouses[0]?.id,
             stock: 0,
             minStock: 0,
-            price: formulaCostPerUnit,
+            price: 0,
             category: "بسته تولید" as const,
           }
         : undefined);
     if (!outputProduct) return;
-    const outputQuantityBase = quantityInBase(
-      outputProduct,
-      quantity,
-      form.outputUnit || outputProduct.unit
-    );
+
     const formula: ProductionFormula = {
       id: selectedFormulaId || createId("formula"),
       name: form.name.trim(),
@@ -7793,54 +7789,18 @@ function Production({
       outputName: outputProduct.name,
       outputQuantity: quantity,
       outputUnit: form.outputUnit || selectedOutput?.unit || "عدد",
+      standardPieceWeight: quantityValue(form.standardPieceWeight) || undefined,
+      standardPieceWeightUnit: form.standardPieceWeightUnit || undefined,
       materials,
       costs: form.costs.filter(
         item => item.title.trim() && Number(item.amount) > 0
       ),
       note: form.note,
     };
-    const rawIds = new Set(materials.map(item => item.productId));
-    let products = state.products.map(product => {
-      const material = materials.find(item => item.productId === product.id);
-      if (material) {
-        const conversion = unitConversionToBase(product, material.unit);
-        return {
-          ...product,
-          stock:
-            product.stock -
-            quantityInBase(product, material.quantity, material.unit),
-        };
-      }
-      if (product.id === outputProduct.id) {
-        return {
-          ...product,
-          stock: product.stock + outputQuantityBase,
-          category: (form.formulaType === "بسته تولید"
-            ? "بسته تولید"
-            : "محصول تولیدی") as Product["category"],
-          warehouseId:
-            form.formulaType === "بسته تولید"
-              ? rawWarehouses[0]?.id || product.warehouseId
-              : product.warehouseId,
-          price: formulaCostPerUnit,
-        };
-      }
-      return product;
-    });
-    if (!selectedOutput && form.formulaType === "بسته تولید")
-      products = [outputProduct, ...products];
-    const record = {
-      id: createId("production"),
-      formulaId: formula.id,
-      date: todayJalali(),
-      outputQuantity: quantity,
-      outputQuantityBase,
-      materialCost,
-      overheadCost,
-      totalCost,
-      unitCost: formulaCostPerUnit,
-      note: form.note,
-    };
+
+    const products = selectedOutput
+      ? state.products
+      : [...state.products, outputProduct];
     onSave(
       {
         ...state,
@@ -7850,9 +7810,8 @@ function Production({
               item.id === selectedFormulaId ? formula : item
             )
           : [...state.productionFormulas, formula],
-        productionRecords: [...state.productionRecords, record],
       },
-      "فرمول و عملیات تولید ثبت شد"
+      selectedFormulaId ? "فرمول ویرایش شد؛ تولید هنوز ثبت نشده است" : "فرمول ذخیره شد؛ برای تولید از دکمه تولید استفاده کنید"
     );
     setForm({
       name: "",
@@ -7860,11 +7819,14 @@ function Production({
       outputProductId: "",
       outputQuantity: "1",
       outputUnit: "",
+      standardPieceWeight: "",
+      standardPieceWeightUnit: "گرم",
       materials: [{ ...blankMaterial, id: createId("material") }],
       costs: [{ ...blankCost, id: createId("cost") }],
       note: "",
       packageOutput: false,
     });
+    setSelectedFormulaId("");
   }
 
   function loadFormula(formula: ProductionFormula) {
@@ -7875,6 +7837,8 @@ function Production({
       outputProductId: formula.outputProductId || "",
       outputQuantity: String(formula.outputQuantity),
       outputUnit: formula.outputUnit,
+      standardPieceWeight: String(formula.standardPieceWeight || ""),
+      standardPieceWeightUnit: formula.standardPieceWeightUnit || "گرم",
       materials: formula.materials,
       costs: formula.costs.length
         ? formula.costs
@@ -7885,11 +7849,16 @@ function Production({
   }
 
   function deleteFormula(formula: ProductionFormula) {
-    if (!window.confirm(`فرمول ${formula.name} و سوابق تولید آن حذف شود؟`))
-      return;
     const records = state.productionRecords.filter(
       record => record.formulaId === formula.id
     );
+    if (records.length) {
+      window.alert(
+        "این فرمول سابقه تولید دارد و برای حفظ حسابرسی حذف نمی‌شود؛ آن را بازنشسته یا نسخهٔ جدید کنید."
+      );
+      return;
+    }
+    if (!window.confirm(`فرمول ${formula.name} حذف شود؟`)) return;
     const products = state.products.map(product => {
       let stock = product.stock;
       if (product.id === formula.outputProductId) {
@@ -7928,12 +7897,23 @@ function Production({
     event.preventDefault();
     if (!productionDialog) return;
     try {
-      const quantity = Number(productionDialog.quantity);
+      const quantity = quantityValue(productionDialog.quantity);
       const next = executeProduction(
         state,
         productionDialog.formula.id,
         quantity,
-        productionDialog.unit
+        productionDialog.unit,
+        todayJalali(),
+        {
+          batchNumber: productionDialog.batchNumber,
+          pieceWeight: quantityValue(productionDialog.pieceWeight),
+          pieceWeightUnit: productionDialog.pieceWeightUnit,
+          wastePercent: quantityValue(productionDialog.wastePercent),
+          materialAdjustments: Object.fromEntries(
+            Object.entries(productionDialog.adjustments).map(([id, value]) => [id, quantityValue(value)])
+          ),
+          note: productionDialog.note,
+        }
       ).state;
       onSave(next, `تولید ${productionDialog.formula.name} ثبت شد`);
       setProductionDialog(null);
@@ -8056,6 +8036,24 @@ function Production({
               </select>
             </label>
           </div>
+          <div className="form-grid production-run-basis">
+            <label>
+              وزن مرجع هر قطعه
+              <input
+                inputMode="decimal"
+                value={form.standardPieceWeight}
+                onChange={event => setForm({ ...form, standardPieceWeight: event.target.value })}
+                placeholder="مثلاً ۴۳۰"
+              />
+            </label>
+            <label>
+              واحد وزن مرجع
+              <select value={form.standardPieceWeightUnit} onChange={event => setForm({ ...form, standardPieceWeightUnit: event.target.value })}>
+                <option value="گرم">گرم</option>
+                <option value="کیلوگرم">کیلوگرم</option>
+              </select>
+            </label>
+          </div>
           <div className="production-section">
             <div className="tier-editor-head">
               <strong>مواد اولیه و بسته‌های نیمه‌آماده</strong>
@@ -8110,7 +8108,7 @@ function Production({
                       const materials = [...form.materials];
                       materials[index] = {
                         ...material,
-                        quantity: Number(event.target.value) || 0,
+                        quantity: quantityValue(event.target.value),
                       };
                       setForm({ ...form, materials });
                     }}
@@ -8208,7 +8206,7 @@ function Production({
                     const costs = [...form.costs];
                     costs[index] = {
                       ...cost,
-                      amount: Number(event.target.value) || 0,
+                      amount: quantityValue(event.target.value),
                     };
                     setForm({ ...form, costs });
                   }}
@@ -8252,7 +8250,7 @@ function Production({
             </strong>
           </div>
           <button className="button button-primary" type="submit">
-            <Check size={16} /> ثبت فرمول و تولید
+            <Check size={16} /> ذخیرهٔ فرمول
           </button>
         </form>
         <div className="panel">
@@ -8292,13 +8290,31 @@ function Production({
                       : "فرمول قطعه"}
                   </small>
                   {record && (
-                    <small>
-                      بهای جاری با قیمت مواد:{" "}
-                      {formatMoney(
-                        currentFormulaCost(formula),
-                        state.settings.currency
-                      )}
-                    </small>
+                    <>
+                      <small>
+                        بهای جاری با قیمت مواد: {" "}
+                        {formatMoney(
+                          currentFormulaCost(formula),
+                          state.settings.currency
+                        )}
+                      </small>
+                      <div className="production-record-summary">
+                        <span>بچ {record.batchNumber || "بدون شماره"}</span>
+                        <span>{record.date}</span>
+                        <span>
+                          خروجی: {formatNumber(record.actualOutputQuantity ?? record.outputQuantity)} {record.actualOutputUnit || formula.outputUnit}
+                        </span>
+                        {record.pieceWeight ? (
+                          <span>وزن: {formatNumber(record.pieceWeight)} {record.pieceWeightUnit || "گرم"}</span>
+                        ) : null}
+                        {record.wastePercent ? (
+                          <span>پرت: {formatNumber(record.wastePercent)}٪</span>
+                        ) : null}
+                        <strong>
+                          بهای تمام‌شده: {formatMoney(record.totalCost, state.settings.currency)}
+                        </strong>
+                      </div>
+                    </>
                   )}
                   <button
                     type="button"
@@ -8308,6 +8324,12 @@ function Production({
                         formula,
                         quantity: String(formula.outputQuantity),
                         unit: formula.outputUnit,
+                        batchNumber: `B-${Date.now()}`,
+                        pieceWeight: String(formula.standardPieceWeight || ""),
+                        pieceWeightUnit: formula.standardPieceWeightUnit || "گرم",
+                        wastePercent: "0",
+                        adjustments: {},
+                        note: "",
                       })
                     }
                   >
@@ -8380,6 +8402,63 @@ function Production({
                     </option>
                   ))}
               </select>
+            </label>
+            <label>
+              شماره بچ / پج نامبر
+              <input
+                value={productionDialog.batchNumber}
+                onChange={event => setProductionDialog({ ...productionDialog, batchNumber: event.target.value })}
+                required
+              />
+            </label>
+            <label>
+              وزن واقعی هر قطعه
+              <input
+                inputMode="decimal"
+                value={productionDialog.pieceWeight}
+                onChange={event => setProductionDialog({ ...productionDialog, pieceWeight: event.target.value })}
+                placeholder="اختیاری"
+              />
+            </label>
+            <label>
+              واحد وزن
+              <select value={productionDialog.pieceWeightUnit} onChange={event => setProductionDialog({ ...productionDialog, pieceWeightUnit: event.target.value })}>
+                <option value="گرم">گرم</option>
+                <option value="کیلوگرم">کیلوگرم</option>
+              </select>
+            </label>
+            <label>
+              پرت تولید (%)
+              <input
+                inputMode="decimal"
+                value={productionDialog.wastePercent}
+                onChange={event => setProductionDialog({ ...productionDialog, wastePercent: event.target.value })}
+                placeholder="۰"
+              />
+            </label>
+            <div className="production-section full-field">
+              <strong>اصلاحات مصرف همین بچ</strong>
+              {productionDialog.formula.materials.map(material => {
+                const product = state.products.find(item => item.id === material.productId);
+                return (
+                  <label className="production-row" key={material.id}>
+                    <span>{product?.name || "ماده"} · اصلاح مثبت/منفی ({material.unit})</span>
+                    <input
+                      inputMode="decimal"
+                      value={productionDialog.adjustments[material.id] || ""}
+                      onChange={event => setProductionDialog({
+                        ...productionDialog,
+                        adjustments: { ...productionDialog.adjustments, [material.id]: event.target.value },
+                      })}
+                      placeholder="۰"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+            <label className="full-field">
+              توضیح بچ
+              <textarea value={productionDialog.note} onChange={event => setProductionDialog({ ...productionDialog, note: event.target.value })} placeholder="علت اصلاح یا توضیح تولید" />
             </label>
             <p className="muted-cell">
               مواد اولیه طبق فرمول مصرف می‌شوند. اگر مادهٔ اولیه خود محصول یک

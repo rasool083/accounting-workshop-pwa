@@ -168,6 +168,79 @@ describe("FIFO settlement balances", () => {
 });
 
 describe("production execution", () => {
+  it("scales material usage by actual piece weight and records batch adjustments", () => {
+    const raw = {
+      id: "weighted-raw",
+      code: "WR",
+      name: "پودر تست",
+      unit: "گرم",
+      unit2: "گرم",
+      conversionRate: 1,
+      stock: 10_000,
+      minStock: 0,
+      price: 2,
+      category: "مواد اولیه" as const,
+    };
+    const output = {
+      id: "weighted-output",
+      code: "WO",
+      name: "لقمه تست",
+      unit: "عدد",
+      unit2: "کارتن",
+      conversionRate: 36,
+      stock: 0,
+      minStock: 0,
+      price: 999_000,
+      category: "محصول تولیدی" as const,
+    };
+    const formula = {
+      id: "weighted-formula",
+      name: "لقمه ۴۰۰ گرمی",
+      formulaType: "قطعه" as const,
+      outputProductId: output.id,
+      outputName: output.name,
+      outputQuantity: 1,
+      outputUnit: "عدد",
+      standardPieceWeight: 400,
+      standardPieceWeightUnit: "گرم",
+      materials: [
+        { id: "weighted-line", productId: raw.id, quantity: 400, unit: "گرم" },
+      ],
+      costs: [],
+      note: "",
+    };
+    const state = {
+      schemaVersion: 2,
+      revision: 1,
+      updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "عدد"] },
+      people: [], products: [raw, output], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [formula], productionRecords: [],
+    };
+    const result = executeProduction(state, formula.id, 10, "عدد", "1405/07/01", {
+      batchNumber: "B-001",
+      pieceWeight: 430,
+      pieceWeightUnit: "گرم",
+      wastePercent: 10,
+      materialAdjustments: { "weighted-line": 5 },
+      note: "خشک‌کردن بیشتر پودر",
+    });
+    const updatedRaw = result.state.products.find(item => item.id === raw.id)!;
+    const updatedOutput = result.state.products.find(item => item.id === output.id)!;
+    const record = result.state.productionRecords[0];
+
+    expect(updatedRaw.stock).toBeCloseTo(5_265, 6);
+    expect(updatedOutput.stock).toBe(10);
+    expect(updatedOutput.price).toBe(999_000);
+    expect(record.batchNumber).toBe("B-001");
+    expect(record.pieceWeight).toBe(430);
+    expect(record.wastePercent).toBe(10);
+    expect(record.materialUsage?.[0].plannedQuantity).toBeCloseTo(4300, 6);
+    expect(record.materialUsage?.[0].adjustmentQuantity).toBe(5);
+    expect(record.materialUsage?.[0].actualQuantity).toBeCloseTo(4735, 6);
+  });
+
   it("produces nested packages and converts decimal quantities to base stock", () => {
     const raw = {
       id: "raw",

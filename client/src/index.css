@@ -3125,3 +3125,21 @@ tr:last-child td {
   display: block;
   margin-top: 3px;
 }
+
+
+.production-record-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  margin: 0.55rem 0 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in oklab, var(--border) 75%, var(--primary));
+  border-radius: 0.65rem;
+  background: color-mix(in oklab, var(--primary) 5%, var(--card));
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.production-record-summary strong {
+  color: var(--foreground);
+}

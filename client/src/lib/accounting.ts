@@ -168,9 +168,23 @@ export interface ProductionFormula {
   outputName?: string;
   outputQuantity: number;
   outputUnit: string;
+  /** وزن مرجع هر واحد خروجی در فرمول، برای تولید وزن‌محور. */
+  standardPieceWeight?: number;
+  standardPieceWeightUnit?: string;
   materials: ProductionMaterial[];
   costs: ProductionCost[];
   note: string;
+}
+
+export interface ProductionMaterialUsage {
+  materialId: string;
+  productId: string;
+  plannedQuantity: number;
+  adjustmentQuantity: number;
+  wasteQuantity: number;
+  actualQuantity: number;
+  unit: string;
+  note?: string;
 }
 
 export interface ProductionRecord {
@@ -183,6 +197,14 @@ export interface ProductionRecord {
   overheadCost: number;
   totalCost: number;
   unitCost: number;
+  batchNumber?: string;
+  actualOutputQuantity?: number;
+  actualOutputUnit?: string;
+  pieceWeight?: number;
+  pieceWeightUnit?: string;
+  wastePercent?: number;
+  materialUsage?: ProductionMaterialUsage[];
+  formulaRevision?: string;
   note: string;
 }
 
@@ -295,6 +317,15 @@ export interface ProductionExecutionResult {
   recordIds: string[];
 }
 
+export interface ProductionRunOptions {
+  batchNumber?: string;
+  pieceWeight?: number;
+  pieceWeightUnit?: string;
+  wastePercent?: number;
+  materialAdjustments?: Record<string, number>;
+  note?: string;
+}
+
 /**
  * Produces a requested quantity from a formula. Package formulas used as
  * materials are produced recursively when their available stock is not
@@ -306,7 +337,8 @@ export function executeProduction(
   formulaId: string,
   outputQuantity: number,
   outputUnit?: string,
-  date = todayJalali()
+  date = todayJalali(),
+  options: ProductionRunOptions = {}
 ): ProductionExecutionResult {
   if (!Number.isFinite(outputQuantity) || outputQuantity <= 0)
     throw new Error("مقدار تولید باید بزرگ‌تر از صفر باشد");
@@ -321,12 +353,32 @@ export function executeProduction(
   const visiting = new Set<string>();
 
   const productById = (id: string) => products.find(product => product.id === id);
-  const unitPrice = (product: Product) => Math.max(0, Number(product.price) || 0);
+  const computedUnitCosts = new Map<string, number>();
+  const historicalUnitCost = (productId: string) => {
+    const formulaIds = new Set(
+      state.productionFormulas
+        .filter(formula => formula.outputProductId === productId)
+        .map(formula => formula.id)
+    );
+    const latest = state.productionRecords
+      .filter(record => formulaIds.has(record.formulaId) && record.unitCost > 0)
+      .at(-1);
+    return latest?.unitCost || 0;
+  };
+  const unitPrice = (product: Product) =>
+    Math.max(0, computedUnitCosts.get(product.id) || historicalUnitCost(product.id) || Number(product.price) || 0);
+  const weightToGrams = (value: number, unit: string) => {
+    if (unit === "کیلوگرم") return value * 1000;
+    if (unit === "تن") return value * 1_000_000;
+    if (unit === "میلی‌گرم" || unit === "میلی گرم") return value / 1000;
+    return value;
+  };
 
   const run = (
     currentFormulaId: string,
     requestedQuantity: number,
-    requestedUnit?: string
+    requestedUnit?: string,
+    runOptions: ProductionRunOptions = options
   ): number => {
     if (visiting.has(currentFormulaId))
       throw new Error("وابستگی حلقوی در فرمول‌های تولید وجود دارد");
@@ -347,31 +399,54 @@ export function executeProduction(
     );
     if (batchBase <= 0 || requestedBase <= 0)
       throw new Error("مقدار خروجی فرمول معتبر نیست");
-    const scale = requestedBase / batchBase;
+    const standardWeight = Number(formula.standardPieceWeight) || 0;
+    const actualPieceWeight = Number(runOptions.pieceWeight) || 0;
+    const weightScale =
+      standardWeight > 0 && actualPieceWeight > 0
+        ? (requestedBase * weightToGrams(actualPieceWeight, runOptions.pieceWeightUnit || formula.standardPieceWeightUnit || "گرم")) /
+          Math.max(0.000001, batchBase * weightToGrams(standardWeight, formula.standardPieceWeightUnit || "گرم"))
+        : requestedBase / batchBase;
+    const scale = Number.isFinite(weightScale) && weightScale > 0 ? weightScale : requestedBase / batchBase;
     visiting.add(currentFormulaId);
     let materialCost = 0;
+    const materialUsage: ProductionMaterialUsage[] = [];
     for (const material of formula.materials) {
       const materialProduct = productById(material.productId);
       if (!materialProduct) throw new Error("مادهٔ اولیهٔ فرمول پیدا نشد");
-      const requiredBase = quantityInBase(
+      const plannedBase = quantityInBase(
         materialProduct,
         material.quantity * scale,
         material.unit
       );
+      const adjustment = currentFormulaId === formulaId
+        ? Number(runOptions.materialAdjustments?.[material.id]) || 0
+        : 0;
+      const adjustmentBase = quantityInBase(materialProduct, adjustment, material.unit);
+      const wasteBase = plannedBase * Math.max(0, Number(runOptions.wastePercent) || 0) / 100;
+      const requiredBase = Math.max(0, plannedBase + adjustmentBase + wasteBase);
       const nestedFormulaId = outputFormulaIds.get(materialProduct.id);
       if (nestedFormulaId && materialProduct.stock < requiredBase) {
         run(
           nestedFormulaId,
           requiredBase - materialProduct.stock,
-          materialProduct.unit
+          materialProduct.unit,
+          {}
         );
       }
       if (materialProduct.stock < requiredBase)
         throw new Error(`موجودی مادهٔ اولیهٔ «${materialProduct.name}» کافی نیست`);
       materialProduct.stock -= requiredBase;
-      materialCost += nestedFormulaId
-        ? requiredBase * unitPrice(materialProduct)
-        : requiredBase * unitPrice(materialProduct);
+      materialCost += requiredBase * unitPrice(materialProduct);
+      const conversion = Math.max(0.000001, unitConversionToBase(materialProduct, material.unit));
+      materialUsage.push({
+        materialId: material.id,
+        productId: material.productId,
+        plannedQuantity: material.quantity * scale,
+        adjustmentQuantity: adjustment,
+        wasteQuantity: wasteBase / conversion,
+        actualQuantity: requiredBase / conversion,
+        unit: material.unit,
+      });
     }
     const overheadCost = formula.costs.reduce(
       (sum, cost) => sum + Math.max(0, Number(cost.amount) || 0) * scale,
@@ -379,7 +454,7 @@ export function executeProduction(
     );
     const totalCost = materialCost + overheadCost;
     outputProduct.stock += requestedBase;
-    outputProduct.price = totalCost / requestedBase;
+    computedUnitCosts.set(outputProduct.id, totalCost / requestedBase);
     outputProduct.category =
       formula.formulaType === "بسته تولید" ? "بسته تولید" : "محصول تولیدی";
     records.push({
@@ -392,7 +467,15 @@ export function executeProduction(
       overheadCost,
       totalCost,
       unitCost: totalCost / requestedBase,
-      note: formula.note,
+      batchNumber: currentFormulaId === formulaId ? runOptions.batchNumber : undefined,
+      actualOutputQuantity: currentFormulaId === formulaId ? requestedQuantity : undefined,
+      actualOutputUnit: currentFormulaId === formulaId ? requestedUnit || formula.outputUnit : undefined,
+      pieceWeight: currentFormulaId === formulaId ? runOptions.pieceWeight : undefined,
+      pieceWeightUnit: currentFormulaId === formulaId ? runOptions.pieceWeightUnit : undefined,
+      wastePercent: currentFormulaId === formulaId ? Math.max(0, Number(runOptions.wastePercent) || 0) : undefined,
+      materialUsage,
+      formulaRevision: formula.id,
+      note: currentFormulaId === formulaId && runOptions.note ? runOptions.note : formula.note,
     });
     visiting.delete(currentFormulaId);
     return totalCost;
