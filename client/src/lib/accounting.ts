@@ -163,7 +163,9 @@ export interface ProductionCost {
 export interface ProductionFormula {
   id: string;
   name: string;
-  outputProductId: string;
+  formulaType?: "قطعه" | "بسته تولید";
+  outputProductId?: string;
+  outputName?: string;
   outputQuantity: number;
   outputUnit: string;
   materials: ProductionMaterial[];
@@ -176,6 +178,7 @@ export interface ProductionRecord {
   formulaId: string;
   date: string;
   outputQuantity: number;
+  outputQuantityBase?: number;
   materialCost: number;
   overheadCost: number;
   totalCost: number;
@@ -496,7 +499,11 @@ export function normalizeState(input: unknown): AppState {
     accounts: availableAccounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
     productionFormulas: Array.isArray(source.productionFormulas)
-      ? source.productionFormulas
+      ? source.productionFormulas.map(formula => ({
+          ...formula,
+          formulaType:
+            formula.formulaType === "بسته تولید" ? "بسته تولید" : "قطعه",
+        }))
       : [],
     productionRecords: Array.isArray(source.productionRecords)
       ? source.productionRecords
@@ -551,6 +558,44 @@ export function formatMoney(value: number, currency = "ریال") {
 
 export function formatNumber(value: number) {
   return new Intl.NumberFormat("fa-IR").format(value || 0);
+}
+
+const STANDARD_UNIT_FACTORS: Record<string, number> = {
+  میلی‌گرم: 0.000001,
+  "میلی گرم": 0.000001,
+  گرم: 0.001,
+  کیلوگرم: 1,
+  تن: 1000,
+  میلی‌لیتر: 0.001,
+  "میلی لیتر": 0.001,
+  لیتر: 1,
+  سانتی‌متر: 0.01,
+  "سانتی متر": 0.01,
+  متر: 1,
+};
+
+/** مقدار یک واحد انتخاب‌شده را به واحد اول کالا تبدیل می‌کند. */
+export function unitConversionToBase(product: Product, unit: string) {
+  if (!unit || unit === product.unit) return 1;
+  if (unit === product.unit2) {
+    const baseFactor = STANDARD_UNIT_FACTORS[product.unit];
+    const selectedFactor = STANDARD_UNIT_FACTORS[unit];
+    if (baseFactor && selectedFactor) return selectedFactor / baseFactor;
+    return Number(product.conversionRate) > 0
+      ? Number(product.conversionRate)
+      : 1;
+  }
+  const baseFactor = STANDARD_UNIT_FACTORS[product.unit];
+  const selectedFactor = STANDARD_UNIT_FACTORS[unit];
+  return baseFactor && selectedFactor ? selectedFactor / baseFactor : 1;
+}
+
+export function quantityInBase(
+  product: Product,
+  quantity: number,
+  unit: string
+) {
+  return (Number(quantity) || 0) * unitConversionToBase(product, unit);
 }
 
 export function todayJalali() {

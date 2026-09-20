@@ -69,6 +69,8 @@ import {
   PERSON_TYPES,
   suggestNextNumber,
   suggestNextPartyNumber,
+  quantityInBase,
+  unitConversionToBase,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -122,7 +124,7 @@ function backupDateKey() {
 }
 
 function backupFilename(dateKey: string, sequence: number) {
-  return `accounting-workshop-backup-${dateKey}-${String(sequence).padStart(3, "0")}.json`;
+  return `backup-${dateKey}-${String(sequence).padStart(3, "0")}.json`;
 }
 
 function nextLocalBackupSequence(dateKey: string) {
@@ -133,7 +135,7 @@ function nextLocalBackupSequence(dateKey: string) {
 }
 
 function nextDriveBackupSequence(files: DriveBackupFile[], dateKey: string) {
-  const prefix = `accounting-workshop-backup-${dateKey}-`;
+  const prefix = `backup-${dateKey}-`;
   return (
     (files.reduce((max, file) => {
       if (!file.name.startsWith(prefix) || !file.name.endsWith(".json"))
@@ -1309,8 +1311,9 @@ function Invoices({
   }
   const subtotal = form.items.reduce((sum, item) => {
     const product = state.products.find(row => row.id === item.productId);
-    const conversionRate =
-      product && item.unit === product.unit2 ? product.conversionRate || 1 : 1;
+    const conversionRate = product
+      ? unitConversionToBase(product, item.unit)
+      : 1;
     return (
       sum +
       (Number(item.quantity) || 0) *
@@ -1416,8 +1419,7 @@ function Invoices({
       const quantity = Number(row.quantity) || 0;
       const unitPrice = Number(row.unitPrice.replace(/[^0-9.-]/g, "")) || 0;
       const unit = row.unit || product?.unit || "عدد";
-      const conversionRate =
-        product && unit === product.unit2 ? product.conversionRate || 1 : 1;
+      const conversionRate = product ? unitConversionToBase(product, unit) : 1;
       return {
         id: createId("invoice-item"),
         productId: row.productId || undefined,
@@ -1716,6 +1718,18 @@ function Invoices({
                                     const check = state.checks.find(
                                       row => row.id === item.checkId
                                     );
+                                    const checkAllocated = invoiceAllocations
+                                      .filter(
+                                        row => row.checkId === item.checkId
+                                      )
+                                      .reduce(
+                                        (sum, row) => sum + row.amount,
+                                        0
+                                      );
+                                    const invoiceAllocated = allocations.reduce(
+                                      (sum, row) => sum + row.principalAmount,
+                                      0
+                                    );
                                     const tone =
                                       check?.status === "وصول شده"
                                         ? "cleared"
@@ -1736,7 +1750,13 @@ function Invoices({
                                         key={`${item.checkId}-${item.invoiceId}`}
                                       >
                                         <strong>
-                                          چک {check?.number || "—"}
+                                          چک {check?.number || "—"} ·{" "}
+                                          {check
+                                            ? formatMoney(
+                                                check.amount,
+                                                state.settings.currency
+                                              )
+                                            : "—"}
                                         </strong>
                                         <span>{check?.status || "—"}</span>
                                         <span>
@@ -1758,6 +1778,29 @@ function Invoices({
                                           سود:{" "}
                                           {formatMoney(
                                             item.profit || 0,
+                                            state.settings.currency
+                                          )}
+                                        </span>
+                                        <span>
+                                          مانده چک پس از تخصیص:{" "}
+                                          {check
+                                            ? formatMoney(
+                                                Math.max(
+                                                  0,
+                                                  check.amount - checkAllocated
+                                                ),
+                                                state.settings.currency
+                                              )
+                                            : "—"}
+                                        </span>
+                                        <span>
+                                          مانده فاکتور پس از تخصیص:{" "}
+                                          {formatMoney(
+                                            Math.max(
+                                              0,
+                                              (invoice?.amount || 0) -
+                                                invoiceAllocated
+                                            ),
                                             state.settings.currency
                                           )}
                                         </span>
@@ -1940,10 +1983,13 @@ function Invoices({
                       (Number(row.quantity) || 0) *
                         (state.products.find(
                           product => product.id === row.productId
-                        )?.unit2 === row.unit
-                          ? state.products.find(
-                              product => product.id === row.productId
-                            )?.conversionRate || 1
+                        )
+                          ? unitConversionToBase(
+                              state.products.find(
+                                product => product.id === row.productId
+                              )!,
+                              row.unit
+                            )
                           : 1)
                     )}
                     readOnly
@@ -2586,6 +2632,13 @@ function Transactions({
       product => product.id === accountOperation.productId
     );
     const quantity = Number(accountOperation.quantity.replace(/[^0-9.-]/g, ""));
+    const quantityBase = selectedProduct
+      ? quantityInBase(
+          selectedProduct,
+          quantity,
+          accountOperation.unit || selectedProduct.unit
+        )
+      : quantity;
     if (
       isTransfer &&
       (!accountOperation.fromAccountId ||
@@ -2667,8 +2720,8 @@ function Transactions({
                   stock:
                     product.stock +
                     (accountOperation.type === "خرید کالا"
-                      ? quantity
-                      : -quantity),
+                      ? quantityBase
+                      : -quantityBase),
                 }
               : product
           )
@@ -2711,7 +2764,7 @@ function Transactions({
       toAccountId: accountOperation.toAccountId || undefined,
       productId: accountOperation.productId || undefined,
       warehouseId: accountOperation.warehouseId || undefined,
-      quantity: isStockOperation ? quantity : undefined,
+      quantity: isStockOperation ? quantityBase : undefined,
       unit: accountOperation.unit || undefined,
       checkId: accountOperation.checkId || undefined,
       partnerEffect: isTransfer ? undefined : accountOperation.partnerEffect,
@@ -3802,6 +3855,7 @@ function Inventory({
     conversionRate: "1",
     warehouseId: state.warehouses[0]?.id || "",
     stock: "0",
+    stockUnit: "کارتن",
     minStock: "0",
     price: "0",
   });
@@ -3926,8 +3980,8 @@ function Inventory({
           date: record.date,
           reference: `تولید ${formula.name}`,
           direction: "ورود تولید",
-          quantity: record.outputQuantity,
-          unit: formula.outputUnit,
+          quantity: record.outputQuantityBase ?? record.outputQuantity,
+          unit: selectedProduct.unit,
           amount: record.totalCost,
           warehouse:
             state.warehouses.find(
@@ -3943,9 +3997,18 @@ function Inventory({
             date: record.date,
             reference: `مصرف تولید ${formula.name}`,
             direction: "خروج مصرف تولید",
-            quantity: material.quantity,
-            unit: material.unit,
-            amount: material.quantity * selectedProduct.price,
+            quantity: quantityInBase(
+              selectedProduct,
+              material.quantity,
+              material.unit
+            ),
+            unit: selectedProduct.unit,
+            amount:
+              quantityInBase(
+                selectedProduct,
+                material.quantity,
+                material.unit
+              ) * selectedProduct.price,
             warehouse:
               state.warehouses.find(
                 warehouse => warehouse.id === selectedProduct.warehouseId
@@ -3960,8 +4023,18 @@ function Inventory({
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!form.name.trim()) return;
-    const conversionRate = Number(form.conversionRate) || 1;
     const enteredStock = Number(form.stock.replace(/[^0-9.-]/g, "")) || 0;
+    const draftProduct = {
+      id: "draft",
+      code: form.code,
+      name: form.name,
+      unit: form.unit,
+      unit2: form.unit2,
+      conversionRate: Number(form.conversionRate) || 1,
+      stock: 0,
+      minStock: 0,
+      price: 0,
+    } satisfies Product;
     const product = {
       id: editingProduct?.id || createId("product"),
       code:
@@ -3969,9 +4042,15 @@ function Inventory({
       name: form.name.trim(),
       unit: form.unit,
       unit2: form.unit2,
-      conversionRate,
+      conversionRate: draftProduct.conversionRate,
       warehouseId: form.warehouseId || undefined,
-      stock: editingProduct ? enteredStock : enteredStock * conversionRate,
+      stock: editingProduct
+        ? enteredStock
+        : quantityInBase(
+            draftProduct,
+            enteredStock,
+            form.stockUnit || form.unit
+          ),
       minStock: Number(form.minStock.replace(/[^0-9.-]/g, "")) || 0,
       price: Number(form.price.replace(/[^0-9.-]/g, "")) || 0,
     };
@@ -4215,6 +4294,7 @@ function Inventory({
                             conversionRate: String(product.conversionRate || 1),
                             warehouseId: product.warehouseId || "",
                             stock: String(product.stock),
+                            stockUnit: product.unit,
                             minStock: String(product.minStock),
                             price: String(product.price),
                           });
@@ -4525,7 +4605,20 @@ function Inventory({
             </label>
             <label>
               موجودی اولیه
+              <select
+                value={form.stockUnit}
+                onChange={e => setForm({ ...form, stockUnit: e.target.value })}
+              >
+                {[form.unit, form.unit2, ...state.settings.units]
+                  .filter(
+                    (unit, index, list) => unit && list.indexOf(unit) === index
+                  )
+                  .map(unit => (
+                    <option key={unit}>{unit}</option>
+                  ))}
+              </select>
               <input
+                inputMode="decimal"
                 value={form.stock}
                 onChange={e => setForm({ ...form, stock: e.target.value })}
               />
@@ -5701,7 +5794,13 @@ function Checks({
                             title="نمایش فاکتورهای تخصیص‌یافته"
                           >
                             <ChevronDown size={14} />
-                            <strong>{check.number}</strong>
+                            <strong>
+                              {check.number} ·{" "}
+                              {formatMoney(
+                                check.amount,
+                                state.settings.currency
+                              )}
+                            </strong>
                           </button>
                           {check.replacementOf && (
                             <small className="muted-cell">
@@ -5897,13 +5996,36 @@ function Checks({
                                 const invoice = state.invoices.find(
                                   row => row.id === item.invoiceId
                                 );
+                                const checkAllocated = checkAllocations.reduce(
+                                  (sum, row) => sum + row.amount,
+                                  0
+                                );
+                                const invoiceAllocated = state.checks
+                                  .flatMap(row =>
+                                    allocationDetails.filter(
+                                      allocation =>
+                                        allocation.checkId === row.id
+                                    )
+                                  )
+                                  .filter(
+                                    allocation =>
+                                      allocation.invoiceId === item.invoiceId
+                                  )
+                                  .reduce(
+                                    (sum, row) => sum + row.principalAmount,
+                                    0
+                                  );
                                 return (
                                   <div
                                     className="allocation-detail-card"
                                     key={`${item.checkId}-${item.invoiceId}`}
                                   >
                                     <strong>
-                                      فاکتور {invoice?.number || "—"}
+                                      فاکتور {invoice?.number || "—"} · چک{" "}
+                                      {formatMoney(
+                                        check.amount,
+                                        state.settings.currency
+                                      )}
                                     </strong>
                                     <span>
                                       مبلغ تخصیص:{" "}
@@ -5929,6 +6051,27 @@ function Checks({
                                     <span>
                                       اختلاف تاریخ:{" "}
                                       {formatNumber(item.days || 0)} روز
+                                    </span>
+                                    <span>
+                                      مانده چک پس از تخصیص:{" "}
+                                      {formatMoney(
+                                        Math.max(
+                                          0,
+                                          check.amount - checkAllocated
+                                        ),
+                                        state.settings.currency
+                                      )}
+                                    </span>
+                                    <span>
+                                      مانده فاکتور پس از تخصیص:{" "}
+                                      {formatMoney(
+                                        Math.max(
+                                          0,
+                                          (invoice?.amount || 0) -
+                                            invoiceAllocated
+                                        ),
+                                        state.settings.currency
+                                      )}
                                     </span>
                                   </div>
                                 );
@@ -7472,6 +7615,7 @@ function Production({
   };
   const [form, setForm] = useState({
     name: "",
+    formulaType: "قطعه" as "قطعه" | "بسته تولید",
     outputProductId: "",
     outputQuantity: "1",
     outputUnit: "",
@@ -7497,8 +7641,9 @@ function Production({
   };
   const materialCost = form.materials.reduce((sum, material) => {
     const product = state.products.find(item => item.id === material.productId);
-    const conversion =
-      product?.unit2 === material.unit ? product.conversionRate || 1 : 1;
+    const conversion = product
+      ? unitConversionToBase(product, material.unit)
+      : 1;
     return (
       sum +
       (Number(material.quantity) || 0) *
@@ -7513,6 +7658,25 @@ function Production({
   const totalCost = materialCost + overheadCost;
   const formulaCostPerUnit =
     totalCost / Math.max(1, Number(form.outputQuantity) || 1);
+  const currentFormulaCost = (formula: ProductionFormula) => {
+    const materialTotal = formula.materials.reduce((sum, material) => {
+      const product = state.products.find(
+        item => item.id === material.productId
+      );
+      return (
+        sum +
+        (product
+          ? quantityInBase(product, material.quantity, material.unit)
+          : 0) *
+          unitPrice(material.productId, material.unit)
+      );
+    }, 0);
+    const overhead = formula.costs.reduce(
+      (sum, cost) => sum + (Number(cost.amount) || 0),
+      0
+    );
+    return (materialTotal + overhead) / Math.max(1, formula.outputQuantity);
+  };
 
   function saveProduction(event: React.FormEvent) {
     event.preventDefault();
@@ -7522,7 +7686,7 @@ function Production({
     );
     if (
       !form.name.trim() ||
-      !form.outputProductId ||
+      (form.formulaType === "قطعه" && !form.outputProductId) ||
       quantity <= 0 ||
       !materials.length
     )
@@ -7531,18 +7695,46 @@ function Production({
       const product = state.products.find(
         item => item.id === material.productId
       );
-      const conversion =
-        product?.unit2 === material.unit ? product.conversionRate || 1 : 1;
-      return (product?.stock || 0) < Number(material.quantity) * conversion;
+      return (
+        (product?.stock || 0) <
+        (product
+          ? quantityInBase(product, material.quantity, material.unit)
+          : 0)
+      );
     });
     if (insufficient) {
       window.alert("موجودی یکی از مواد اولیه کافی نیست.");
       return;
     }
+    const outputProduct =
+      selectedOutput ||
+      (form.formulaType === "بسته تولید"
+        ? {
+            id: createId("package"),
+            code: `PKG-${Date.now()}`,
+            name: form.name.trim(),
+            unit: form.outputUnit || "کیلوگرم",
+            unit2: form.outputUnit || "کیلوگرم",
+            conversionRate: 1,
+            warehouseId: rawWarehouses[0]?.id,
+            stock: 0,
+            minStock: 0,
+            price: formulaCostPerUnit,
+            category: "بسته تولید" as const,
+          }
+        : undefined);
+    if (!outputProduct) return;
+    const outputQuantityBase = quantityInBase(
+      outputProduct,
+      quantity,
+      form.outputUnit || outputProduct.unit
+    );
     const formula: ProductionFormula = {
-      id: createId("formula"),
+      id: selectedFormulaId || createId("formula"),
       name: form.name.trim(),
-      outputProductId: form.outputProductId,
+      formulaType: form.formulaType,
+      outputProductId: outputProduct.id,
+      outputName: outputProduct.name,
       outputQuantity: quantity,
       outputUnit: form.outputUnit || selectedOutput?.unit || "عدد",
       materials,
@@ -7555,33 +7747,38 @@ function Production({
     let products = state.products.map(product => {
       const material = materials.find(item => item.productId === product.id);
       if (material) {
-        const conversion =
-          product.unit2 === material.unit ? product.conversionRate || 1 : 1;
+        const conversion = unitConversionToBase(product, material.unit);
         return {
           ...product,
-          stock: product.stock - Number(material.quantity) * conversion,
+          stock:
+            product.stock -
+            quantityInBase(product, material.quantity, material.unit),
         };
       }
-      if (product.id === form.outputProductId) {
+      if (product.id === outputProduct.id) {
         return {
           ...product,
-          stock: product.stock + quantity,
-          category: (form.packageOutput
+          stock: product.stock + outputQuantityBase,
+          category: (form.formulaType === "بسته تولید"
             ? "بسته تولید"
             : "محصول تولیدی") as Product["category"],
-          warehouseId: form.packageOutput
-            ? rawWarehouses[0]?.id || product.warehouseId
-            : product.warehouseId,
+          warehouseId:
+            form.formulaType === "بسته تولید"
+              ? rawWarehouses[0]?.id || product.warehouseId
+              : product.warehouseId,
           price: formulaCostPerUnit,
         };
       }
       return product;
     });
+    if (!selectedOutput && form.formulaType === "بسته تولید")
+      products = [outputProduct, ...products];
     const record = {
       id: createId("production"),
       formulaId: formula.id,
       date: todayJalali(),
       outputQuantity: quantity,
+      outputQuantityBase,
       materialCost,
       overheadCost,
       totalCost,
@@ -7592,13 +7789,18 @@ function Production({
       {
         ...state,
         products,
-        productionFormulas: [...state.productionFormulas, formula],
+        productionFormulas: selectedFormulaId
+          ? state.productionFormulas.map(item =>
+              item.id === selectedFormulaId ? formula : item
+            )
+          : [...state.productionFormulas, formula],
         productionRecords: [...state.productionRecords, record],
       },
       "فرمول و عملیات تولید ثبت شد"
     );
     setForm({
       name: "",
+      formulaType: "قطعه",
       outputProductId: "",
       outputQuantity: "1",
       outputUnit: "",
@@ -7613,7 +7815,8 @@ function Production({
     setSelectedFormulaId(formula.id);
     setForm({
       name: formula.name,
-      outputProductId: formula.outputProductId,
+      formulaType: formula.formulaType || "قطعه",
+      outputProductId: formula.outputProductId || "",
       outputQuantity: String(formula.outputQuantity),
       outputUnit: formula.outputUnit,
       materials: formula.materials,
@@ -7623,6 +7826,46 @@ function Production({
       note: formula.note,
       packageOutput: false,
     });
+  }
+
+  function deleteFormula(formula: ProductionFormula) {
+    if (!window.confirm(`فرمول ${formula.name} و سوابق تولید آن حذف شود؟`))
+      return;
+    const records = state.productionRecords.filter(
+      record => record.formulaId === formula.id
+    );
+    const products = state.products.map(product => {
+      let stock = product.stock;
+      if (product.id === formula.outputProductId) {
+        stock -= records.reduce(
+          (sum, record) =>
+            sum + (record.outputQuantityBase ?? record.outputQuantity),
+          0
+        );
+      }
+      for (const material of formula.materials.filter(
+        item => item.productId === product.id
+      )) {
+        stock +=
+          records.length *
+          quantityInBase(product, material.quantity, material.unit);
+      }
+      return { ...product, stock };
+    });
+    onSave(
+      {
+        ...state,
+        products,
+        productionFormulas: state.productionFormulas.filter(
+          item => item.id !== formula.id
+        ),
+        productionRecords: state.productionRecords.filter(
+          item => item.formulaId !== formula.id
+        ),
+      },
+      `فرمول ${formula.name} و سوابق تولید آن حذف شد`
+    );
+    if (selectedFormulaId === formula.id) setSelectedFormulaId("");
   }
 
   return (
@@ -7655,9 +7898,31 @@ function Production({
               />
             </label>
             <label>
-              محصول نهایی از انبار محصولات
+              نوع فرمول
+              <select
+                value={form.formulaType}
+                onChange={event =>
+                  setForm({
+                    ...form,
+                    formulaType: event.target.value as "قطعه" | "بسته تولید",
+                    outputProductId:
+                      event.target.value === "بسته تولید"
+                        ? ""
+                        : form.outputProductId,
+                  })
+                }
+              >
+                <option value="قطعه">فرمول قطعه</option>
+                <option value="بسته تولید">فرمول بسته مستقل</option>
+              </select>
+            </label>
+            <label>
+              {form.formulaType === "بسته تولید"
+                ? "بسته در انبار مواد اولیه ذخیره می‌شود"
+                : "محصول نهایی از انبار محصولات"}
               <select
                 value={form.outputProductId}
+                disabled={form.formulaType === "بسته تولید"}
                 onChange={event => {
                   const product = state.products.find(
                     item => item.id === event.target.value
@@ -7669,7 +7934,11 @@ function Production({
                   });
                 }}
               >
-                <option value="">انتخاب محصول</option>
+                <option value="">
+                  {form.formulaType === "بسته تولید"
+                    ? "خودکار از نام فرمول"
+                    : "انتخاب محصول"}
+                </option>
                 {outputProducts.map(product => (
                   <option value={product.id} key={product.id}>
                     {product.name} · {product.code}
@@ -7801,8 +8070,8 @@ function Production({
                   <strong>
                     {formatMoney(
                       (Number(material.quantity) || 0) *
-                        (product?.unit2 === material.unit
-                          ? product.conversionRate || 1
+                        (product
+                          ? unitConversionToBase(product, material.unit)
                           : 1) *
                         unitPrice(material.productId, material.unit),
                       state.settings.currency
@@ -7888,16 +8157,6 @@ function Production({
               </div>
             ))}
           </div>
-          <label className="check-line">
-            <input
-              type="checkbox"
-              checked={form.packageOutput}
-              onChange={event =>
-                setForm({ ...form, packageOutput: event.target.checked })
-              }
-            />{" "}
-            محصول تولیدشده بستهٔ نیمه‌آماده است و در انبار مواد اولیه قرار گیرد
-          </label>
           <label className="full-field">
             توضیحات
             <textarea
@@ -7938,24 +8197,44 @@ function Production({
                 .filter(item => item.formulaId === formula.id)
                 .at(-1);
               return (
-                <button
-                  type="button"
+                <div
                   className={`production-card ${selectedFormulaId === formula.id ? "selected" : ""}`}
                   key={formula.id}
-                  onClick={() => loadFormula(formula)}
                 >
-                  <strong>{formula.name}</strong>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => loadFormula(formula)}
+                  >
+                    <strong>{formula.name}</strong>
+                  </button>
                   <span>
-                    {product?.name || "محصول حذف‌شده"} ·{" "}
+                    {product?.name || formula.outputName || "بسته مستقل"} ·{" "}
                     {formatNumber(formula.materials.length)} ماده اولیه
                   </span>
+                  <small>
+                    {formula.formulaType === "بسته تولید"
+                      ? "بسته مستقل · انبار مواد اولیه"
+                      : "فرمول قطعه"}
+                  </small>
                   {record && (
                     <small>
-                      آخرین هزینه:{" "}
-                      {formatMoney(record.unitCost, state.settings.currency)}
+                      بهای جاری با قیمت مواد:{" "}
+                      {formatMoney(
+                        currentFormulaCost(formula),
+                        state.settings.currency
+                      )}
                     </small>
                   )}
-                </button>
+                  <button
+                    type="button"
+                    className="icon-button row-action"
+                    title="حذف فرمول"
+                    onClick={() => deleteFormula(formula)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               );
             })
           ) : (
