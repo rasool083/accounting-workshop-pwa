@@ -479,13 +479,17 @@ export default function Home() {
     );
   }
 
+  function importAndRepairAllocations(payload: string) {
+    return rebuildCheckAllocations(importPayload(payload));
+  }
+
   function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const next = importPayload(String(reader.result));
+        const next = importAndRepairAllocations(String(reader.result));
         commitState(next, `بازیابی از ${file.name}`, "RESTORE");
       } catch (error) {
         setNotice(
@@ -499,7 +503,7 @@ export default function Home() {
 
   function handleManualImport(payload: string) {
     try {
-      const next = importPayload(payload.trim());
+      const next = importAndRepairAllocations(payload.trim());
       if (!window.confirm("اطلاعات فعلی با این متن پشتیبان جایگزین شود؟"))
         return;
       commitState(next, "بازیابی با متن JSON", "RESTORE_MANUAL");
@@ -640,7 +644,7 @@ export default function Home() {
         token,
         PROJECT_BACKUPS_FOLDER_ID
       ).downloadBackup(file.id);
-      const next = importPayload(payload);
+      const next = importAndRepairAllocations(payload);
       commitState(next, `بازیابی از ${file.name}`, "RESTORE_DRIVE");
     } catch (error) {
       setNotice(
