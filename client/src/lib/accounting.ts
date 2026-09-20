@@ -413,9 +413,12 @@ export function executeProduction(
     const actualPieceWeight = Number(runOptions.pieceWeight) || 0;
     const quantityScale = requestedBase / batchBase;
     const massUnits = ["گرم", "میلی‌گرم", "میلی گرم", "کیلوگرم", "تن"];
-    const weightMaterials = formula.materials.filter(material =>
-      !runOptions.excludedMaterialIds?.includes(material.id) && massUnits.includes(material.unit)
-    );
+    const weightMaterials = formula.materials.filter(material => {
+      if (!massUnits.includes(material.unit)) return false;
+      const materialProduct = productById(material.productId);
+      const isPackage = materialProduct?.category === "بسته تولید";
+      return !isPackage || !runOptions.excludedMaterialIds?.includes(material.id);
+    });
     const plannedWeightPerPiece = weightMaterials.reduce(
       (sum, material) => sum + weightToGrams(material.quantity, material.unit),
       0
@@ -427,13 +430,15 @@ export function executeProduction(
     let materialCost = 0;
     const materialUsage: ProductionMaterialUsage[] = [];
     for (const material of formula.materials) {
-      const included = currentFormulaId !== formulaId ||
-        !runOptions.excludedMaterialIds?.includes(material.id);
-      if (!included) continue;
       const materialProduct = productById(material.productId);
       if (!materialProduct) throw new Error("مادهٔ اولیهٔ فرمول پیدا نشد");
       const isWeightMaterial = massUnits.includes(material.unit);
-      const materialScale = quantityScale * (isWeightMaterial ? weightScale : 1);
+      const isPackage = materialProduct.category === "بسته تولید";
+      const packageIncludedInWeight = !isPackage ||
+        currentFormulaId !== formulaId ||
+        !runOptions.excludedMaterialIds?.includes(material.id);
+      const materialScale = quantityScale *
+        (isWeightMaterial && packageIncludedInWeight ? weightScale : 1);
       const plannedBase = quantityInBase(
         materialProduct,
         material.quantity * materialScale,
@@ -443,7 +448,6 @@ export function executeProduction(
         ? Number(runOptions.materialAdjustments?.[material.id]) || 0
         : 0;
       const adjustmentBase = quantityInBase(materialProduct, adjustment, material.unit);
-      const isPackage = materialProduct.category === "بسته تولید";
       const wasteBase = isPackage
         ? 0
         : plannedBase * Math.max(0, Number(runOptions.wastePercent) || 0) / 100;

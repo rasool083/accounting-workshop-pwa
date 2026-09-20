@@ -382,7 +382,7 @@ describe("production execution", () => {
     expect(result.state.productionRecords).toHaveLength(2);
   });
 
-  it("applies actual piece weight only to formula materials and supports excluded packages", () => {
+  it("always consumes packages while package ticks only control weight inclusion", () => {
     const makeProduct = (id: string, name: string, unit: string, stock: number, category: "مواد اولیه" | "بسته تولید" | "محصول تولیدی", conversionRate = 1) => ({
       id, code: id, name, unit, unit2: unit, conversionRate, stock, minStock: 0, price: 1, category,
     });
@@ -430,7 +430,7 @@ describe("production execution", () => {
     expect(stocks.get(x.id)).toBeCloseTo(100000 - 11 * 36 * 2 * 43, 6);
     expect(stocks.get(y.id)).toBeCloseTo(100000 - 11 * 36 * 3 * 43, 6);
     expect(stocks.get(aRaw.id)).toBeCloseTo(100000 - 11 * 36 * 5 * 43, 6);
-    expect(stocks.get(bRaw.id)).toBe(100000);
+    expect(stocks.get(bRaw.id)).toBe(100000 - 396);
     expect(stocks.get(packB.id)).toBe(0);
     expect(stocks.get(output.id)).toBe(396);
     const mainRecord = result.state.productionRecords.find(record => record.formulaId === formulaA.id)!;

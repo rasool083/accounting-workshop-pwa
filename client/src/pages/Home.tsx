@@ -8315,7 +8315,9 @@ function Production({
                         pieceWeightUnit: "گرم",
                         wastePercent: "0",
                         adjustments: {},
-                        excludedMaterialIds: [],
+                        excludedMaterialIds: formula.materials
+                          .filter(material => state.products.find(product => product.id === material.productId)?.category === "بسته تولید")
+                          .map(material => material.id),
                         note: "",
                       })
                     }
@@ -8483,7 +8485,7 @@ function Production({
             ) ? (
               <div className="production-section full-field">
                 <strong>بسته‌های همراه این بچ</strong>
-                <p className="muted-cell">وزن واقعی فقط برای بخش اصلی فرمول اعمال می‌شود؛ بسته‌های انتخاب‌شده جداگانه و با مقدار فرمول مصرف می‌شوند.</p>
+                <p className="muted-cell">همهٔ بسته‌ها همیشه در هر قطعه مصرف می‌شوند؛ تیک فقط تعیین می‌کند کدام بسته داخل وزن اعلام‌شدهٔ قطعه حساب شود.</p>
                 {productionDialog.formula.materials.map(material => {
                   const product = state.products.find(item => item.id === material.productId);
                   if (product?.category !== "بسته تولید") return null;
@@ -8501,7 +8503,7 @@ function Production({
                         })}
                       />
                       <span>{product.name} · {formatNumber(material.quantity)} {material.unit}</span>
-                      <small>{excluded ? "بدون این بسته" : "شامل این بسته"}</small>
+                      <small>{excluded ? "بسته جدا از وزن اعلام‌شده" : "بسته داخل وزن اعلام‌شده"}</small>
                     </label>
                   );
                 })}
