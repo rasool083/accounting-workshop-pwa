@@ -8350,6 +8350,15 @@ function Production({
                   <button
                     type="button"
                     className="icon-button row-action"
+                    title="ویرایش موتور تولید"
+                    aria-label={`ویرایش موتور تولید ${formula.name}`}
+                    onClick={() => loadFormula(formula)}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button row-action"
                     title="حذف فرمول"
                     onClick={() => deleteFormula(formula)}
                   >
