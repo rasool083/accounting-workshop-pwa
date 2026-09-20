@@ -7830,9 +7830,12 @@ function Production({
   }
 
   function loadFormula(formula: ProductionFormula) {
-    setSelectedFormulaId(formula.id);
+    const hasProductionHistory = state.productionRecords.some(
+      record => record.formulaId === formula.id
+    );
+    setSelectedFormulaId(hasProductionHistory ? "" : formula.id);
     setForm({
-      name: formula.name,
+      name: hasProductionHistory ? `${formula.name} — بازنگری` : formula.name,
       formulaType: formula.formulaType || "قطعه",
       outputProductId: formula.outputProductId || "",
       outputQuantity: String(formula.outputQuantity),
