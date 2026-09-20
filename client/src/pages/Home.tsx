@@ -7672,8 +7672,6 @@ function Production({
     outputProductId: "",
     outputQuantity: "1",
     outputUnit: "",
-    standardPieceWeight: "",
-    standardPieceWeightUnit: "گرم",
     materials: [blankMaterial],
     costs: [blankCost],
     note: "",
@@ -7689,6 +7687,7 @@ function Production({
     pieceWeightUnit: string;
     wastePercent: string;
     adjustments: Record<string, string>;
+    excludedMaterialIds: string[];
     note: string;
     editingRecordId?: string;
   } | null>(null);
@@ -7792,8 +7791,6 @@ function Production({
       outputName: outputProduct.name,
       outputQuantity: quantity,
       outputUnit: form.outputUnit || selectedOutput?.unit || "عدد",
-      standardPieceWeight: quantityValue(form.standardPieceWeight) || undefined,
-      standardPieceWeightUnit: form.standardPieceWeightUnit || undefined,
       materials,
       costs: form.costs.filter(
         item => item.title.trim() && Number(item.amount) > 0
@@ -7822,8 +7819,6 @@ function Production({
       outputProductId: "",
       outputQuantity: "1",
       outputUnit: "",
-      standardPieceWeight: "",
-      standardPieceWeightUnit: "گرم",
       materials: [{ ...blankMaterial, id: createId("material") }],
       costs: [{ ...blankCost, id: createId("cost") }],
       note: "",
@@ -7840,8 +7835,6 @@ function Production({
       outputProductId: formula.outputProductId || "",
       outputQuantity: String(formula.outputQuantity),
       outputUnit: formula.outputUnit,
-      standardPieceWeight: String(formula.standardPieceWeight || ""),
-      standardPieceWeightUnit: formula.standardPieceWeightUnit || "گرم",
       materials: formula.materials,
       costs: formula.costs.length
         ? formula.costs
@@ -7880,6 +7873,7 @@ function Production({
       pieceWeightUnit: record.pieceWeightUnit || "گرم",
       wastePercent: String(record.wastePercent || "0"),
       adjustments,
+      excludedMaterialIds: record.excludedMaterialIds || [],
       note: record.note,
       editingRecordId: record.id,
     });
@@ -7907,6 +7901,7 @@ function Production({
         materialAdjustments: Object.fromEntries(
           Object.entries(productionDialog.adjustments).map(([id, value]) => [id, quantityValue(value)])
         ),
+        excludedMaterialIds: productionDialog.excludedMaterialIds,
         note: productionDialog.note,
       };
       const baseState = productionDialog.editingRecordId
@@ -8055,24 +8050,6 @@ function Production({
                       {unit}
                     </option>
                   ))}
-              </select>
-            </label>
-          </div>
-          <div className="form-grid production-run-basis">
-            <label>
-              وزن مرجع هر قطعه
-              <input
-                inputMode="decimal"
-                value={form.standardPieceWeight}
-                onChange={event => setForm({ ...form, standardPieceWeight: event.target.value })}
-                placeholder="مثلاً ۴۳۰"
-              />
-            </label>
-            <label>
-              واحد وزن مرجع
-              <select value={form.standardPieceWeightUnit} onChange={event => setForm({ ...form, standardPieceWeightUnit: event.target.value })}>
-                <option value="گرم">گرم</option>
-                <option value="کیلوگرم">کیلوگرم</option>
               </select>
             </label>
           </div>
@@ -8314,9 +8291,6 @@ function Production({
                   <div className="production-formula-details">
                     <strong>فرمول ساخت</strong>
                     <span>خروجی مبنا: {formatNumber(formula.outputQuantity)} {formula.outputUnit}</span>
-                    {formula.standardPieceWeight ? (
-                      <span>وزن مرجع: {formatNumber(formula.standardPieceWeight)} {formula.standardPieceWeightUnit || "گرم"}</span>
-                    ) : null}
                     <div className="production-material-list">
                       {formula.materials.map(material => {
                         const materialProduct = state.products.find(item => item.id === material.productId);
@@ -8337,10 +8311,11 @@ function Production({
                         quantity: String(formula.outputQuantity),
                         unit: formula.outputUnit,
                         batchNumber: `B-${Date.now()}`,
-                        pieceWeight: String(formula.standardPieceWeight || ""),
-                        pieceWeightUnit: formula.standardPieceWeightUnit || "گرم",
+                        pieceWeight: "",
+                        pieceWeightUnit: "گرم",
                         wastePercent: "0",
                         adjustments: {},
+                        excludedMaterialIds: [],
                         note: "",
                       })
                     }
@@ -8503,6 +8478,35 @@ function Production({
                 placeholder="۰"
               />
             </label>
+            {productionDialog.formula.materials.some(material =>
+              state.products.find(product => product.id === material.productId)?.category === "بسته تولید"
+            ) ? (
+              <div className="production-section full-field">
+                <strong>بسته‌های همراه این بچ</strong>
+                <p className="muted-cell">وزن واقعی فقط برای بخش اصلی فرمول اعمال می‌شود؛ بسته‌های انتخاب‌شده جداگانه و با مقدار فرمول مصرف می‌شوند.</p>
+                {productionDialog.formula.materials.map(material => {
+                  const product = state.products.find(item => item.id === material.productId);
+                  if (product?.category !== "بسته تولید") return null;
+                  const excluded = productionDialog.excludedMaterialIds.includes(material.id);
+                  return (
+                    <label className="production-row package-choice" key={material.id}>
+                      <input
+                        type="checkbox"
+                        checked={!excluded}
+                        onChange={event => setProductionDialog({
+                          ...productionDialog,
+                          excludedMaterialIds: event.target.checked
+                            ? productionDialog.excludedMaterialIds.filter(id => id !== material.id)
+                            : [...productionDialog.excludedMaterialIds, material.id],
+                        })}
+                      />
+                      <span>{product.name} · {formatNumber(material.quantity)} {material.unit}</span>
+                      <small>{excluded ? "بدون این بسته" : "شامل این بسته"}</small>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : null}
             <div className="production-section full-field">
               <strong>اصلاحات مصرف همین بچ</strong>
               {productionDialog.formula.materials.map(material => {

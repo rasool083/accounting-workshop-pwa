@@ -204,6 +204,8 @@ export interface ProductionRecord {
   pieceWeightUnit?: string;
   wastePercent?: number;
   materialUsage?: ProductionMaterialUsage[];
+  includedMaterialIds?: string[];
+  excludedMaterialIds?: string[];
   formulaRevision?: string;
   /** شناسه مشترک بچ اصلی و تمام بسته‌های خودکار همان اجرا. */
   executionId?: string;
@@ -329,6 +331,8 @@ export interface ProductionRunOptions {
   pieceWeightUnit?: string;
   wastePercent?: number;
   materialAdjustments?: Record<string, number>;
+  includedMaterialIds?: string[];
+  excludedMaterialIds?: string[];
   note?: string;
 }
 
@@ -406,30 +410,43 @@ export function executeProduction(
     );
     if (batchBase <= 0 || requestedBase <= 0)
       throw new Error("مقدار خروجی فرمول معتبر نیست");
-    const standardWeight = Number(formula.standardPieceWeight) || 0;
     const actualPieceWeight = Number(runOptions.pieceWeight) || 0;
-    const weightScale =
-      standardWeight > 0 && actualPieceWeight > 0
-        ? (requestedBase * weightToGrams(actualPieceWeight, runOptions.pieceWeightUnit || formula.standardPieceWeightUnit || "گرم")) /
-          Math.max(0.000001, batchBase * weightToGrams(standardWeight, formula.standardPieceWeightUnit || "گرم"))
-        : requestedBase / batchBase;
-    const scale = Number.isFinite(weightScale) && weightScale > 0 ? weightScale : requestedBase / batchBase;
+    const quantityScale = requestedBase / batchBase;
+    const massUnits = ["گرم", "میلی‌گرم", "میلی گرم", "کیلوگرم", "تن"];
+    const weightMaterials = formula.materials.filter(material =>
+      !runOptions.excludedMaterialIds?.includes(material.id) && massUnits.includes(material.unit)
+    );
+    const plannedWeightPerPiece = weightMaterials.reduce(
+      (sum, material) => sum + weightToGrams(material.quantity, material.unit),
+      0
+    );
+    const weightScale = actualPieceWeight > 0 && plannedWeightPerPiece > 0
+      ? weightToGrams(actualPieceWeight, runOptions.pieceWeightUnit || "گرم") / plannedWeightPerPiece
+      : 1;
     visiting.add(currentFormulaId);
     let materialCost = 0;
     const materialUsage: ProductionMaterialUsage[] = [];
     for (const material of formula.materials) {
+      const included = currentFormulaId !== formulaId ||
+        !runOptions.excludedMaterialIds?.includes(material.id);
+      if (!included) continue;
       const materialProduct = productById(material.productId);
       if (!materialProduct) throw new Error("مادهٔ اولیهٔ فرمول پیدا نشد");
+      const isWeightMaterial = massUnits.includes(material.unit);
+      const materialScale = quantityScale * (isWeightMaterial ? weightScale : 1);
       const plannedBase = quantityInBase(
         materialProduct,
-        material.quantity * scale,
+        material.quantity * materialScale,
         material.unit
       );
       const adjustment = currentFormulaId === formulaId
         ? Number(runOptions.materialAdjustments?.[material.id]) || 0
         : 0;
       const adjustmentBase = quantityInBase(materialProduct, adjustment, material.unit);
-      const wasteBase = plannedBase * Math.max(0, Number(runOptions.wastePercent) || 0) / 100;
+      const isPackage = materialProduct.category === "بسته تولید";
+      const wasteBase = isPackage
+        ? 0
+        : plannedBase * Math.max(0, Number(runOptions.wastePercent) || 0) / 100;
       const requiredBase = Math.max(0, plannedBase + adjustmentBase + wasteBase);
       const nestedFormulaId = outputFormulaIds.get(materialProduct.id);
       if (nestedFormulaId && materialProduct.stock < requiredBase) {
@@ -448,7 +465,7 @@ export function executeProduction(
       materialUsage.push({
         materialId: material.id,
         productId: material.productId,
-        plannedQuantity: material.quantity * scale,
+        plannedQuantity: material.quantity * materialScale,
         adjustmentQuantity: adjustment,
         wasteQuantity: wasteBase / conversion,
         actualQuantity: requiredBase / conversion,
@@ -456,7 +473,7 @@ export function executeProduction(
       });
     }
     const overheadCost = formula.costs.reduce(
-      (sum, cost) => sum + Math.max(0, Number(cost.amount) || 0) * scale,
+      (sum, cost) => sum + Math.max(0, Number(cost.amount) || 0) * quantityScale,
       0
     );
     const totalCost = materialCost + overheadCost;
@@ -481,6 +498,8 @@ export function executeProduction(
       pieceWeightUnit: currentFormulaId === formulaId ? runOptions.pieceWeightUnit : undefined,
       wastePercent: currentFormulaId === formulaId ? Math.max(0, Number(runOptions.wastePercent) || 0) : undefined,
       materialUsage,
+      includedMaterialIds: currentFormulaId === formulaId ? runOptions.includedMaterialIds : undefined,
+      excludedMaterialIds: currentFormulaId === formulaId ? runOptions.excludedMaterialIds : undefined,
       formulaRevision: formula.id,
       executionId,
       formulaSnapshot: structuredClone(formula),

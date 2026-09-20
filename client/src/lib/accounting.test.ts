@@ -381,4 +381,60 @@ describe("production execution", () => {
     expect(result.state.products.find(product => product.id === "output")?.stock).toBe(1);
     expect(result.state.productionRecords).toHaveLength(2);
   });
+
+  it("applies actual piece weight only to formula materials and supports excluded packages", () => {
+    const makeProduct = (id: string, name: string, unit: string, stock: number, category: "مواد اولیه" | "بسته تولید" | "محصول تولیدی", conversionRate = 1) => ({
+      id, code: id, name, unit, unit2: unit, conversionRate, stock, minStock: 0, price: 1, category,
+    });
+    const x = makeProduct("x", "X", "گرم", 100000, "مواد اولیه");
+    const y = makeProduct("y", "Y", "گرم", 100000, "مواد اولیه");
+    const aRaw = makeProduct("a-raw", "ماده بسته الف", "گرم", 100000, "مواد اولیه");
+    const bRaw = makeProduct("b-raw", "ماده بسته ب", "عدد", 100000, "مواد اولیه");
+    const packA = makeProduct("pack-a", "بسته الف", "گرم", 0, "بسته تولید");
+    const packB = makeProduct("pack-b", "بسته ب", "عدد", 0, "بسته تولید");
+    const output = {
+      ...makeProduct("piece", "قطعه A", "عدد", 0, "محصول تولیدی", 36),
+      unit2: "کارتن",
+    };
+    const formulaA = {
+      id: "formula-a", name: "فرمول A", formulaType: "قطعه" as const,
+      outputProductId: output.id, outputName: output.name, outputQuantity: 1, outputUnit: "عدد",
+      materials: [
+        { id: "x-line", productId: x.id, quantity: 2, unit: "گرم" },
+        { id: "y-line", productId: y.id, quantity: 3, unit: "گرم" },
+        { id: "a-line", productId: packA.id, quantity: 5, unit: "گرم" },
+        { id: "b-line", productId: packB.id, quantity: 1, unit: "عدد" },
+      ], costs: [], note: "",
+    };
+    const formulaAEngine = {
+      id: "formula-pack-a", name: "موتور بسته الف", formulaType: "بسته تولید" as const,
+      outputProductId: packA.id, outputName: packA.name, outputQuantity: 5, outputUnit: "گرم",
+      materials: [{ id: "a-raw-line", productId: aRaw.id, quantity: 5, unit: "گرم" }], costs: [], note: "",
+    };
+    const formulaBEngine = {
+      id: "formula-pack-b", name: "موتور بسته ب", formulaType: "بسته تولید" as const,
+      outputProductId: packB.id, outputName: packB.name, outputQuantity: 1, outputUnit: "عدد",
+      materials: [{ id: "b-raw-line", productId: bRaw.id, quantity: 1, unit: "عدد" }], costs: [], note: "",
+    };
+    const state = {
+      schemaVersion: 2, revision: 1, updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "عدد", "کارتن"] },
+      people: [], products: [x, y, aRaw, bRaw, packA, packB, output], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [formulaA, formulaAEngine, formulaBEngine], productionRecords: [],
+    };
+    const result = executeProduction(state, formulaA.id, 11, "کارتن", "1405/07/01", {
+      batchNumber: "B-430-11C", pieceWeight: 430, pieceWeightUnit: "گرم", excludedMaterialIds: ["b-line"],
+    });
+    const stocks = new Map(result.state.products.map(product => [product.id, product.stock]));
+    expect(stocks.get(x.id)).toBeCloseTo(100000 - 11 * 36 * 2 * 43, 6);
+    expect(stocks.get(y.id)).toBeCloseTo(100000 - 11 * 36 * 3 * 43, 6);
+    expect(stocks.get(aRaw.id)).toBeCloseTo(100000 - 11 * 36 * 5 * 43, 6);
+    expect(stocks.get(bRaw.id)).toBe(100000);
+    expect(stocks.get(packB.id)).toBe(0);
+    expect(stocks.get(output.id)).toBe(396);
+    const mainRecord = result.state.productionRecords.find(record => record.formulaId === formulaA.id)!;
+    expect(mainRecord.excludedMaterialIds).toEqual(["b-line"]);
+    expect(mainRecord.pieceWeight).toBe(430);
+  });
 });
