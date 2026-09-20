@@ -1,0 +1,75 @@
+/* Shared responsive UI corrections for the workshop accounting PWA. */
+
+/* Keep every modal/dialog centered, compact and usable on narrow phones. */
+[class*="modal-overlay"],
+[class*="dialog-overlay"],
+.modal-backdrop,
+.overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 12px !important;
+  overflow-y: auto !important;
+  background: rgb(15 23 42 / 48%) !important;
+}
+
+[class*="modal"],
+[class*="dialog"],
+.modal-content,
+.dialog-content {
+  box-sizing: border-box !important;
+  width: min(100%, 560px) !important;
+  max-width: 560px !important;
+  max-height: calc(100dvh - 24px) !important;
+  margin: auto !important;
+  overflow-y: auto !important;
+  border-radius: 18px !important;
+}
+
+@media (max-width: 640px) {
+  [class*="modal"],
+  [class*="dialog"],
+  .modal-content,
+  .dialog-content {
+    width: min(100%, 430px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    border-radius: 14px !important;
+  }
+
+  [class*="modal"] form,
+  [class*="dialog"] form {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  [class*="modal"] input,
+  [class*="modal"] select,
+  [class*="modal"] textarea,
+  [class*="dialog"] input,
+  [class*="dialog"] select,
+  [class*="dialog"] textarea {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  table {
+    display: block !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* Prevent long Persian labels and controls from escaping the viewport. */
+*, *::before, *::after { box-sizing: border-box; }
+button, input, select, textarea { max-width: 100%; }
+body { overflow-x: hidden; }
+
+/* Consistent visual states for check rows. */
+tr.status-success, .status-success-row { background: rgb(22 163 74 / 9%) !important; }
+tr.status-danger, .status-danger-row { background: rgb(220 38 38 / 10%) !important; }
+tr.status-warning, .status-warning-row { background: rgb(234 179 8 / 11%) !important; }
