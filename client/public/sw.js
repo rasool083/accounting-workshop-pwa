@@ -1,4 +1,4 @@
-const CACHE_NAME = "accounting-workshop-pwa-v2";
+const CACHE_NAME = "accounting-workshop-pwa-v3";
 const BASE = self.registration.scope;
 const APP_SHELL = [
   BASE,
@@ -23,6 +23,22 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const isNavigation = event.request.mode === "navigate" ||
+    event.request.headers.get("accept")?.includes("text/html");
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(BASE, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(BASE)),
+    );
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then((cached) =>
       cached ||
