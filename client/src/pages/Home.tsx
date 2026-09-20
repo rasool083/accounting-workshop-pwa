@@ -63,6 +63,7 @@ import {
   transactionLabel,
   calculateLateProfit,
   settleChecksFIFO,
+  getSettlementBalances,
   allocateCheckFIFO,
   rebuildCheckAllocations,
   createEmptyState,
@@ -71,6 +72,7 @@ import {
   suggestNextPartyNumber,
   quantityInBase,
   unitConversionToBase,
+  executeProduction,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -1253,6 +1255,15 @@ function Invoices({
       ),
     [state.checks, state.invoices, state.paymentRules, state.settings.dayBasis]
   );
+  const allocationBalances = useMemo(
+    () =>
+      getSettlementBalances(
+        invoiceAllocations,
+        state.checks,
+        state.invoices
+      ),
+    [invoiceAllocations, state.checks, state.invoices]
+  );
   const validSales = useMemo(
     () =>
       state.invoices.filter(
@@ -1301,8 +1312,7 @@ function Invoices({
         price =>
           (price.productName === product.name ||
             price.productId === product.id) &&
-          (price.unit === (unit || product.unit) ||
-            (unit === product.unit2 && price.unit === product.unit)) &&
+          price.unit === product.unit &&
           price.effectiveDate <= form.date &&
           (price.scope === "عمومی" || price.partyIds?.includes(partyId))
       )
@@ -1582,7 +1592,7 @@ function Invoices({
                 <th>طرف حساب</th>
                 <th>نام کالا</th>
                 <th>تعداد</th>
-                <th>قیمت واحد</th>
+                <th>قیمت پایه</th>
                 <th>مبلغ</th>
                 <th>تسویه</th>
                 <th>مانده</th>
@@ -1656,7 +1666,9 @@ function Invoices({
                                   {formatMoney(
                                     Number(item.unitPrice) || 0,
                                     state.settings.currency
-                                  )}
+                                  )} {state.products.find(
+                                    product => product.id === item.productId
+                                  )?.unit || "واحد پایه"}
                                 </span>
                               ))}
                             </div>
@@ -1730,6 +1742,10 @@ function Invoices({
                                       (sum, row) => sum + row.principalAmount,
                                       0
                                     );
+                                    const allocationBalance =
+                                      allocationBalances.get(
+                                        `${item.checkId}:${item.invoiceId}`
+                                      );
                                     const tone =
                                       check?.status === "وصول شده"
                                         ? "cleared"
@@ -1785,10 +1801,11 @@ function Invoices({
                                           مانده چک پس از تخصیص:{" "}
                                           {check
                                             ? formatMoney(
-                                                Math.max(
-                                                  0,
-                                                  check.amount - checkAllocated
-                                                ),
+                                                allocationBalance?.remainingCheck ??
+                                                  Math.max(
+                                                    0,
+                                                    check.amount - checkAllocated
+                                                  ),
                                                 state.settings.currency
                                               )
                                             : "—"}
@@ -1798,8 +1815,12 @@ function Invoices({
                                           {formatMoney(
                                             Math.max(
                                               0,
-                                              (invoice?.amount || 0) -
-                                                invoiceAllocated
+                                              allocationBalance?.remainingInvoice ??
+                                                Math.max(
+                                                  0,
+                                                  (invoice?.amount || 0) -
+                                                    invoiceAllocated
+                                                )
                                             ),
                                             state.settings.currency
                                           )}
@@ -2041,7 +2062,7 @@ function Invoices({
                     onChange={e =>
                       updateItem(index, { unitPrice: e.target.value })
                     }
-                    placeholder="قیمت واحد"
+                    placeholder="قیمت واحد پایه"
                   />
                   {form.items.length > 1 && (
                     <button
@@ -4683,6 +4704,7 @@ function Prices({
     const selectedProduct = state.products.find(
       item => item.name === form.productName
     );
+    const priceUnit = selectedProduct?.unit || form.unit;
     onSave(
       {
         ...state,
@@ -4697,7 +4719,7 @@ function Prices({
                     partyIds:
                       form.scope === "اختصاصی" ? form.partyIds : undefined,
                     effectiveDate: form.effectiveDate,
-                    unit: form.unit,
+                    unit: priceUnit,
                     price,
                     note: form.note,
                   }
@@ -4711,7 +4733,7 @@ function Prices({
                 scope: form.scope,
                 partyIds: form.scope === "اختصاصی" ? form.partyIds : undefined,
                 effectiveDate: form.effectiveDate,
-                unit: form.unit,
+                unit: priceUnit,
                 price,
                 note: form.note,
               },
@@ -4844,7 +4866,7 @@ function Prices({
                 value={form.productName}
                 onChange={e => {
                   const product = state.products.find(
-                    item => item.id === e.target.value
+                    item => item.name === e.target.value
                   );
                   setForm({
                     ...form,
@@ -4871,10 +4893,20 @@ function Prices({
             <label>
               واحد
               <select
-                value={form.unit}
+              value={form.unit}
+                disabled={Boolean(
+                  state.products.find(item => item.name === form.productName)
+                )}
                 onChange={e => setForm({ ...form, unit: e.target.value })}
               >
-                {state.settings.units.map(unit => (
+                {(state.products.find(item => item.name === form.productName)
+                  ? [
+                      state.products.find(
+                        item => item.name === form.productName
+                      )!.unit,
+                    ]
+                  : state.settings.units
+                ).map(unit => (
                   <option key={unit}>{unit}</option>
                 ))}
               </select>
@@ -5313,6 +5345,15 @@ function Checks({
     state.invoices,
     state.paymentRules,
     state.settings.dayBasis
+  );
+  const allocationBalances = useMemo(
+    () =>
+      getSettlementBalances(
+        allocationDetails,
+        state.checks,
+        state.invoices
+      ),
+    [allocationDetails, state.checks, state.invoices]
   );
   function recalculateAllocations() {
     onSave(
@@ -6015,6 +6056,10 @@ function Checks({
                                     (sum, row) => sum + row.principalAmount,
                                     0
                                   );
+                                const allocationBalance =
+                                  allocationBalances.get(
+                                    `${item.checkId}:${item.invoiceId}`
+                                  );
                                 return (
                                   <div
                                     className="allocation-detail-card"
@@ -6055,21 +6100,23 @@ function Checks({
                                     <span>
                                       مانده چک پس از تخصیص:{" "}
                                       {formatMoney(
-                                        Math.max(
-                                          0,
-                                          check.amount - checkAllocated
-                                        ),
+                                        allocationBalance?.remainingCheck ??
+                                          Math.max(
+                                            0,
+                                            check.amount - checkAllocated
+                                          ),
                                         state.settings.currency
                                       )}
                                     </span>
                                     <span>
                                       مانده فاکتور پس از تخصیص:{" "}
                                       {formatMoney(
-                                        Math.max(
-                                          0,
-                                          (invoice?.amount || 0) -
-                                            invoiceAllocated
-                                        ),
+                                        allocationBalance?.remainingInvoice ??
+                                          Math.max(
+                                            0,
+                                            (invoice?.amount || 0) -
+                                              invoiceAllocated
+                                          ),
                                         state.settings.currency
                                       )}
                                     </span>
@@ -7625,6 +7672,11 @@ function Production({
     packageOutput: false,
   });
   const [selectedFormulaId, setSelectedFormulaId] = useState("");
+  const [productionDialog, setProductionDialog] = useState<{
+    formula: ProductionFormula;
+    quantity: string;
+    unit: string;
+  } | null>(null);
   const selectedOutput = state.products.find(
     product => product.id === form.outputProductId
   );
@@ -7866,6 +7918,24 @@ function Production({
       `فرمول ${formula.name} و سوابق تولید آن حذف شد`
     );
     if (selectedFormulaId === formula.id) setSelectedFormulaId("");
+  }
+
+  function produceFormula(event: React.FormEvent) {
+    event.preventDefault();
+    if (!productionDialog) return;
+    try {
+      const quantity = Number(productionDialog.quantity);
+      const next = executeProduction(
+        state,
+        productionDialog.formula.id,
+        quantity,
+        productionDialog.unit
+      ).state;
+      onSave(next, `تولید ${productionDialog.formula.name} ثبت شد`);
+      setProductionDialog(null);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "تولید انجام نشد");
+    }
   }
 
   return (
@@ -8228,6 +8298,19 @@ function Production({
                   )}
                   <button
                     type="button"
+                    className="button button-primary button-small"
+                    onClick={() =>
+                      setProductionDialog({
+                        formula,
+                        quantity: String(formula.outputQuantity),
+                        unit: formula.outputUnit,
+                      })
+                    }
+                  >
+                    <Plus size={14} /> تولید
+                  </button>
+                  <button
+                    type="button"
                     className="icon-button row-action"
                     title="حذف فرمول"
                     onClick={() => deleteFormula(formula)}
@@ -8245,6 +8328,74 @@ function Production({
           )}
         </div>
       </div>
+      {productionDialog && (
+        <Dialog
+          title={`تولید: ${productionDialog.formula.name}`}
+          onClose={() => setProductionDialog(null)}
+        >
+          <form className="form-grid" onSubmit={produceFormula}>
+            <label>
+              مقدار تولید
+              <input
+                inputMode="decimal"
+                value={productionDialog.quantity}
+                onChange={event =>
+                  setProductionDialog({
+                    ...productionDialog,
+                    quantity: event.target.value,
+                  })
+                }
+                required
+              />
+            </label>
+            <label>
+              واحد خروجی
+              <select
+                value={productionDialog.unit}
+                onChange={event =>
+                  setProductionDialog({
+                    ...productionDialog,
+                    unit: event.target.value,
+                  })
+                }
+              >
+                {[
+                  productionDialog.formula.outputUnit,
+                  "عدد",
+                  "کارتن",
+                  "کیلوگرم",
+                  "گرم",
+                ]
+                  .filter(
+                    (unit, index, units) =>
+                      unit && units.indexOf(unit) === index
+                  )
+                  .map(unit => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <p className="muted-cell">
+              مواد اولیه طبق فرمول مصرف می‌شوند. اگر مادهٔ اولیه خود محصول یک
+              فرمول باشد، مقدار لازم از آن فرمول ابتدا تولید خواهد شد.
+            </p>
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button button-ghost"
+                onClick={() => setProductionDialog(null)}
+              >
+                انصراف
+              </button>
+              <button className="button button-primary" type="submit">
+                <Check size={16} /> ثبت تولید
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
     </div>
   );
 }

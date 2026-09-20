@@ -290,6 +290,121 @@ export interface AppState {
   productionRecords: ProductionRecord[];
 }
 
+export interface ProductionExecutionResult {
+  state: AppState;
+  recordIds: string[];
+}
+
+/**
+ * Produces a requested quantity from a formula. Package formulas used as
+ * materials are produced recursively when their available stock is not
+ * enough. All quantities are converted to the product base unit before stock
+ * changes are applied.
+ */
+export function executeProduction(
+  state: AppState,
+  formulaId: string,
+  outputQuantity: number,
+  outputUnit?: string,
+  date = todayJalali()
+): ProductionExecutionResult {
+  if (!Number.isFinite(outputQuantity) || outputQuantity <= 0)
+    throw new Error("مقدار تولید باید بزرگ‌تر از صفر باشد");
+  const products = state.products.map(product => ({ ...product }));
+  const formulas = new Map(state.productionFormulas.map(item => [item.id, item]));
+  const outputFormulaIds = new Map(
+    state.productionFormulas
+      .filter(item => item.outputProductId)
+      .map(item => [item.outputProductId!, item.id])
+  );
+  const records: ProductionRecord[] = [];
+  const visiting = new Set<string>();
+
+  const productById = (id: string) => products.find(product => product.id === id);
+  const unitPrice = (product: Product) => Math.max(0, Number(product.price) || 0);
+
+  const run = (
+    currentFormulaId: string,
+    requestedQuantity: number,
+    requestedUnit?: string
+  ): number => {
+    if (visiting.has(currentFormulaId))
+      throw new Error("وابستگی حلقوی در فرمول‌های تولید وجود دارد");
+    const formula = formulas.get(currentFormulaId);
+    if (!formula || !formula.outputProductId)
+      throw new Error("فرمول یا محصول خروجی معتبر نیست");
+    const outputProduct = productById(formula.outputProductId);
+    if (!outputProduct) throw new Error("محصول خروجی فرمول پیدا نشد");
+    const batchBase = quantityInBase(
+      outputProduct,
+      formula.outputQuantity,
+      formula.outputUnit || outputProduct.unit
+    );
+    const requestedBase = quantityInBase(
+      outputProduct,
+      requestedQuantity,
+      requestedUnit || formula.outputUnit || outputProduct.unit
+    );
+    if (batchBase <= 0 || requestedBase <= 0)
+      throw new Error("مقدار خروجی فرمول معتبر نیست");
+    const scale = requestedBase / batchBase;
+    visiting.add(currentFormulaId);
+    let materialCost = 0;
+    for (const material of formula.materials) {
+      const materialProduct = productById(material.productId);
+      if (!materialProduct) throw new Error("مادهٔ اولیهٔ فرمول پیدا نشد");
+      const requiredBase = quantityInBase(
+        materialProduct,
+        material.quantity * scale,
+        material.unit
+      );
+      const nestedFormulaId = outputFormulaIds.get(materialProduct.id);
+      if (nestedFormulaId && materialProduct.stock < requiredBase) {
+        run(
+          nestedFormulaId,
+          requiredBase - materialProduct.stock,
+          materialProduct.unit
+        );
+      }
+      if (materialProduct.stock < requiredBase)
+        throw new Error(`موجودی مادهٔ اولیهٔ «${materialProduct.name}» کافی نیست`);
+      materialProduct.stock -= requiredBase;
+      materialCost += nestedFormulaId
+        ? requiredBase * unitPrice(materialProduct)
+        : requiredBase * unitPrice(materialProduct);
+    }
+    const overheadCost = formula.costs.reduce(
+      (sum, cost) => sum + Math.max(0, Number(cost.amount) || 0) * scale,
+      0
+    );
+    const totalCost = materialCost + overheadCost;
+    outputProduct.stock += requestedBase;
+    outputProduct.price = totalCost / requestedBase;
+    outputProduct.category =
+      formula.formulaType === "بسته تولید" ? "بسته تولید" : "محصول تولیدی";
+    records.push({
+      id: createId("production"),
+      formulaId: currentFormulaId,
+      date,
+      outputQuantity: requestedQuantity,
+      outputQuantityBase: requestedBase,
+      materialCost,
+      overheadCost,
+      totalCost,
+      unitCost: totalCost / requestedBase,
+      note: formula.note,
+    });
+    visiting.delete(currentFormulaId);
+    return totalCost;
+  };
+
+  run(formulaId, outputQuantity, outputUnit);
+  return {
+    state: { ...state, products, productionRecords: [...state.productionRecords, ...records] },
+    recordIds: records.map(record => record.id),
+  };
+}
+
 const STORAGE_KEY = "accounting-workshop-pwa:v1";
 
 const seedState: AppState = {
@@ -298,7 +413,7 @@ const seedState: AppState = {
   updatedAt: new Date().toISOString(),
   settings: {
     businessName: "کارگاه من",
-    currency: "ریال",
+    currency: "تومان",
     dayBasis: "شمسی",
     units: ["عدد", "کیلوگرم", "گرم", "متر", "لیتر", "کیسه", "بسته", "کارتن"],
   },
@@ -751,6 +866,11 @@ export interface FIFOSettlement {
   days: number;
 }
 
+export interface FIFOSettlementBalance {
+  remainingCheck: number;
+  remainingInvoice: number;
+}
+
 export function settleChecksFIFO(
   checks: Check[],
   invoices: Invoice[],
@@ -829,6 +949,42 @@ export function settleChecksFIFO(
     }
   }
   return settlements;
+}
+
+/**
+ * Returns the check and invoice balances immediately after each allocation.
+ * The key is stable for the settlement row and keeps the UI from displaying
+ * the final balance on every accordion row.
+ */
+export function getSettlementBalances(
+  settlements: FIFOSettlement[],
+  checks: Check[],
+  invoices: Invoice[]
+) {
+  const remainingChecks = new Map(
+    checks.map(check => [check.id, Math.max(0, check.amount)])
+  );
+  const remainingInvoices = new Map(
+    invoices.map(invoice => [invoice.id, Math.max(0, invoice.amount)])
+  );
+  const result = new Map<string, FIFOSettlementBalance>();
+  settlements.forEach(item => {
+    const remainingCheck = Math.max(
+      0,
+      (remainingChecks.get(item.checkId) || 0) - item.amount
+    );
+    const remainingInvoice = Math.max(
+      0,
+      (remainingInvoices.get(item.invoiceId) || 0) - item.principalAmount
+    );
+    remainingChecks.set(item.checkId, remainingCheck);
+    remainingInvoices.set(item.invoiceId, remainingInvoice);
+    result.set(`${item.checkId}:${item.invoiceId}`, {
+      remainingCheck,
+      remainingInvoice,
+    });
+  });
+  return result;
 }
 
 export function allocateCheckFIFO(
