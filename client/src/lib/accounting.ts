@@ -205,6 +205,8 @@ export interface ProductionRecord {
   wastePercent?: number;
   materialUsage?: ProductionMaterialUsage[];
   formulaRevision?: string;
+  /** شناسه مشترک بچ اصلی و تمام بسته‌های خودکار همان اجرا. */
+  executionId?: string;
   note: string;
 }
 
@@ -350,6 +352,7 @@ export function executeProduction(
       .map(item => [item.outputProductId!, item.id])
   );
   const records: ProductionRecord[] = [];
+  const executionId = createId("production-run");
   const visiting = new Set<string>();
 
   const productById = (id: string) => products.find(product => product.id === id);
@@ -475,6 +478,7 @@ export function executeProduction(
       wastePercent: currentFormulaId === formulaId ? Math.max(0, Number(runOptions.wastePercent) || 0) : undefined,
       materialUsage,
       formulaRevision: formula.id,
+      executionId,
       note: currentFormulaId === formulaId && runOptions.note ? runOptions.note : formula.note,
     });
     visiting.delete(currentFormulaId);
@@ -485,6 +489,51 @@ export function executeProduction(
   return {
     state: { ...state, products, productionRecords: [...state.productionRecords, ...records] },
     recordIds: records.map(record => record.id),
+  };
+}
+
+/**
+ * Reverses one production run, including automatically generated nested packages.
+ * It never overwrites historical records; it returns a state with inventory effects
+ * reversed and the run records removed by the caller.
+ */
+export function reverseProductionRun(state: AppState, productionRecordId: string): AppState {
+  const target = state.productionRecords.find(record => record.id === productionRecordId);
+  if (!target) throw new Error("رکورد تولید پیدا نشد");
+  const runRecords = state.productionRecords.filter(record =>
+    target.executionId ? record.executionId === target.executionId : record.id === target.id
+  );
+  const products = state.products.map(product => ({ ...product }));
+  const productById = (id: string) => products.find(product => product.id === id);
+  for (const record of runRecords) {
+    const output = productById(
+      state.productionFormulas.find(formula => formula.id === record.formulaId)?.outputProductId || ""
+    );
+    const outputQuantity = record.outputQuantityBase ?? record.outputQuantity;
+    if (output && output.stock + 0.000001 < outputQuantity)
+      throw new Error(`موجودی «${output.name}» برای برگشت این بچ کافی نیست؛ ابتدا مصرف یا فروش وابسته را بررسی کنید.`);
+    if (output) output.stock -= outputQuantity;
+    for (const usage of record.materialUsage || []) {
+      const material = productById(usage.productId);
+      if (!material) continue;
+      material.stock += quantityInBase(material, usage.actualQuantity, usage.unit);
+    }
+  }
+  return { ...state, products };
+}
+
+export function removeProductionRun(state: AppState, productionRecordId: string): AppState {
+  const target = state.productionRecords.find(record => record.id === productionRecordId);
+  if (!target) throw new Error("رکورد تولید پیدا نشد");
+  const ids = new Set(
+    state.productionRecords
+      .filter(record => target.executionId ? record.executionId === target.executionId : record.id === target.id)
+      .map(record => record.id)
+  );
+  const reversed = reverseProductionRun(state, productionRecordId);
+  return {
+    ...reversed,
+    productionRecords: reversed.productionRecords.filter(record => !ids.has(record.id)),
   };
 }
 

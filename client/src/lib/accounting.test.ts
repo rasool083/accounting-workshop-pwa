@@ -4,6 +4,7 @@ import {
   executeProduction,
   quantityInBase,
   rebuildCheckAllocations,
+  removeProductionRun,
   settleChecksFIFO,
   unitConversionToBase,
 } from "./accounting";
@@ -168,6 +169,38 @@ describe("FIFO settlement balances", () => {
 });
 
 describe("production execution", () => {
+  it("removes a production batch and reverses actual material and output stock", () => {
+    const raw = {
+      id: "delete-raw", code: "DR", name: "ماده حذف", unit: "گرم", unit2: "گرم",
+      conversionRate: 1, stock: 1000, minStock: 0, price: 2, category: "مواد اولیه" as const,
+    };
+    const output = {
+      id: "delete-output", code: "DO", name: "محصول حذف", unit: "عدد", unit2: "عدد",
+      conversionRate: 1, stock: 0, minStock: 0, price: 500, category: "محصول تولیدی" as const,
+    };
+    const formula = {
+      id: "delete-formula", name: "فرمول حذف", formulaType: "قطعه" as const,
+      outputProductId: output.id, outputName: output.name, outputQuantity: 1, outputUnit: "عدد",
+      standardPieceWeight: 100, standardPieceWeightUnit: "گرم",
+      materials: [{ id: "delete-line", productId: raw.id, quantity: 100, unit: "گرم" }],
+      costs: [], note: "",
+    };
+    const state = {
+      schemaVersion: 2, revision: 1, updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "عدد"] },
+      people: [], products: [raw, output], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [formula], productionRecords: [],
+    };
+    const produced = executeProduction(state, formula.id, 2, "عدد", "1405/07/01", {
+      batchNumber: "B-DELETE", pieceWeight: 100, pieceWeightUnit: "گرم",
+    }).state;
+    const restored = removeProductionRun(produced, produced.productionRecords[0].id);
+    expect(restored.products.find(item => item.id === raw.id)?.stock).toBeCloseTo(1000, 6);
+    expect(restored.products.find(item => item.id === output.id)?.stock).toBeCloseTo(0, 6);
+    expect(restored.productionRecords).toHaveLength(0);
+  });
+
   it("scales material usage by actual piece weight and records batch adjustments", () => {
     const raw = {
       id: "weighted-raw",

@@ -3143,3 +3143,35 @@ tr:last-child td {
 .production-record-summary strong {
   color: var(--foreground);
 }
+
+
+.production-formula-details,
+.production-batch-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+  padding: 0.65rem;
+  border-radius: 0.7rem;
+  background: color-mix(in oklab, var(--muted) 55%, var(--card));
+  font-size: 0.78rem;
+}
+
+.production-material-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  color: var(--muted-foreground);
+}
+
+.production-batch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.production-batch-row strong {
+  color: var(--foreground);
+}

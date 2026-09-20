@@ -41,6 +41,7 @@ import {
   ProductionCost,
   ProductionMaterial,
   ProductionFormula,
+  ProductionRecord,
   Product,
   PartnerSettlementDirection,
   PageId,
@@ -73,6 +74,7 @@ import {
   quantityInBase,
   unitConversionToBase,
   executeProduction,
+  removeProductionRun,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -7688,6 +7690,7 @@ function Production({
     wastePercent: string;
     adjustments: Record<string, string>;
     note: string;
+    editingRecordId?: string;
   } | null>(null);
   const selectedOutput = state.products.find(
     product => product.id === form.outputProductId
@@ -7896,29 +7899,55 @@ function Production({
     if (selectedFormulaId === formula.id) setSelectedFormulaId("");
   }
 
+  function loadProductionRecord(record: ProductionRecord, formula: ProductionFormula) {
+    const adjustments = Object.fromEntries(
+      (record.materialUsage || []).map(usage => [usage.materialId, String(usage.adjustmentQuantity || "")])
+    );
+    setProductionDialog({
+      formula,
+      quantity: String(record.actualOutputQuantity ?? record.outputQuantity),
+      unit: record.actualOutputUnit || formula.outputUnit,
+      batchNumber: record.batchNumber || "",
+      pieceWeight: String(record.pieceWeight || ""),
+      pieceWeightUnit: record.pieceWeightUnit || "گرم",
+      wastePercent: String(record.wastePercent || "0"),
+      adjustments,
+      note: record.note,
+      editingRecordId: record.id,
+    });
+  }
+
+  function deleteProductionRecord(record: ProductionRecord) {
+    if (!window.confirm(`بچ ${record.batchNumber || "بدون شماره"} حذف و اثر آن از موجودی معکوس شود؟`)) return;
+    try {
+      onSave(removeProductionRun(state, record.id), `بچ ${record.batchNumber || "بدون شماره"} حذف شد و موجودی اصلاح شد`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "حذف بچ انجام نشد");
+    }
+  }
+
   function produceFormula(event: React.FormEvent) {
     event.preventDefault();
     if (!productionDialog) return;
     try {
       const quantity = quantityValue(productionDialog.quantity);
+      const options = {
+        batchNumber: productionDialog.batchNumber,
+        pieceWeight: quantityValue(productionDialog.pieceWeight),
+        pieceWeightUnit: productionDialog.pieceWeightUnit,
+        wastePercent: quantityValue(productionDialog.wastePercent),
+        materialAdjustments: Object.fromEntries(
+          Object.entries(productionDialog.adjustments).map(([id, value]) => [id, quantityValue(value)])
+        ),
+        note: productionDialog.note,
+      };
+      const baseState = productionDialog.editingRecordId
+        ? removeProductionRun(state, productionDialog.editingRecordId)
+        : state;
       const next = executeProduction(
-        state,
-        productionDialog.formula.id,
-        quantity,
-        productionDialog.unit,
-        todayJalali(),
-        {
-          batchNumber: productionDialog.batchNumber,
-          pieceWeight: quantityValue(productionDialog.pieceWeight),
-          pieceWeightUnit: productionDialog.pieceWeightUnit,
-          wastePercent: quantityValue(productionDialog.wastePercent),
-          materialAdjustments: Object.fromEntries(
-            Object.entries(productionDialog.adjustments).map(([id, value]) => [id, quantityValue(value)])
-          ),
-          note: productionDialog.note,
-        }
+        baseState, productionDialog.formula.id, quantity, productionDialog.unit, todayJalali(), options
       ).state;
-      onSave(next, `تولید ${productionDialog.formula.name} ثبت شد`);
+      onSave(next, productionDialog.editingRecordId ? "بچ و موجودی با اطلاعات جدید اصلاح شد" : `تولید ${productionDialog.formula.name} ثبت شد`);
       setProductionDialog(null);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "تولید انجام نشد");
@@ -8268,9 +8297,9 @@ function Production({
               const product = state.products.find(
                 item => item.id === formula.outputProductId
               );
-              const record = state.productionRecords
-                .filter(item => item.formulaId === formula.id)
-                .at(-1);
+              const records = state.productionRecords.filter(
+                item => item.formulaId === formula.id
+              );
               return (
                 <div
                   className={`production-card ${selectedFormulaId === formula.id ? "selected" : ""}`}
@@ -8292,32 +8321,38 @@ function Production({
                       ? "بسته مستقل · انبار مواد اولیه"
                       : "فرمول قطعه"}
                   </small>
-                  {record && (
-                    <>
-                      <small>
-                        بهای جاری با قیمت مواد: {" "}
-                        {formatMoney(
-                          currentFormulaCost(formula),
-                          state.settings.currency
-                        )}
-                      </small>
-                      <div className="production-record-summary">
-                        <span>بچ {record.batchNumber || "بدون شماره"}</span>
-                        <span>{record.date}</span>
-                        <span>
-                          خروجی: {formatNumber(record.actualOutputQuantity ?? record.outputQuantity)} {record.actualOutputUnit || formula.outputUnit}
-                        </span>
-                        {record.pieceWeight ? (
-                          <span>وزن: {formatNumber(record.pieceWeight)} {record.pieceWeightUnit || "گرم"}</span>
-                        ) : null}
-                        {record.wastePercent ? (
-                          <span>پرت: {formatNumber(record.wastePercent)}٪</span>
-                        ) : null}
-                        <strong>
-                          بهای تمام‌شده: {formatMoney(record.totalCost, state.settings.currency)}
-                        </strong>
-                      </div>
-                    </>
+                  <div className="production-formula-details">
+                    <strong>فرمول ساخت</strong>
+                    <span>خروجی مبنا: {formatNumber(formula.outputQuantity)} {formula.outputUnit}</span>
+                    {formula.standardPieceWeight ? (
+                      <span>وزن مرجع: {formatNumber(formula.standardPieceWeight)} {formula.standardPieceWeightUnit || "گرم"}</span>
+                    ) : null}
+                    <div className="production-material-list">
+                      {formula.materials.map(material => {
+                        const materialProduct = state.products.find(item => item.id === material.productId);
+                        return (
+                          <span key={material.id}>
+                            {materialProduct?.name || "ماده حذف‌شده"}: {formatNumber(material.quantity)} {material.unit}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {records.length > 0 && (
+                    <div className="production-batch-list">
+                      <strong>بچ‌های تولیدشده</strong>
+                      {records.map(record => (
+                        <div className="production-batch-row" key={record.id}>
+                          <span><b>{record.batchNumber || "بدون شماره"}</b> · {record.date}</span>
+                          <span>{formatNumber(record.actualOutputQuantity ?? record.outputQuantity)} {record.actualOutputUnit || formula.outputUnit}</span>
+                          {record.pieceWeight ? <span>{formatNumber(record.pieceWeight)} {record.pieceWeightUnit || "گرم"}</span> : null}
+                          {record.wastePercent ? <span>پرت {formatNumber(record.wastePercent)}٪</span> : null}
+                          <strong>{formatMoney(record.totalCost, state.settings.currency)}</strong>
+                          <button type="button" className="text-button" onClick={() => loadProductionRecord(record, formula)}>ویرایش بچ</button>
+                          <button type="button" className="icon-button row-action" title="حذف بچ" onClick={() => deleteProductionRecord(record)}>×</button>
+                        </div>
+                      ))}
+                    </div>
                   )}
                   <button
                     type="button"
