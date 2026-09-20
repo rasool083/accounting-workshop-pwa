@@ -871,6 +871,24 @@ export interface FIFOSettlementBalance {
   remainingInvoice: number;
 }
 
+// Interest and unit-conversion calculations can leave a harmless fraction of
+// a currency unit. Treat values below one cent/toman as zero so FIFO can
+// continue to the next invoice instead of stopping on floating-point residue.
+const FIFO_EPSILON = 0.01;
+
+function principalCollectedForInvoice(
+  invoiceAmount: number,
+  rows: FIFOSettlement[]
+) {
+  const collected = rows.reduce((sum, item) => sum + item.principalAmount, 0);
+  return Math.min(
+    invoiceAmount,
+    Math.abs(invoiceAmount - collected) <= FIFO_EPSILON
+      ? invoiceAmount
+      : collected
+  );
+}
+
 export function settleChecksFIFO(
   checks: Check[],
   invoices: Invoice[],
@@ -910,9 +928,16 @@ export function settleChecksFIFO(
   for (const check of eligibleChecks) {
     let checkRemaining = remainingByCheck.get(check.id) || 0;
     for (const invoice of eligibleInvoices) {
-      if (invoice.partyId !== check.partyId || checkRemaining <= 0) continue;
+      if (
+        invoice.partyId !== check.partyId ||
+        checkRemaining <= FIFO_EPSILON
+      )
+        continue;
       const baseRemaining = remainingByInvoice.get(invoice.id) || 0;
-      if (baseRemaining <= 0) continue;
+      if (baseRemaining <= FIFO_EPSILON) {
+        remainingByInvoice.set(invoice.id, 0);
+        continue;
+      }
       const rule =
         paymentRules.find(item => item.id === invoice.paymentRuleId) ||
         paymentRules.find(item => item.active);
@@ -925,12 +950,16 @@ export function settleChecksFIFO(
       );
       const amount = Math.min(checkRemaining, probe.settled);
       const factor = baseRemaining > 0 ? probe.settled / baseRemaining : 1;
-      const principalAmount = Math.min(
+      const calculatedPrincipal = Math.min(
         baseRemaining,
         amount / Math.max(1, factor)
       );
+      const principalAmount =
+        baseRemaining - calculatedPrincipal <= FIFO_EPSILON
+          ? baseRemaining
+          : calculatedPrincipal;
       const profit = Math.max(0, amount - principalAmount);
-      if (amount <= 0 || principalAmount <= 0) continue;
+      if (amount <= FIFO_EPSILON || principalAmount <= FIFO_EPSILON) continue;
       settlements.push({
         checkId: check.id,
         invoiceId: invoice.id,
@@ -939,13 +968,16 @@ export function settleChecksFIFO(
         profit,
         days: probe.days,
       });
+      const invoiceRemaining = Math.max(0, baseRemaining - principalAmount);
       remainingByInvoice.set(
         invoice.id,
-        Math.max(0, baseRemaining - principalAmount)
+        invoiceRemaining <= FIFO_EPSILON ? 0 : invoiceRemaining
       );
-      checkRemaining = Math.max(0, checkRemaining - amount);
+      const nextCheckRemaining = Math.max(0, checkRemaining - amount);
+      checkRemaining =
+        nextCheckRemaining <= FIFO_EPSILON ? 0 : nextCheckRemaining;
       remainingByCheck.set(check.id, checkRemaining);
-      if ((remainingByInvoice.get(invoice.id) || 0) > 0) break;
+      if ((remainingByInvoice.get(invoice.id) || 0) > FIFO_EPSILON) break;
     }
   }
   return settlements;
@@ -1028,10 +1060,7 @@ export function applyCheckFIFO(state: AppState, check: Check) {
     )
       return invoice;
     const rows = byInvoice.get(invoice.id) || [];
-    const paidAmount = Math.min(
-      invoice.amount,
-      rows.reduce((sum, item) => sum + item.principalAmount, 0)
-    );
+    const paidAmount = principalCollectedForInvoice(invoice.amount, rows);
     return {
       ...invoice,
       paidAmount,
@@ -1072,10 +1101,7 @@ export function rebuildCheckAllocations(state: AppState): AppState {
   const invoices = state.invoices.map(invoice => {
     if (invoice.type !== "فروش" || invoice.status === "باطل") return invoice;
     const rows = byInvoice.get(invoice.id) || [];
-    const paidAmount = Math.min(
-      invoice.amount,
-      rows.reduce((sum, item) => sum + item.principalAmount, 0)
-    );
+    const paidAmount = principalCollectedForInvoice(invoice.amount, rows);
     return {
       ...invoice,
       paidAmount,

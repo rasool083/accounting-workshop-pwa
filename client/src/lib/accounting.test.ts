@@ -3,6 +3,7 @@ import {
   getSettlementBalances,
   executeProduction,
   quantityInBase,
+  rebuildCheckAllocations,
   settleChecksFIFO,
   unitConversionToBase,
 } from "./accounting";
@@ -91,6 +92,78 @@ describe("FIFO settlement balances", () => {
     expect(first.remainingInvoice).toBeCloseTo(26_605_504.59, 2);
     expect(second.remainingCheck).toBeCloseTo(20_201_834.86, 2);
     expect(second.remainingInvoice).toBeCloseTo(0, 2);
+  });
+
+  it("does not stop on floating-point residue after fully settling invoice 1010", () => {
+    const partyId = "person-z006";
+    const invoice1010 = {
+      id: "invoice-1010",
+      number: "1010",
+      type: "فروش" as const,
+      date: "1405/06/07",
+      partyId,
+      paymentRuleId: "rule-z006",
+      items: [],
+      allocations: [],
+      amount: 162_000_000,
+      paidAmount: 0,
+      status: "باز" as const,
+      note: "",
+    };
+    const invoice1011 = {
+      ...invoice1010,
+      id: "invoice-1011",
+      number: "1011",
+      amount: 201_600_000,
+      date: "1405/06/07",
+    };
+    const check = {
+      id: "check-z006",
+      number: "Z006",
+      partyId,
+      receivedDate: "1405/06/26",
+      dueDate: "1405/08/30",
+      amount: 350_000_000,
+      status: "نزد ما" as const,
+      bank: "حساب بانکی",
+    };
+    const rule = {
+      id: "rule-z006",
+      name: "St1",
+      active: true,
+      dayBasis: 30,
+      graceDays: 0,
+      tiers: [
+        { id: "no-profit", maxDays: 30, rate: 0, note: "" },
+        { id: "six-percent", maxDays: 365, rate: 0.06, note: "" },
+      ],
+    };
+
+    const settlements = settleChecksFIFO(
+      [check],
+      [invoice1010, invoice1011],
+      [rule],
+      30
+    );
+    const first = settlements.find(item => item.invoiceId === invoice1010.id)!;
+    const second = settlements.find(item => item.invoiceId === invoice1011.id);
+
+    expect(first.principalAmount).toBe(invoice1010.amount);
+    expect(second).toBeDefined();
+    expect(second?.amount).toBeGreaterThan(0);
+
+    const rebuilt = rebuildCheckAllocations({
+      invoices: [invoice1010, invoice1011],
+      checks: [check],
+      paymentRules: [rule],
+      settings: { dayBasis: 30 },
+    } as any);
+    expect(rebuilt.invoices.find(item => item.id === invoice1010.id)?.status).toBe(
+      "تسویه شده"
+    );
+    expect(rebuilt.invoices.find(item => item.id === invoice1011.id)?.status).toBe(
+      "تسویه جزئی"
+    );
   });
 });
 
