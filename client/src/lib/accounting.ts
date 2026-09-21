@@ -1178,11 +1178,53 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
   const hasExplicitInventoryEvents = inventoryEvents.length > (previous.inventoryEvents || []).length;
   const hasExplicitCashEvents = cashEvents.length > (previous.cashEvents || []).length;
   const date = todayJalali();
+  const previousTransactionIds = new Set(previous.transactions.map(item => item.id));
+  const newTransactions = next.transactions.filter(
+    item => !previousTransactionIds.has(item.id) && item.status !== "باطل"
+  );
+  const inventorySources = new Set<string>();
+  const cashSources = new Set<string>();
+  const addInventory = (transaction: Transaction, kind: InventoryEventKind, quantityBase: number) => {
+    if (!transaction.productId || !quantityBase || inventorySources.has(transaction.id)) return;
+    const product = next.products.find(item => item.id === transaction.productId);
+    if (!product) return;
+    inventoryEvents.push({
+      id: createId("inventory-event"), at: new Date().toISOString(), date: transaction.date,
+      kind, productId: product.id, warehouseId: transaction.warehouseId || product.warehouseId,
+      quantityEntered: transaction.quantity || quantityBase, unitEntered: transaction.unit || product.unit,
+      quantityBase, baseUnit: product.unit, sourceType: "transaction", sourceId: transaction.id,
+      note: transaction.note,
+    });
+    inventorySources.add(transaction.id);
+  };
+  const addCash = (transaction: Transaction, accountId: string | undefined, amount: number, kind: CashEventKind, counterAccountId?: string) => {
+    if (!accountId || !amount) return;
+    const sourceKey = `${transaction.id}:${accountId}`;
+    if (cashSources.has(sourceKey)) return;
+    cashEvents.push({
+      id: createId("cash-event"), at: new Date().toISOString(), date: transaction.date,
+      kind, accountId, counterAccountId, amount, currency: next.settings.currency,
+      sourceType: "transaction", sourceId: transaction.id, note: transaction.note,
+    });
+    cashSources.add(sourceKey);
+  };
+  for (const transaction of newTransactions) {
+    if (transaction.type === "خرید کالا") addInventory(transaction, "purchase", Math.abs(transaction.quantity || 0));
+    if (transaction.type === "فروش کالا") addInventory(transaction, "sale", -Math.abs(transaction.quantity || 0));
+    if (transaction.type === "انتقال بین حساب‌ها") {
+      addCash(transaction, transaction.fromAccountId, -transaction.amount, "transfer", transaction.toAccountId);
+      addCash(transaction, transaction.toAccountId, transaction.amount, "transfer", transaction.fromAccountId);
+    } else if (["خرید کالا", "هزینه/خرید توسط شریک", "مساعده/پرداخت به شریک", "پرداخت", "هزینه"].includes(transaction.type)) {
+      addCash(transaction, transaction.accountId, -transaction.amount, "payment");
+    } else if (["فروش کالا", "دریافت توسط شریک", "دریافت تسویه از شریک", "دریافت", "درآمد"].includes(transaction.type)) {
+      addCash(transaction, transaction.accountId, transaction.amount, "receipt");
+    }
+  }
   if (!hasExplicitInventoryEvents) {
     for (const product of next.products) {
       const before = previous.products.find(item => item.id === product.id)?.stock || 0;
       const delta = product.stock - before;
-      if (!delta) continue;
+      if (!delta || next.transactions.some(item => inventorySources.has(item.id) && item.productId === product.id)) continue;
       inventoryEvents.push({
         id: createId("inventory-event"),
         at: new Date().toISOString(),
@@ -1203,7 +1245,7 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
     for (const account of next.accounts) {
       const before = previous.accounts.find(item => item.id === account.id)?.balance || 0;
       const delta = account.balance - before;
-      if (!delta) continue;
+      if (!delta || next.transactions.some(item => cashSources.has(`${item.id}:${account.id}`))) continue;
       cashEvents.push({
         id: createId("cash-event"),
         at: new Date().toISOString(),

@@ -6,6 +6,7 @@ import {
   normalizeState,
   reconcileLedgerEvents,
   inventoryLedgerDiscrepancies,
+  cashLedgerDiscrepancies,
   rebuildCashProjection,
   rebuildInventoryProjection,
   isJalaliLeapYear,
@@ -644,5 +645,32 @@ describe("event ledger projections", () => {
     expect(inventoryLedgerDiscrepancies(altered)).toEqual([
       expect.objectContaining({ id: "p", recorded: 12, projected: 10, difference: 2 }),
     ]);
+  });
+
+  it("classifies a new purchase as inventory purchase and cash payment", () => {
+    const previous = normalizeState({
+      products: [{ id: "p", name: "کالا", code: "P", unit: "عدد", stock: 10, price: 0 }],
+      accounts: [{ id: "cash", name: "صندوق", type: "صندوق", balance: 100 }],
+    });
+    const transaction = {
+      id: "tx-purchase", type: "خرید کالا" as const, date: "1405/07/01",
+      productId: "p", warehouseId: "w", quantity: 2, unit: "عدد",
+      accountId: "cash", partyId: "person", amount: 50,
+      status: "ثبت شده" as const, note: "خرید آزمایشی",
+    };
+    const next = {
+      ...previous,
+      products: previous.products.map(product => ({ ...product, stock: 12 })),
+      accounts: previous.accounts.map(account => ({ ...account, balance: 50 })),
+      transactions: [transaction],
+    };
+    const reconciled = reconcileLedgerEvents(previous, next);
+    expect(reconciled.inventoryEvents.at(-1)?.kind).toBe("purchase");
+    expect(reconciled.cashEvents.at(-1)?.kind).toBe("payment");
+    expect(reconciled.cashEvents.at(-1)?.amount).toBe(-50);
+    expect(rebuildInventoryProjection(reconciled).products[0].stock).toBe(12);
+    expect(rebuildCashProjection(reconciled).accounts[0].balance).toBe(50);
+    expect(inventoryLedgerDiscrepancies(reconciled)).toHaveLength(0);
+    expect(cashLedgerDiscrepancies(reconciled)).toHaveLength(0);
   });
 });

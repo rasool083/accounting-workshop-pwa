@@ -78,6 +78,7 @@ import {
   removeProductionRun,
   reconcileLedgerEvents,
   inventoryLedgerDiscrepancies,
+  cashLedgerDiscrepancies,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -2552,6 +2553,7 @@ function Transactions({
   const partners = state.people.filter(person => person.roles.includes("شریک"));
   const operationProducts = state.products;
   const operationChecks = state.checks.filter(check => check.status !== "باطل");
+  const cashDiscrepancies = cashLedgerDiscrepancies(state);
   const isPartnerSettlementType = [
     "مساعده/پرداخت به شریک",
     "دریافت تسویه از شریک",
@@ -2855,6 +2857,18 @@ function Transactions({
         actionLabel="ثبت عملیات"
         onAction={onQuick}
       />
+      <div className="inventory-summary">
+        <div>
+          <ShieldCheck size={19} />
+          <span>مغایرت دفتر نقدینگی</span>
+          <strong>{formatNumber(cashDiscrepancies.length)}</strong>
+        </div>
+        <div>
+          <WalletCards size={19} />
+          <span>تعداد رویدادهای نقدینگی</span>
+          <strong>{formatNumber(state.cashEvents.length)}</strong>
+        </div>
+      </div>
       <form
         className="panel form-grid account-operation-panel"
         onSubmit={saveAccountOperation}
