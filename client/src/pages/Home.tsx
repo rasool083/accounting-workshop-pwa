@@ -67,6 +67,7 @@ import {
   getSettlementBalances,
   allocateCheckFIFO,
   rebuildCheckAllocations,
+  rebuildPurchasePayables,
   createEmptyState,
   PERSON_TYPES,
   suggestNextNumber,
@@ -79,6 +80,7 @@ import {
   reconcileLedgerEvents,
   inventoryLedgerDiscrepancies,
   cashLedgerDiscrepancies,
+  refreshIssuedCheckStatuses,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -436,7 +438,10 @@ export default function Home() {
   ) {
     setPastStates(items => [...items.slice(-49), state]);
     setFutureStates([]);
-    const reconciled = reconcileLedgerEvents(state, next);
+    const reconciled = reconcileLedgerEvents(
+      state,
+      refreshIssuedCheckStatuses(rebuildPurchasePayables(next))
+    );
     setState(saveState(appendAudit(reconciled, action, message)));
     setNotice(message);
   }
@@ -1228,6 +1233,16 @@ function Invoices({
     "asc" | "desc"
   >("asc");
   const blankItem = { productId: "", quantity: "1", unit: "", unitPrice: "" };
+  const blankPayment = {
+    method: "نقدی" as "نقدی" | "چک مشتری" | "چک شریک" | "حساب داخلی",
+    amount: "",
+    accountId: "",
+    customerCheckId: "",
+    issuerPartyId: "",
+    issuedCheckNumber: "",
+    issuedCheckDueDate: todayJalali(),
+    note: "",
+  };
   const [form, setForm] = useState({
     number: "",
     type: "فروش" as "فروش" | "خرید",
@@ -1238,6 +1253,7 @@ function Invoices({
     items: [blankItem],
     discount: "",
     note: "",
+    payments: [blankPayment],
   });
   const party = state.people.find(item => item.id === form.partyId);
   const invoiceProducts = useMemo(() => {
@@ -1347,6 +1363,10 @@ function Invoices({
     Number(form.discount.replace(/[^0-9.-]/g, "")) || 0
   );
   const calculatedAmount = Math.max(0, subtotal - discount);
+  const purchasePaymentTotal = form.payments.reduce(
+    (sum, payment) => sum + (Number(payment.amount.replace(/[^0-9.-]/g, "")) || 0),
+    0
+  );
   function voidInvoice(invoice: AppState["invoices"][number]) {
     if (invoice.status === "باطل") return;
     const products = state.products.map(product => {
@@ -1397,6 +1417,19 @@ function Invoices({
       })),
       discount: String(invoice.discountAmount || ""),
       note: invoice.note,
+      payments:
+        invoice.type === "خرید"
+          ? state.purchasePayments
+              .filter(payment => payment.supplierId === invoice.partyId)
+              .map(payment => ({
+                ...blankPayment,
+                method: payment.method,
+                amount: String(payment.amount),
+                accountId: payment.accountId || "",
+                customerCheckId: payment.customerCheckId || "",
+                note: payment.note,
+              }))
+          : [blankPayment],
     });
     setSelectedInvoice(null);
     setOpen(true);
@@ -1496,13 +1529,93 @@ function Invoices({
       const applied = form.type === "خرید" ? newMovement : -newMovement;
       return { ...product, stock: product.stock + restored + applied };
     });
+    const payments = form.type === "خرید" && form.partyId
+      ? form.payments
+          .map(payment => ({
+            ...payment,
+            amount: Number(payment.amount.replace(/[^0-9.-]/g, "")) || 0,
+          }))
+          .filter(payment => payment.amount > 0)
+      : [];
+    const purchasePaymentRecords = payments.map(payment => ({
+      id: createId("purchase-payment"),
+      supplierId: form.partyId,
+      amount: payment.amount,
+      date: form.date,
+      method: payment.method,
+      accountId: payment.accountId || undefined,
+      customerCheckId: payment.customerCheckId || undefined,
+      note: payment.note,
+    }));
+    const issuedChecks = payments
+      .map((payment, index) =>
+        payment.method === "چک شریک"
+          ? {
+              id: createId("issued-check"),
+              paymentIndex: index,
+              number: payment.issuedCheckNumber || `ش-${index + 1}`,
+              issuerPartyId: payment.issuerPartyId || form.partyId,
+              beneficiaryPartyId: form.partyId,
+              purchaseInvoiceId: invoice.id,
+              dateIssued: form.date,
+              dueDate: payment.issuedCheckDueDate,
+              amount: payment.amount,
+              status: "صادر شده" as const,
+              purpose: "خرید" as const,
+              note: payment.note,
+            }
+          : null
+      )
+      .filter(Boolean);
+    const paymentRecordsWithIssuedChecks = purchasePaymentRecords.map((payment, index) => ({
+      ...payment,
+      issuedCheckId: issuedChecks.find(
+        check => check && (check as { paymentIndex?: number }).paymentIndex === index
+      )?.id,
+    }));
     const invoices = editingInvoice
       ? state.invoices.map(item =>
           item.id === editingInvoice.id ? invoice : item
         )
       : [invoice, ...state.invoices];
+    const spentCheckIds = paymentRecordsWithIssuedChecks
+      .filter(payment => payment.method === "چک مشتری" && payment.customerCheckId)
+      .map(payment => payment.customerCheckId!);
+    const nextChecks = state.checks.map(check =>
+      spentCheckIds.includes(check.id)
+        ? {
+            ...check,
+            status: "خرج شده" as const,
+            spentForPaymentId: paymentRecordsWithIssuedChecks.find(
+              payment => payment.customerCheckId === check.id
+            )?.id,
+            spentToPartyId: form.partyId,
+          }
+        : check
+    );
+    const nextState = rebuildPurchasePayables(
+      rebuildCheckAllocations({
+        ...state,
+        products,
+        invoices,
+        checks: nextChecks,
+        purchasePayments: editingInvoice
+          ? state.purchasePayments
+              .filter(payment =>
+                !state.purchasePayableAllocations.some(
+                  allocation => allocation.invoiceId === invoice.id && allocation.paymentId === payment.id
+                )
+              )
+              .concat(paymentRecordsWithIssuedChecks)
+          : [...state.purchasePayments, ...paymentRecordsWithIssuedChecks],
+        issuedChecks: editingInvoice
+          ? state.issuedChecks.filter(check => check.purchaseInvoiceId !== invoice.id)
+              .concat(issuedChecks as AppState["issuedChecks"])
+          : [...state.issuedChecks, ...issuedChecks as AppState["issuedChecks"]],
+      })
+    );
     onSave(
-      rebuildCheckAllocations({ ...state, products, invoices }),
+      nextState,
       editingInvoice
         ? `فاکتور ${invoice.number} ویرایش شد و موجودی اصلاح گردید`
         : form.type === "فروش"
@@ -1521,6 +1634,7 @@ function Invoices({
       items: [blankItem],
       discount: "",
       note: "",
+      payments: [blankPayment],
     });
   }
   return (
@@ -1576,6 +1690,18 @@ function Invoices({
           helper="ورودی انبار"
           icon={<Boxes size={20} />}
           tone="indigo"
+        />
+        <MetricCard
+          label="تعهد چک شریک"
+          value={formatMoney(
+            state.issuedChecks
+              .filter(check => !["پرداخت شده", "باطل"].includes(check.status))
+              .reduce((sum, check) => sum + check.amount, 0),
+            state.settings.currency
+          )}
+          helper="سررسیدنشده و سررسیدشده"
+          icon={<FileClock size={20} />}
+          tone="violet"
         />
       </section>
       <div className="panel table-panel">
@@ -1978,7 +2104,7 @@ function Invoices({
                   افزودن ردیف
                 </button>
               </div>
-              {form.items.map((row, index) => (
+            {form.items.map((row, index) => (
                 <div className="invoice-item-row" key={index}>
                   <select
                     value={row.productId}
@@ -2094,6 +2220,151 @@ function Invoices({
                 </div>
               ))}
             </div>
+            {form.type === "خرید" && (
+              <div className="full-field invoice-items-editor">
+                <div className="tier-editor-head">
+                  <span>پرداخت‌های فاکتور خرید</span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setForm({ ...form, payments: [...form.payments, blankPayment] })}
+                  >
+                    <Plus size={14} />
+                    افزودن پرداخت
+                  </button>
+                </div>
+                {form.payments.map((payment, index) => {
+                  const availableChecks = state.checks.filter(
+                    check =>
+                      !["خرج شده", "باطل", "برگشتی", "عودت داده شده", "جایگزین شده"].includes(check.status) &&
+                      !state.purchasePayments.some(item => item.customerCheckId === check.id)
+                  );
+                  return (
+                    <div className="invoice-item-row" key={index}>
+                      <select
+                        value={payment.method}
+                        onChange={event =>
+                          setForm({
+                            ...form,
+                            payments: form.payments.map((item, rowIndex) =>
+                              rowIndex === index
+                                ? { ...item, method: event.target.value as typeof item.method }
+                                : item
+                            ),
+                          })
+                        }
+                      >
+                        <option value="نقدی">نقدی</option>
+                        <option value="چک مشتری">چک دریافتی مشتری</option>
+                        <option value="چک شریک">چک شریک</option>
+                        <option value="حساب داخلی">حساب داخلی</option>
+                      </select>
+                      <input
+                        inputMode="decimal"
+                        value={payment.amount}
+                        onChange={event =>
+                          setForm({
+                            ...form,
+                            payments: form.payments.map((item, rowIndex) =>
+                              rowIndex === index ? { ...item, amount: event.target.value } : item
+                            ),
+                          })
+                        }
+                        placeholder="مبلغ پرداخت"
+                      />
+                      {payment.method === "چک مشتری" ? (
+                        <select
+                          value={payment.customerCheckId}
+                          onChange={event =>
+                            setForm({
+                              ...form,
+                              payments: form.payments.map((item, rowIndex) =>
+                                rowIndex === index ? { ...item, customerCheckId: event.target.value } : item
+                              ),
+                            })
+                          }
+                        >
+                          <option value="">انتخاب چک مشتری</option>
+                          {availableChecks.map(check => (
+                            <option key={check.id} value={check.id}>
+                              {check.number} · {formatMoney(check.amount, state.settings.currency)} · {personName(state, check.partyId)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : payment.method === "چک شریک" ? (
+                        <>
+                          <select
+                            value={payment.issuerPartyId}
+                            onChange={event =>
+                              setForm({
+                                ...form,
+                                payments: form.payments.map((item, rowIndex) =>
+                                  rowIndex === index ? { ...item, issuerPartyId: event.target.value } : item
+                                ),
+                              })
+                            }
+                          >
+                            <option value="">انتخاب شریک صادرکننده</option>
+                            {state.people.filter(person => person.roles?.includes("شریک") || person.type === "شریک").map(person => (
+                              <option key={person.id} value={person.id}>{person.name}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={payment.issuedCheckNumber}
+                            onChange={event =>
+                              setForm({
+                                ...form,
+                                payments: form.payments.map((item, rowIndex) =>
+                                  rowIndex === index ? { ...item, issuedCheckNumber: event.target.value } : item
+                                ),
+                              })
+                            }
+                            placeholder="شماره چک شریک"
+                          />
+                          <JalaliDatePicker
+                            value={payment.issuedCheckDueDate}
+                            onChange={date =>
+                              setForm({
+                                ...form,
+                                payments: form.payments.map((item, rowIndex) =>
+                                  rowIndex === index ? { ...item, issuedCheckDueDate: date } : item
+                                ),
+                              })
+                            }
+                          />
+                        </>
+                      ) : (
+                        <select
+                          value={payment.accountId}
+                          onChange={event =>
+                            setForm({
+                              ...form,
+                              payments: form.payments.map((item, rowIndex) =>
+                                rowIndex === index ? { ...item, accountId: event.target.value } : item
+                              ),
+                            })
+                          }
+                        >
+                          <option value="">انتخاب حساب</option>
+                          {state.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+                        </select>
+                      )}
+                      {form.payments.length > 1 && (
+                        <button type="button" className="icon-button" onClick={() => setForm({ ...form, payments: form.payments.filter((_, rowIndex) => rowIndex !== index) })}>×</button>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="invoice-total">
+                  <span>جمع پرداخت‌ها: {formatMoney(purchasePaymentTotal, state.settings.currency)}</span>
+                  <strong>
+                    {purchasePaymentTotal <= calculatedAmount
+                      ? `مانده بدهی: ${formatMoney(calculatedAmount - purchasePaymentTotal, state.settings.currency)}`
+                      : `اضافه پرداخت: ${formatMoney(purchasePaymentTotal - calculatedAmount, state.settings.currency)}`}
+                  </strong>
+                </div>
+              </div>
+            )}
             <div className="panel invoice-total">
               <span>
                 جمع اقلام: {formatMoney(subtotal, state.settings.currency)}

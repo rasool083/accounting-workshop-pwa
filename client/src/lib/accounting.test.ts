@@ -15,8 +15,11 @@ import {
   jalaliMonthDayBasis,
   quantityInBase,
   rebuildCheckAllocations,
+  rebuildPurchasePayables,
+  settlePurchasePayablesFIFO,
   removeProductionRun,
   settleChecksFIFO,
+  refreshIssuedCheckStatuses,
   unitConversionToBase,
 } from "./accounting";
 
@@ -190,6 +193,32 @@ describe("FIFO settlement balances", () => {
       status: "خرج شده" as const, bank: "", returnPartyId: "supplier",
     };
     expect(settleChecksFIFO([spentCheck], [invoice])).toEqual([]);
+  });
+
+  it("allocates supplier payments across the oldest purchase invoices", () => {
+    const invoices = [
+      { id: "buy-1", number: "B1", type: "خرید" as const, date: "1405/01/01", partyId: "supplier", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },
+      { id: "buy-2", number: "B2", type: "خرید" as const, date: "1405/01/02", partyId: "supplier", items: [], allocations: [], amount: 80, paidAmount: 0, status: "باز" as const, note: "" },
+    ];
+    const payments = [{ id: "payment-1", supplierId: "supplier", amount: 130, date: "1405/01/03", method: "چک مشتری" as const, customerCheckId: "customer-check", note: "" }];
+    expect(settlePurchasePayablesFIFO(invoices, payments).map(item => item.amount)).toEqual([100, 30]);
+    const rebuilt = rebuildPurchasePayables(normalizeState({ invoices, purchasePayments: payments }));
+    expect(rebuilt.invoices.find(item => item.id === "buy-1")?.status).toBe("تسویه شده");
+    expect(rebuilt.invoices.find(item => item.id === "buy-2")?.status).toBe("تسویه جزئی");
+    expect(rebuilt.invoices.find(item => item.id === "buy-2")?.paidAmount).toBe(30);
+  });
+
+  it("marks a partner-issued check due on its Jalali due date", () => {
+    const state = normalizeState({
+      issuedChecks: [
+        {
+          id: "issued-1", number: "S1", issuerPartyId: "partner", dateIssued: "1405/01/01",
+          dueDate: "1405/02/01", amount: 500, status: "صادر شده", purpose: "خرید", note: "",
+        },
+      ],
+    });
+    expect(refreshIssuedCheckStatuses(state, "1405/01/31").issuedChecks[0].status).toBe("صادر شده");
+    expect(refreshIssuedCheckStatuses(state, "1405/02/01").issuedChecks[0].status).toBe("سررسید شده");
   });
 });
 
@@ -598,7 +627,7 @@ describe("event ledger projections", () => {
       products: [{ id: "p", name: "کالا", code: "P", unit: "عدد", stock: 12, price: 0 }],
       accounts: [{ id: "cash", name: "صندوق", type: "صندوق", balance: 500 }],
     });
-    expect(legacy.schemaVersion).toBe(3);
+    expect(legacy.schemaVersion).toBe(4);
     expect(legacy.inventoryEvents).toHaveLength(1);
     expect(legacy.inventoryEvents[0].quantityBase).toBe(12);
     expect(legacy.cashEvents).toHaveLength(1);

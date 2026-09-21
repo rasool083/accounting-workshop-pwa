@@ -1,5 +1,5 @@
-export const CURRENT_SCHEMA_VERSION = 3;
-export const BACKUP_FORMAT_VERSION = 3;
+export const CURRENT_SCHEMA_VERSION = 4;
+export const BACKUP_FORMAT_VERSION = 4;
 
 export type PageId =
   | "dashboard"
@@ -91,6 +91,45 @@ export interface Invoice {
   amount: number;
   paidAmount: number;
   status: "باز" | "تسویه جزئی" | "تسویه شده" | "باطل";
+  note: string;
+}
+
+export type PurchasePaymentMethod = "نقدی" | "چک مشتری" | "چک شریک" | "حساب داخلی";
+
+export interface PurchasePayment {
+  id: string;
+  supplierId: string;
+  amount: number;
+  date: string;
+  method: PurchasePaymentMethod;
+  accountId?: string;
+  customerCheckId?: string;
+  issuedCheckId?: string;
+  note: string;
+}
+
+export interface PurchasePayableAllocation {
+  id: string;
+  paymentId: string;
+  invoiceId: string;
+  amount: number;
+  allocatedAt: string;
+}
+
+export type IssuedCheckStatus = "صادر شده" | "سررسید شده" | "پرداخت شده" | "برگشتی" | "باطل";
+
+export interface IssuedCheck {
+  id: string;
+  number: string;
+  issuerPartyId: string;
+  beneficiaryPartyId?: string;
+  purchaseInvoiceId?: string;
+  dateIssued: string;
+  dueDate: string;
+  amount: number;
+  status: IssuedCheckStatus;
+  purpose: "خرید" | "بدهی" | "تعمیرات" | "نگهداری" | "سایر";
+  bankName?: string;
   note: string;
 }
 
@@ -258,6 +297,8 @@ export interface Check {
   returnPartyId?: string;
   replacementOf?: string;
   replacementIds?: string[];
+  spentForPaymentId?: string;
+  spentToPartyId?: string;
   note?: string;
 }
 
@@ -370,6 +411,9 @@ export interface AppState {
   audit: AuditEvent[];
   inventoryEvents: InventoryEvent[];
   cashEvents: CashEvent[];
+  purchasePayments: PurchasePayment[];
+  purchasePayableAllocations: PurchasePayableAllocation[];
+  issuedChecks: IssuedCheck[];
   productionFormulas: ProductionFormula[];
   productionRecords: ProductionRecord[];
 }
@@ -719,6 +763,9 @@ const seedState: AppState = {
   audit: [],
   inventoryEvents: [],
   cashEvents: [],
+  purchasePayments: [],
+  purchasePayableAllocations: [],
+  issuedChecks: [],
   productionFormulas: [],
   productionRecords: [],
 };
@@ -929,6 +976,26 @@ export function normalizeState(input: unknown): AppState {
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
     inventoryEvents,
     cashEvents,
+    purchasePayments: Array.isArray(source.purchasePayments)
+      ? source.purchasePayments.map(payment => ({
+          ...payment,
+          amount: Number(payment.amount) || 0,
+          note: typeof payment.note === "string" ? payment.note : "",
+        }))
+      : [],
+    purchasePayableAllocations: Array.isArray(source.purchasePayableAllocations)
+      ? source.purchasePayableAllocations.map(allocation => ({
+          ...allocation,
+          amount: Number(allocation.amount) || 0,
+        }))
+      : [],
+    issuedChecks: Array.isArray(source.issuedChecks)
+      ? source.issuedChecks.map(check => ({
+          ...check,
+          amount: Number(check.amount) || 0,
+          note: typeof check.note === "string" ? check.note : "",
+        }))
+      : [],
     productionFormulas: Array.isArray(source.productionFormulas)
       ? source.productionFormulas.map(formula => ({
           ...formula,
@@ -970,6 +1037,9 @@ export function createEmptyState(previous: AppState): AppState {
     invoices: [],
     transactions: [],
     checks: [],
+    purchasePayments: [],
+    purchasePayableAllocations: [],
+    issuedChecks: [],
     productionFormulas: [],
     productionRecords: [],
     audit: [
@@ -1764,6 +1834,110 @@ export function rebuildCheckAllocations(state: AppState): AppState {
     };
   });
   return { ...state, invoices };
+}
+
+export interface PurchasePayableSettlement {
+  paymentId: string;
+  invoiceId: string;
+  supplierId: string;
+  amount: number;
+  allocatedAt: string;
+}
+
+/**
+ * Allocates supplier payments to the oldest open purchase invoices for the
+ * same supplier. This is intentionally separate from customer-sales FIFO.
+ */
+export function settlePurchasePayablesFIFO(
+  invoices: Invoice[],
+  payments: PurchasePayment[]
+) {
+  const settlements: PurchasePayableSettlement[] = [];
+  const openInvoices = invoices
+    .filter(invoice => invoice.type === "خرید" && invoice.status !== "باطل" && invoice.partyId)
+    .sort((a, b) => jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)) || a.id.localeCompare(b.id));
+  const openById = new Map(openInvoices.map(invoice => [invoice.id, Math.max(0, invoice.amount)]));
+  const allocatedAt = new Date().toISOString();
+  const sortedPayments = [...payments]
+    .filter(payment => payment.amount > FIFO_EPSILON && payment.supplierId)
+    .sort((a, b) => jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)) || a.id.localeCompare(b.id));
+  for (const payment of sortedPayments) {
+    let remaining = payment.amount;
+    for (const invoice of openInvoices) {
+      if (invoice.partyId !== payment.supplierId || remaining <= FIFO_EPSILON) continue;
+      const invoiceRemaining = openById.get(invoice.id) || 0;
+      if (invoiceRemaining <= FIFO_EPSILON) {
+        openById.set(invoice.id, 0);
+        continue;
+      }
+      const amount = Math.min(remaining, invoiceRemaining);
+      if (amount <= FIFO_EPSILON) continue;
+      settlements.push({
+        paymentId: payment.id,
+        invoiceId: invoice.id,
+        supplierId: payment.supplierId,
+        amount,
+        allocatedAt,
+      });
+      openById.set(invoice.id, Math.max(0, invoiceRemaining - amount));
+      remaining = Math.max(0, remaining - amount);
+    }
+  }
+  return settlements;
+}
+
+export function rebuildPurchasePayables(state: AppState): AppState {
+  const settlements = settlePurchasePayablesFIFO(state.invoices, state.purchasePayments);
+  const byInvoice = new Map<string, PurchasePayableSettlement[]>();
+  settlements.forEach(item => byInvoice.set(item.invoiceId, [...(byInvoice.get(item.invoiceId) || []), item]));
+  const invoices = state.invoices.map(invoice => {
+    if (invoice.type !== "خرید" || invoice.status === "باطل") return invoice;
+    const paidAmount = Math.min(
+      invoice.amount,
+      (byInvoice.get(invoice.id) || []).reduce((sum, item) => sum + item.amount, 0)
+    );
+    return {
+      ...invoice,
+      paidAmount,
+      status: paidAmount >= invoice.amount
+        ? ("تسویه شده" as const)
+        : paidAmount > FIFO_EPSILON
+          ? ("تسویه جزئی" as const)
+          : ("باز" as const),
+    };
+  });
+  return {
+    ...state,
+    invoices,
+    purchasePayableAllocations: settlements.map(item => ({
+      id: createId("purchase-allocation"),
+      paymentId: item.paymentId,
+      invoiceId: item.invoiceId,
+      amount: item.amount,
+      allocatedAt: item.allocatedAt,
+    })),
+  };
+}
+
+export function purchaseSupplierBalance(state: AppState, supplierId: string) {
+  const invoices = state.invoices
+    .filter(invoice => invoice.type === "خرید" && invoice.partyId === supplierId && invoice.status !== "باطل")
+    .reduce((sum, invoice) => sum + invoice.amount, 0);
+  const payments = state.purchasePayments
+    .filter(payment => payment.supplierId === supplierId)
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  return { payable: Math.max(0, invoices - payments), credit: Math.max(0, payments - invoices) };
+}
+
+export function refreshIssuedCheckStatuses(state: AppState, asOf = todayJalali()): AppState {
+  return {
+    ...state,
+    issuedChecks: state.issuedChecks.map(check =>
+      check.status === "صادر شده" && jalaliDateKey(check.dueDate) <= jalaliDateKey(asOf)
+        ? { ...check, status: "سررسید شده" as const }
+        : check
+    ),
+  };
 }
 
 export function calculateLateProfit(
