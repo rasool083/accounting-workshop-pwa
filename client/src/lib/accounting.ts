@@ -133,6 +133,19 @@ export interface IssuedCheck {
   note: string;
 }
 
+export type PartnerObligationEventKind = "due" | "paid" | "returned" | "reversal";
+
+export interface PartnerObligationEvent {
+  id: string;
+  issuedCheckId: string;
+  partnerId: string;
+  date: string;
+  kind: PartnerObligationEventKind;
+  amount: number;
+  reversalOf?: string;
+  note: string;
+}
+
 export type TransactionType =
   | "فروش"
   | "خرید"
@@ -414,6 +427,7 @@ export interface AppState {
   purchasePayments: PurchasePayment[];
   purchasePayableAllocations: PurchasePayableAllocation[];
   issuedChecks: IssuedCheck[];
+  partnerObligationEvents: PartnerObligationEvent[];
   productionFormulas: ProductionFormula[];
   productionRecords: ProductionRecord[];
 }
@@ -766,6 +780,7 @@ const seedState: AppState = {
   purchasePayments: [],
   purchasePayableAllocations: [],
   issuedChecks: [],
+  partnerObligationEvents: [],
   productionFormulas: [],
   productionRecords: [],
 };
@@ -996,6 +1011,12 @@ export function normalizeState(input: unknown): AppState {
           note: typeof check.note === "string" ? check.note : "",
         }))
       : [],
+    partnerObligationEvents: Array.isArray(source.partnerObligationEvents)
+      ? source.partnerObligationEvents.map(event => ({
+          ...event,
+          amount: Number(event.amount) || 0,
+        }))
+      : [],
     productionFormulas: Array.isArray(source.productionFormulas)
       ? source.productionFormulas.map(formula => ({
           ...formula,
@@ -1040,6 +1061,7 @@ export function createEmptyState(previous: AppState): AppState {
     purchasePayments: [],
     purchasePayableAllocations: [],
     issuedChecks: [],
+    partnerObligationEvents: [],
     productionFormulas: [],
     productionRecords: [],
     audit: [
@@ -1930,14 +1952,90 @@ export function purchaseSupplierBalance(state: AppState, supplierId: string) {
 }
 
 export function refreshIssuedCheckStatuses(state: AppState, asOf = todayJalali()): AppState {
+  const events = [...state.partnerObligationEvents];
+  const issuedChecks = state.issuedChecks.map(check => {
+    if (
+      check.status === "صادر شده" &&
+      jalaliDateKey(check.dueDate) <= jalaliDateKey(asOf) &&
+      !events.some(event => event.issuedCheckId === check.id && event.kind === "due")
+    ) {
+      events.push({
+        id: createId("partner-obligation"),
+        issuedCheckId: check.id,
+        partnerId: check.issuerPartyId,
+        date: check.dueDate,
+        kind: "due",
+        amount: check.amount,
+        note: `سررسید چک شریک ${check.number}`,
+      });
+    }
+    return check.status === "صادر شده" && jalaliDateKey(check.dueDate) <= jalaliDateKey(asOf)
+      ? { ...check, status: "سررسید شده" as const }
+      : check;
+  });
   return {
     ...state,
-    issuedChecks: state.issuedChecks.map(check =>
-      check.status === "صادر شده" && jalaliDateKey(check.dueDate) <= jalaliDateKey(asOf)
-        ? { ...check, status: "سررسید شده" as const }
-        : check
-    ),
+    issuedChecks,
+    partnerObligationEvents: events,
   };
+}
+
+export function settleIssuedCheck(
+  state: AppState,
+  issuedCheckId: string,
+  status: "پرداخت شده" | "برگشتی",
+  date = todayJalali()
+) {
+  const check = state.issuedChecks.find(item => item.id === issuedCheckId);
+  if (!check || ["پرداخت شده", "برگشتی", "باطل"].includes(check.status)) return state;
+  const previous = state.partnerObligationEvents.find(
+    event => event.issuedCheckId === issuedCheckId && event.kind === "due"
+  );
+  const events = [...state.partnerObligationEvents];
+  if (previous) {
+    events.push({
+      id: createId("partner-obligation"),
+      issuedCheckId,
+      partnerId: check.issuerPartyId,
+      date,
+      kind: "reversal",
+      amount: -previous.amount,
+      reversalOf: previous.id,
+      note: `معکوس‌سازی تعهد چک ${check.number}`,
+    });
+  }
+  events.push({
+    id: createId("partner-obligation"),
+    issuedCheckId,
+    partnerId: check.issuerPartyId,
+    date,
+    kind: status === "پرداخت شده" ? "paid" : "returned",
+    amount: status === "پرداخت شده" ? check.amount : 0,
+    note: status === "پرداخت شده" ? `پرداخت چک شریک ${check.number}` : `برگشت چک شریک ${check.number}`,
+  });
+  return {
+    ...state,
+    issuedChecks: state.issuedChecks.map(item => item.id === issuedCheckId ? { ...item, status } : item),
+    partnerObligationEvents: events,
+  };
+}
+
+export function releasePurchasePayment(state: AppState, paymentId: string) {
+  const payment = state.purchasePayments.find(item => item.id === paymentId);
+  if (!payment) return state;
+  const checks = state.checks.map(check =>
+    check.spentForPaymentId === paymentId
+      ? { ...check, status: "نزد ما" as const, spentForPaymentId: undefined, spentToPartyId: undefined }
+      : check
+  );
+  return rebuildPurchasePayables({
+    ...state,
+    checks,
+    purchasePayments: state.purchasePayments.filter(item => item.id !== paymentId),
+    issuedChecks: payment.issuedCheckId
+      ? state.issuedChecks.map(check => check.id === payment.issuedCheckId ? { ...check, status: "باطل" as const } : check)
+      : state.issuedChecks,
+  });
 }
 
 export function calculateLateProfit(

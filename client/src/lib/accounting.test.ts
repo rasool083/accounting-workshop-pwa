@@ -20,6 +20,8 @@ import {
   removeProductionRun,
   settleChecksFIFO,
   refreshIssuedCheckStatuses,
+  releasePurchasePayment,
+  settleIssuedCheck,
   unitConversionToBase,
 } from "./accounting";
 
@@ -218,7 +220,27 @@ describe("FIFO settlement balances", () => {
       ],
     });
     expect(refreshIssuedCheckStatuses(state, "1405/01/31").issuedChecks[0].status).toBe("صادر شده");
-    expect(refreshIssuedCheckStatuses(state, "1405/02/01").issuedChecks[0].status).toBe("سررسید شده");
+    const due = refreshIssuedCheckStatuses(state, "1405/02/01");
+    expect(due.issuedChecks[0].status).toBe("سررسید شده");
+    expect(due.partnerObligationEvents).toHaveLength(1);
+    const paid = settleIssuedCheck(due, "issued-1", "پرداخت شده", "1405/02/02");
+    expect(paid.issuedChecks[0].status).toBe("پرداخت شده");
+    expect(paid.partnerObligationEvents.at(-1)).toEqual(expect.objectContaining({ kind: "paid", amount: 500 }));
+    const returned = settleIssuedCheck(due, "issued-1", "برگشتی", "1405/02/02");
+    expect(returned.issuedChecks[0].status).toBe("برگشتی");
+    expect(returned.partnerObligationEvents.at(-1)).toEqual(expect.objectContaining({ kind: "returned", amount: 0 }));
+  });
+
+  it("releases a purchase payment and returns its customer check to custody", () => {
+    const state = normalizeState({
+      checks: [{ id: "customer-check", number: "C1", partyId: "customer", receivedDate: "1405/01/01", dueDate: "1405/02/01", amount: 100, status: "خرج شده", bank: "", spentForPaymentId: "payment-1", spentToPartyId: "supplier" }],
+      purchasePayments: [{ id: "payment-1", supplierId: "supplier", amount: 100, date: "1405/01/02", method: "چک مشتری", customerCheckId: "customer-check", note: "" }],
+      invoices: [{ id: "buy-1", number: "B1", type: "خرید", date: "1405/01/01", partyId: "supplier", items: [], allocations: [], amount: 100, paidAmount: 100, status: "تسویه شده", note: "" }],
+    });
+    const released = releasePurchasePayment(state, "payment-1");
+    expect(released.checks[0].status).toBe("نزد ما");
+    expect(released.purchasePayments).toHaveLength(0);
+    expect(released.invoices[0].status).toBe("باز");
   });
 });
 

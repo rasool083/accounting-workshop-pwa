@@ -81,6 +81,7 @@ import {
   inventoryLedgerDiscrepancies,
   cashLedgerDiscrepancies,
   refreshIssuedCheckStatuses,
+  settleIssuedCheck,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -1707,6 +1708,19 @@ function Invoices({
       <div className="panel table-panel">
         <div className="panel-heading">
           <div>
+            {state.issuedChecks.length > 0 && (
+              <div className="full-field"><strong>دفتر چک‌های صادرشدهٔ شریک</strong>{" "}
+                {state.issuedChecks.map(check => (
+                  <span className="soft-tag" key={check.id}>
+                    {check.number} · {formatMoney(check.amount, state.settings.currency)} · {check.status}
+                    {!["پرداخت شده", "برگشتی", "باطل"].includes(check.status) && <>
+                      <button type="button" className="text-button" onClick={() => onSave(settleIssuedCheck(state, check.id, "پرداخت شده"), `چک شریک ${check.number} پرداخت شد`)}>پرداخت شد</button>
+                      <button type="button" className="text-button" onClick={() => onSave(settleIssuedCheck(state, check.id, "برگشتی"), `چک شریک ${check.number} برگشت خورد`)}>برگشت</button>
+                    </>}
+                  </span>
+                ))}
+              </div>
+            )}
             <span className="section-kicker">دفتر فاکتور</span>
             <h3>{formatNumber(state.invoices.length)} فاکتور</h3>
           </div>
