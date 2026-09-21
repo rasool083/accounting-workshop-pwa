@@ -3,6 +3,10 @@ import {
   getSettlementBalances,
   adjustInventoryBalance,
   executeProduction,
+  normalizeState,
+  reconcileLedgerEvents,
+  rebuildCashProjection,
+  rebuildInventoryProjection,
   isJalaliLeapYear,
   isValidJalaliDate,
   jalaliDayDifference,
@@ -568,5 +572,62 @@ describe("production execution", () => {
     const mainRecord = result.state.productionRecords.find(record => record.formulaId === formulaA.id)!;
     expect(mainRecord.excludedMaterialIds).toEqual(["b-line"]);
     expect(mainRecord.pieceWeight).toBe(430);
+  });
+});
+
+describe("event ledger projections", () => {
+  it("migrates legacy stock and account balances into opening events", () => {
+    const legacy = normalizeState({
+      schemaVersion: 2,
+      products: [{ id: "p", name: "کالا", code: "P", unit: "عدد", stock: 12, price: 0 }],
+      accounts: [{ id: "cash", name: "صندوق", type: "صندوق", balance: 500 }],
+    });
+    expect(legacy.schemaVersion).toBe(3);
+    expect(legacy.inventoryEvents).toHaveLength(1);
+    expect(legacy.inventoryEvents[0].quantityBase).toBe(12);
+    expect(legacy.cashEvents).toHaveLength(1);
+    expect(legacy.cashEvents[0].amount).toBe(500);
+    expect(rebuildInventoryProjection(legacy).products[0].stock).toBe(12);
+    expect(rebuildCashProjection(legacy).accounts[0].balance).toBe(500);
+  });
+
+  it("records production input and output events that rebuild stock", () => {
+    const raw = {
+      id: "ledger-raw", code: "LR", name: "ماده", unit: "گرم", unit2: "گرم",
+      conversionRate: 1, stock: 100, minStock: 0, price: 2, category: "مواد اولیه" as const,
+    };
+    const output = {
+      id: "ledger-output", code: "LO", name: "محصول", unit: "عدد", unit2: "عدد",
+      conversionRate: 1, stock: 0, minStock: 0, price: 0, category: "محصول تولیدی" as const,
+    };
+    const state = normalizeState({
+      schemaVersion: 3, products: [raw, output], accounts: [], warehouses: [],
+      productionFormulas: [{
+        id: "ledger-formula", name: "فرمول", outputProductId: output.id,
+        outputQuantity: 1, outputUnit: "عدد", materials: [{ id: "line", productId: raw.id, quantity: 10, unit: "گرم" }],
+        costs: [], note: "",
+      }], productionRecords: [],
+    });
+    const result = executeProduction(state, "ledger-formula", 3, "عدد", "1405/01/01");
+    expect(result.state.inventoryEvents.filter(event => event.sourceType === "production")).toHaveLength(2);
+    const rebuilt = rebuildInventoryProjection({ ...result.state, products: result.state.products.map(product => ({ ...product, stock: 0 })) });
+    expect(rebuilt.products.find(product => product.id === raw.id)?.stock).toBe(70);
+    expect(rebuilt.products.find(product => product.id === output.id)?.stock).toBe(3);
+  });
+
+  it("bridges a legacy stock and cash mutation exactly once", () => {
+    const previous = normalizeState({
+      products: [{ id: "p", name: "کالا", code: "P", unit: "عدد", stock: 10, price: 0 }],
+      accounts: [{ id: "cash", name: "صندوق", type: "صندوق", balance: 100 }],
+    });
+    const next = { ...previous,
+      products: previous.products.map(product => ({ ...product, stock: 7 })),
+      accounts: previous.accounts.map(account => ({ ...account, balance: 130 })),
+    };
+    const bridged = reconcileLedgerEvents(previous, next);
+    expect(bridged.inventoryEvents.at(-1)?.quantityBase).toBe(-3);
+    expect(bridged.cashEvents.at(-1)?.amount).toBe(30);
+    expect(rebuildInventoryProjection(bridged).products[0].stock).toBe(7);
+    expect(rebuildCashProjection(bridged).accounts[0].balance).toBe(130);
   });
 });

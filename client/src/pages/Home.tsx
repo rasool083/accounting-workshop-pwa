@@ -76,6 +76,7 @@ import {
   adjustInventoryBalance,
   executeProduction,
   removeProductionRun,
+  reconcileLedgerEvents,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -433,7 +434,8 @@ export default function Home() {
   ) {
     setPastStates(items => [...items.slice(-49), state]);
     setFutureStates([]);
-    setState(saveState(appendAudit(next, action, message)));
+    const reconciled = reconcileLedgerEvents(state, next);
+    setState(saveState(appendAudit(reconciled, action, message)));
     setNotice(message);
   }
 

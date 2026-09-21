@@ -1,5 +1,5 @@
-export const CURRENT_SCHEMA_VERSION = 2;
-export const BACKUP_FORMAT_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
+export const BACKUP_FORMAT_VERSION = 3;
 
 export type PageId =
   | "dashboard"
@@ -296,6 +296,58 @@ export interface AuditEvent {
   note: string;
 }
 
+export type InventoryEventKind =
+  | "opening_balance"
+  | "purchase"
+  | "sale"
+  | "production_input"
+  | "production_output"
+  | "adjustment"
+  | "transfer"
+  | "reversal";
+
+export interface InventoryEvent {
+  id: string;
+  at: string;
+  date: string;
+  kind: InventoryEventKind;
+  productId: string;
+  warehouseId?: string;
+  quantityEntered: number;
+  unitEntered: string;
+  quantityBase: number;
+  baseUnit: string;
+  sourceType: string;
+  sourceId?: string;
+  reversalOf?: string;
+  note: string;
+}
+
+export type CashEventKind =
+  | "opening_balance"
+  | "receipt"
+  | "payment"
+  | "expense"
+  | "transfer"
+  | "check_receipt"
+  | "check_return"
+  | "reversal";
+
+export interface CashEvent {
+  id: string;
+  at: string;
+  date: string;
+  kind: CashEventKind;
+  accountId: string;
+  counterAccountId?: string;
+  amount: number;
+  currency: string;
+  sourceType: string;
+  sourceId?: string;
+  reversalOf?: string;
+  note: string;
+}
+
 export interface AppState {
   schemaVersion: number;
   revision: number;
@@ -316,6 +368,8 @@ export interface AppState {
   checks: Check[];
   accounts: Account[];
   audit: AuditEvent[];
+  inventoryEvents: InventoryEvent[];
+  cashEvents: CashEvent[];
   productionFormulas: ProductionFormula[];
   productionRecords: ProductionRecord[];
 }
@@ -524,8 +578,57 @@ export function executeProduction(
   };
 
   run(formulaId, outputQuantity, outputUnit);
+  const inventoryEvents: InventoryEvent[] = records.flatMap(record => {
+    const output = products.find(product => product.id === record.outputProductId);
+    const outputEvent: InventoryEvent | null = output
+      ? {
+          id: createId("inventory-event"),
+          at: new Date().toISOString(),
+          date: record.date,
+          kind: "production_output",
+          productId: output.id,
+          warehouseId: output.warehouseId,
+          quantityEntered: record.outputQuantity,
+          unitEntered: record.actualOutputUnit || output.unit,
+          quantityBase: record.outputQuantityBase ?? record.outputQuantity,
+          baseUnit: output.unit,
+          sourceType: "production",
+          sourceId: record.id,
+          note: `خروجی بچ ${record.batchNumber || record.id}`,
+        }
+      : null;
+    const inputEvents = (record.materialUsage || []).map(usage => {
+      const material = products.find(product => product.id === usage.productId);
+      const quantityBase = quantityInBase(
+        material || ({ unit: usage.unit, unit2: usage.unit, conversionRate: 1 } as Product),
+        usage.actualQuantity,
+        usage.unit
+      );
+      return {
+        id: createId("inventory-event"),
+        at: new Date().toISOString(),
+        date: record.date,
+        kind: "production_input" as const,
+        productId: usage.productId,
+        warehouseId: material?.warehouseId,
+        quantityEntered: -usage.actualQuantity,
+        unitEntered: usage.unit,
+        quantityBase: -quantityBase,
+        baseUnit: material?.unit || usage.unit,
+        sourceType: "production",
+        sourceId: record.id,
+        note: `مصرف بچ ${record.batchNumber || record.id}`,
+      };
+    });
+    return outputEvent ? [outputEvent, ...inputEvents] : inputEvents;
+  });
   return {
-    state: { ...state, products, productionRecords: [...state.productionRecords, ...records] },
+    state: {
+      ...state,
+      products,
+      productionRecords: [...state.productionRecords, ...records],
+      inventoryEvents: [...(state.inventoryEvents || []), ...inventoryEvents],
+    },
     recordIds: records.map(record => record.id),
   };
 }
@@ -614,6 +717,8 @@ const seedState: AppState = {
     { id: "bank", name: "حساب بانکی", type: "بانک", balance: 0 },
   ],
   audit: [],
+  inventoryEvents: [],
+  cashEvents: [],
   productionFormulas: [],
   productionRecords: [],
 };
@@ -693,6 +798,50 @@ export function normalizeState(input: unknown): AppState {
   const availableAccounts = Array.isArray(source.accounts)
     ? source.accounts
     : seedState.accounts;
+  const normalizedProducts = Array.isArray(source.products)
+    ? source.products.map(product => ({
+        ...product,
+        unit2: product.unit2 || product.unit,
+        conversionRate: Number(product.conversionRate) || 1,
+      }))
+    : [];
+  const normalizedAccounts = availableAccounts.map(account => ({
+    ...account,
+    balance: Number(account.balance) || 0,
+  }));
+  const inventoryEvents = Array.isArray(source.inventoryEvents)
+    ? source.inventoryEvents
+    : normalizedProducts.map(product => ({
+        id: `opening-product-${product.id}`,
+        at: new Date(0).toISOString(),
+        date: "0000/00/00",
+        kind: "opening_balance" as const,
+        productId: product.id,
+        warehouseId: product.warehouseId,
+        quantityEntered: product.stock,
+        unitEntered: product.unit,
+        quantityBase: product.stock,
+        baseUnit: product.unit,
+        sourceType: "migration",
+        sourceId: product.id,
+        note: "موجودی جاری پیش از فعال‌سازی دفتر رویداد",
+      }));
+  const cashEvents = Array.isArray(source.cashEvents)
+    ? source.cashEvents
+    : normalizedAccounts.map(account => ({
+        id: `opening-account-${account.id}`,
+        at: new Date(0).toISOString(),
+        date: "0000/00/00",
+        kind: "opening_balance" as const,
+        accountId: account.id,
+        amount: account.balance,
+        currency: isRecord(source.settings) && typeof source.settings.currency === "string"
+          ? source.settings.currency
+          : seedState.settings.currency,
+        sourceType: "migration",
+        sourceId: account.id,
+        note: "ماندهٔ جاری پیش از فعال‌سازی دفتر رویداد",
+      }));
   return {
     ...seedState,
     ...source,
@@ -726,13 +875,7 @@ export function normalizeState(input: unknown): AppState {
               : [person.type || "مشتری"],
         }))
       : [],
-    products: Array.isArray(source.products)
-      ? source.products.map(product => ({
-          ...product,
-          unit2: product.unit2 || product.unit,
-          conversionRate: Number(product.conversionRate) || 1,
-        }))
-      : [],
+    products: normalizedProducts,
     warehouses: Array.isArray(source.warehouses)
       ? source.warehouses
       : seedState.warehouses,
@@ -782,8 +925,10 @@ export function normalizeState(input: unknown): AppState {
               : undefined,
         }))
       : [],
-    accounts: availableAccounts,
+    accounts: normalizedAccounts,
     audit: Array.isArray(source.audit) ? source.audit.slice(-500) : [],
+    inventoryEvents,
+    cashEvents,
     productionFormulas: Array.isArray(source.productionFormulas)
       ? source.productionFormulas.map(formula => ({
           ...formula,
@@ -905,6 +1050,24 @@ export function adjustInventoryBalance(
     products: state.products.map(item =>
       item.id === productId ? { ...item, stock: item.stock + deltaBase } : item
     ),
+    inventoryEvents: [
+      ...(state.inventoryEvents || []),
+      {
+        id: createId("inventory-event"),
+        at: new Date().toISOString(),
+        date: todayJalali(),
+        kind: "adjustment",
+        productId,
+        warehouseId: product.warehouseId,
+        quantityEntered: quantity,
+        unitEntered: unit,
+        quantityBase: deltaBase,
+        baseUnit: product.unit,
+        sourceType: "manual_adjustment",
+        sourceId: productId,
+        note: note || "اصلاح دستی موجودی",
+      },
+    ],
     audit: [
       ...state.audit,
       {
@@ -915,6 +1078,116 @@ export function adjustInventoryBalance(
       },
     ].slice(-500),
   };
+}
+
+export function appendInventoryEvent(
+  state: AppState,
+  event: Omit<InventoryEvent, "id" | "at">
+): AppState {
+  return {
+    ...state,
+    inventoryEvents: [
+      ...state.inventoryEvents,
+      {
+        ...event,
+        id: createId("inventory-event"),
+        at: new Date().toISOString(),
+      },
+    ],
+  };
+}
+
+export function rebuildInventoryProjection(state: AppState): AppState {
+  const totals = new Map<string, number>();
+  for (const event of state.inventoryEvents) {
+    totals.set(event.productId, (totals.get(event.productId) || 0) + event.quantityBase);
+  }
+  return {
+    ...state,
+    products: state.products.map(product => ({
+      ...product,
+      stock: totals.get(product.id) ?? 0,
+    })),
+  };
+}
+
+export function appendCashEvent(
+  state: AppState,
+  event: Omit<CashEvent, "id" | "at">
+): AppState {
+  return {
+    ...state,
+    cashEvents: [
+      ...state.cashEvents,
+      { ...event, id: createId("cash-event"), at: new Date().toISOString() },
+    ],
+  };
+}
+
+export function rebuildCashProjection(state: AppState): AppState {
+  const totals = new Map<string, number>();
+  for (const event of state.cashEvents) {
+    totals.set(event.accountId, (totals.get(event.accountId) || 0) + event.amount);
+  }
+  return {
+    ...state,
+    accounts: state.accounts.map(account => ({
+      ...account,
+      balance: totals.get(account.id) ?? 0,
+    })),
+  };
+}
+
+/**
+ * Bridges legacy mutation paths while the UI is being migrated to explicit
+ * events. A caller that already appended source events is not duplicated.
+ */
+export function reconcileLedgerEvents(previous: AppState, next: AppState): AppState {
+  const inventoryEvents = [...(next.inventoryEvents || [])];
+  const cashEvents = [...(next.cashEvents || [])];
+  const hasExplicitInventoryEvents = inventoryEvents.length > (previous.inventoryEvents || []).length;
+  const hasExplicitCashEvents = cashEvents.length > (previous.cashEvents || []).length;
+  const date = todayJalali();
+  if (!hasExplicitInventoryEvents) {
+    for (const product of next.products) {
+      const before = previous.products.find(item => item.id === product.id)?.stock || 0;
+      const delta = product.stock - before;
+      if (!delta) continue;
+      inventoryEvents.push({
+        id: createId("inventory-event"),
+        at: new Date().toISOString(),
+        date,
+        kind: "adjustment",
+        productId: product.id,
+        warehouseId: product.warehouseId,
+        quantityEntered: delta,
+        unitEntered: product.unit,
+        quantityBase: delta,
+        baseUnit: product.unit,
+        sourceType: "projection_reconciliation",
+        note: "ثبت خودکار اختلاف مسیر قدیمی با دفتر رویداد",
+      });
+    }
+  }
+  if (!hasExplicitCashEvents) {
+    for (const account of next.accounts) {
+      const before = previous.accounts.find(item => item.id === account.id)?.balance || 0;
+      const delta = account.balance - before;
+      if (!delta) continue;
+      cashEvents.push({
+        id: createId("cash-event"),
+        at: new Date().toISOString(),
+        date,
+        kind: "reversal",
+        accountId: account.id,
+        amount: delta,
+        currency: next.settings.currency,
+        sourceType: "projection_reconciliation",
+        note: "ثبت خودکار اختلاف مسیر قدیمی با دفتر نقدینگی",
+      });
+    }
+  }
+  return { ...next, inventoryEvents, cashEvents };
 }
 
 export function todayJalali() {
@@ -978,6 +1251,8 @@ export function exportPayload(state: AppState) {
         checks: data.checks.length,
         accounts: data.accounts.length,
         audit: data.audit.length,
+        inventoryEvents: data.inventoryEvents.length,
+        cashEvents: data.cashEvents.length,
         productionFormulas: data.productionFormulas.length,
         productionRecords: data.productionRecords.length,
       },
