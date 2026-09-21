@@ -209,3 +209,8 @@
 [6]: https://docs.github.com/en/pages "GitHub Pages documentation"
 
 [7]: https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage "MDN localStorage documentation"
+
+
+## الحاقیه — پایان مرحلهٔ دوم roadmap
+
+پس از این ممیزی، الگوریتم تقریبی اختلاف روز با `Intl.DateTimeFormat` و calendar برابر `persian` جایگزین شد. parser مشترک، اعتبارسنجی تاریخ و day number مبتنی بر UTC اکنون در هستهٔ `accounting.ts` قرار دارند. تست‌های طول ماه، مرز اسفند کبیسه و فروردین، تاریخ معکوس و ورودی نامعتبر اضافه شدند. بنابراین ریسک «تقویم تقریبی» در هسته بسته شده است؛ ریسک باقی‌مانده فقط آزمون UI با دادهٔ واقعی و نمایش صریح مبنای روزشمار است. مرحلهٔ بعدی، طراحی دفتر رویداد بازسازی‌پذیر برای موجودی و نقدینگی است.

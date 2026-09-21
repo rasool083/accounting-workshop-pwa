@@ -1026,39 +1026,95 @@ export function appendAudit(
   };
 }
 
+type JalaliDateParts = { year: number; month: number; day: number };
+
+// Intl's Persian calendar is the platform's authoritative calendar
+// implementation. We use UTC-only day numbers so browser timezone and DST
+// cannot change a financial day difference.
+const PERSIAN_DATE_FORMATTER = new Intl.DateTimeFormat("en-US-u-ca-persian-nu-latn", {
+  calendar: "persian",
+  numberingSystem: "latn",
+  timeZone: "UTC",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+});
+const PERSIAN_YEAR_STARTS = new Map<number, number>();
+
+function parseJalaliDate(value: string): JalaliDateParts | null {
+  const parts = value.replace(/-/g, "/").split("/").map(Number);
+  if (
+    parts.length !== 3 ||
+    parts.some(part => !Number.isInteger(part)) ||
+    !isValidJalaliDate(parts[0], parts[1], parts[2])
+  )
+    return null;
+  return { year: parts[0], month: parts[1], day: parts[2] };
+}
+
+function utcDayNumber(date: Date) {
+  return Math.floor(date.getTime() / 86_400_000);
+}
+
+function persianYearStartDayNumber(year: number) {
+  const cached = PERSIAN_YEAR_STARTS.get(year);
+  if (cached !== undefined) return cached;
+  const gregorianYear = year + 621;
+  for (let offset = 0; offset <= 20; offset++) {
+    const candidate = new Date(Date.UTC(gregorianYear, 2, 19 + offset, 12));
+    const parts = Object.fromEntries(
+      PERSIAN_DATE_FORMATTER.formatToParts(candidate).map(part => [part.type, part.value])
+    );
+    if (parts.year === String(year) && parts.month === "1" && parts.day === "1") {
+      const dayNumber = utcDayNumber(candidate);
+      PERSIAN_YEAR_STARTS.set(year, dayNumber);
+      return dayNumber;
+    }
+  }
+  return null;
+}
+
+function jalaliDayNumber(year: number, month: number, day: number) {
+  const yearStart = persianYearStartDayNumber(year);
+  if (yearStart === null) return null;
+  const monthOffset = month <= 7 ? (month - 1) * 31 : (month - 1) * 30 + 6;
+  return yearStart + monthOffset + day - 1;
+}
+
+export function isValidJalaliDate(year: number, month: number, day: number) {
+  if (!Number.isInteger(year) || year < 1 || !Number.isInteger(month) || month < 1 || month > 12) return false;
+  const maxDay = month <= 6 ? 31 : month <= 11 ? 30 : isJalaliLeapYear(year) ? 30 : 29;
+  return Number.isInteger(day) && day >= 1 && day <= maxDay;
+}
+
 export function jalaliDayDifference(from: string, to: string) {
-  const ordinal = (value: string) => {
-    const [year, month, day] = value.replace(/-/g, "/").split("/").map(Number);
-    if (![year, month, day].every(Number.isFinite)) return 0;
-    const completedYears = Math.max(0, year - 1);
-    const cycles = Math.floor(completedYears / 33);
-    const remainder = completedYears % 33;
-    const leapYearsBefore =
-      cycles * 8 +
-      [1, 5, 9, 13, 17, 22, 26, 30].filter(item => item <= remainder).length;
-    const monthDays = month <= 6 ? (month - 1) * 31 : 186 + (month - 7) * 30;
-    return year * 365 + leapYearsBefore + monthDays + day;
-  };
-  return Math.max(0, ordinal(to) - ordinal(from));
+  const start = parseJalaliDate(from);
+  const end = parseJalaliDate(to);
+  if (!start || !end) return 0;
+  const startNumber = jalaliDayNumber(start.year, start.month, start.day);
+  const endNumber = jalaliDayNumber(end.year, end.month, end.day);
+  if (startNumber === null || endNumber === null) return 0;
+  return Math.max(0, endNumber - startNumber);
 }
 
 export function jalaliDateKey(value: string) {
-  const parts = value.replace(/-/g, "/").split("/").map(Number);
-  if (parts.length !== 3 || parts.some(part => !Number.isFinite(part))) {
+  const parsed = parseJalaliDate(value);
+  if (!parsed) {
     return "9999/99/99";
   }
-  return parts.map(part => String(part).padStart(2, "0")).join("/");
+  return `${String(parsed.year).padStart(4, "0")}/${String(parsed.month).padStart(2, "0")}/${String(parsed.day).padStart(2, "0")}`;
 }
 export function jalaliMonthDayBasis(date: string) {
-  const [year, month] = date.replace(/-/g, "/").split("/").map(Number);
-  if (!Number.isFinite(year) || !Number.isFinite(month)) return 30;
-  if (month <= 6) return 31;
-  if (month <= 11) return 30;
-  return isJalaliLeapYear(year) ? 30 : 29;
+  const parsed = parseJalaliDate(date);
+  if (!parsed) return 30;
+  if (parsed.month <= 6) return 31;
+  if (parsed.month <= 11) return 30;
+  return isJalaliLeapYear(parsed.year) ? 30 : 29;
 }
 export function isJalaliLeapYear(year: number) {
-  const remainder = year % 33;
-  return [1, 5, 9, 13, 17, 22, 26, 30].includes(remainder);
+  const current = persianYearStartDayNumber(year);
+  const next = persianYearStartDayNumber(year + 1);
+  return current !== null && next !== null && next - current === 366;
 }
 
 export interface FIFOSettlement {

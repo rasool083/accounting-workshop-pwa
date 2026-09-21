@@ -3,6 +3,10 @@ import {
   getSettlementBalances,
   adjustInventoryBalance,
   executeProduction,
+  isJalaliLeapYear,
+  isValidJalaliDate,
+  jalaliDayDifference,
+  jalaliMonthDayBasis,
   quantityInBase,
   rebuildCheckAllocations,
   removeProductionRun,
@@ -166,6 +170,30 @@ describe("FIFO settlement balances", () => {
     expect(rebuilt.invoices.find(item => item.id === invoice1011.id)?.status).toBe(
       "تسویه جزئی"
     );
+  });
+});
+
+describe("Jalali calendar", () => {
+  it("uses calendar month lengths for day differences", () => {
+    expect(jalaliDayDifference("1405/01/01", "1405/02/15")).toBe(45);
+    expect(jalaliDayDifference("1405/06/31", "1405/07/01")).toBe(1);
+    expect(jalaliDayDifference("1405/07/30", "1405/08/01")).toBe(1);
+  });
+
+  it("handles leap-year Esfand and rejects invalid dates", () => {
+    expect(isJalaliLeapYear(1403)).toBe(true);
+    expect(isValidJalaliDate(1403, 12, 30)).toBe(true);
+    expect(jalaliDayDifference("1403/12/30", "1404/01/01")).toBe(1);
+    expect(isJalaliLeapYear(1404)).toBe(false);
+    expect(isValidJalaliDate(1404, 12, 30)).toBe(false);
+    expect(jalaliDayDifference("1404/12/30", "1405/01/01")).toBe(0);
+    expect(jalaliMonthDayBasis("1404/12/29")).toBe(29);
+  });
+
+  it("does not create a reverse or invalid elapsed period", () => {
+    expect(jalaliDayDifference("1405/02/01", "1405/01/31")).toBe(0);
+    expect(jalaliDayDifference("not-a-date", "1405/01/01")).toBe(0);
+    expect(isValidJalaliDate(1405, 13, 1)).toBe(false);
   });
 });
 
