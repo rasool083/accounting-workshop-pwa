@@ -77,6 +77,7 @@ import {
   executeProduction,
   removeProductionRun,
   reconcileLedgerEvents,
+  inventoryLedgerDiscrepancies,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -3945,6 +3946,7 @@ function Inventory({
         (productSortDirection === "asc" ? 1 : -1) *
         a.name.localeCompare(b.name, "fa")
     );
+  const inventoryDiscrepancies = inventoryLedgerDiscrepancies(state);
   const movements = useMemo(() => {
     if (!selectedProduct) return [];
     const rows: Array<{
@@ -4047,6 +4049,29 @@ function Inventory({
           })
         );
     });
+    state.inventoryEvents
+      .filter(
+        event =>
+          event.productId === selectedProduct.id &&
+          ["adjustment", "opening_balance", "reversal"].includes(event.kind)
+      )
+      .forEach(event =>
+        rows.push({
+          id: `inventory-event-${event.id}`,
+          date: event.date,
+          reference:
+            event.kind === "opening_balance"
+              ? "موجودی اولیه / migration"
+              : "بالانس بدون اثر مالی",
+          direction: event.quantityBase >= 0 ? "ورود اصلاح موجودی" : "خروج اصلاح موجودی",
+          quantity: event.quantityEntered,
+          unit: event.unitEntered,
+          amount: 0,
+          warehouse:
+            state.warehouses.find(warehouse => warehouse.id === event.warehouseId)?.name ||
+            "بدون انبار",
+        })
+      );
     return rows.sort((a, b) =>
       jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date))
     );
@@ -4237,6 +4262,11 @@ function Inventory({
             )}
           </strong>
         </div>
+        <div>
+          <ShieldCheck size={19} />
+          <span>مغایرت دفتر رویداد</span>
+          <strong>{formatNumber(inventoryDiscrepancies.length)}</strong>
+        </div>
       </div>
       <div className="panel table-panel">
         <div className="panel-heading">
@@ -4314,6 +4344,21 @@ function Inventory({
                       </span>
                       <button
                         className="icon-button row-action"
+                        title="بالانس / اصلاح بدون اثر مالی"
+                        onClick={() => {
+                          setAdjustForm({
+                            productId: product.id,
+                            amount: "",
+                            unit: product.unit,
+                            note: "",
+                          });
+                          setAdjustOpen(true);
+                        }}
+                      >
+                        <RefreshCw size={14} />
+                      </button>
+                      <button
+                        className="icon-button row-action"
                         title="ویرایش کالا"
                         onClick={() => {
                           setEditingProduct(product);
@@ -4378,7 +4423,7 @@ function Inventory({
               <span className="section-kicker">کاردکس کالا</span>
               <h3>{selectedProduct.name}</h3>
             </div>
-            <span className="soft-tag">گردش ثبت‌شده از فاکتورها</span>
+            <span className="soft-tag">فاکتور، تولید و اصلاحات بدون اثر مالی</span>
           </div>
           <div className="table-wrap">
             <table>
@@ -4417,7 +4462,7 @@ function Inventory({
                 ) : (
                   <tr>
                     <td colSpan={6}>
-                      برای این کالا گردش فاکتوری ثبت نشده است.
+                      برای این کالا گردش ثبت‌شده‌ای وجود ندارد.
                     </td>
                   </tr>
                 )}

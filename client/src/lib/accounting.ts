@@ -1138,6 +1138,36 @@ export function rebuildCashProjection(state: AppState): AppState {
   };
 }
 
+export interface LedgerDiscrepancy {
+  id: string;
+  label: string;
+  recorded: number;
+  projected: number;
+  difference: number;
+}
+
+export function inventoryLedgerDiscrepancies(state: AppState): LedgerDiscrepancy[] {
+  const rebuilt = rebuildInventoryProjection(state);
+  return state.products.flatMap(product => {
+    const projected = rebuilt.products.find(item => item.id === product.id)?.stock ?? 0;
+    const difference = product.stock - projected;
+    return Math.abs(difference) > 0.000001
+      ? [{ id: product.id, label: product.name, recorded: product.stock, projected, difference }]
+      : [];
+  });
+}
+
+export function cashLedgerDiscrepancies(state: AppState): LedgerDiscrepancy[] {
+  const rebuilt = rebuildCashProjection(state);
+  return state.accounts.flatMap(account => {
+    const projected = rebuilt.accounts.find(item => item.id === account.id)?.balance ?? 0;
+    const difference = account.balance - projected;
+    return Math.abs(difference) > 0.000001
+      ? [{ id: account.id, label: account.name, recorded: account.balance, projected, difference }]
+      : [];
+  });
+}
+
 /**
  * Bridges legacy mutation paths while the UI is being migrated to explicit
  * events. A caller that already appended source events is not duplicated.

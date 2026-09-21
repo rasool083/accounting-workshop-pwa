@@ -5,6 +5,7 @@ import {
   executeProduction,
   normalizeState,
   reconcileLedgerEvents,
+  inventoryLedgerDiscrepancies,
   rebuildCashProjection,
   rebuildInventoryProjection,
   isJalaliLeapYear,
@@ -629,5 +630,19 @@ describe("event ledger projections", () => {
     expect(bridged.cashEvents.at(-1)?.amount).toBe(30);
     expect(rebuildInventoryProjection(bridged).products[0].stock).toBe(7);
     expect(rebuildCashProjection(bridged).accounts[0].balance).toBe(130);
+  });
+
+  it("reports a stock projection mismatch instead of hiding it", () => {
+    const state = normalizeState({
+      products: [{ id: "p", name: "کالا", code: "P", unit: "عدد", stock: 10, price: 0 }],
+      accounts: [],
+    });
+    const altered = {
+      ...state,
+      products: state.products.map(product => ({ ...product, stock: 12 })),
+    };
+    expect(inventoryLedgerDiscrepancies(altered)).toEqual([
+      expect.objectContaining({ id: "p", recorded: 12, projected: 10, difference: 2 }),
+    ]);
   });
 });
