@@ -1184,6 +1184,7 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
   );
   const inventorySources = new Set<string>();
   const cashSources = new Set<string>();
+  const specializedCashAccounts = new Set<string>();
   const addInventory = (transaction: Transaction, kind: InventoryEventKind, quantityBase: number) => {
     if (!transaction.productId || !quantityBase || inventorySources.has(transaction.id)) return;
     const product = next.products.find(item => item.id === transaction.productId);
@@ -1220,6 +1221,40 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
       addCash(transaction, transaction.accountId, transaction.amount, "receipt");
     }
   }
+  const previousChecks = new Map(previous.checks.map(check => [check.id, check]));
+  for (const check of next.checks) {
+    const before = previousChecks.get(check.id);
+    if (!before || (before.status === check.status && before.amount === check.amount && before.bankAccountId === check.bankAccountId)) continue;
+    if (before.status === "وصول شده" && before.bankAccountId) {
+      cashEvents.push({
+        id: createId("cash-event"), at: new Date().toISOString(), date: check.receivedDate,
+        kind: "reversal", accountId: before.bankAccountId, amount: -before.amount,
+        currency: next.settings.currency, sourceType: "check", sourceId: check.id,
+        reversalOf: check.id, note: `معکوس‌سازی وصول قبلی چک ${check.number}`,
+      });
+      specializedCashAccounts.add(before.bankAccountId);
+    }
+    if (check.status === "وصول شده" && check.bankAccountId) {
+      cashEvents.push({
+        id: createId("cash-event"), at: new Date().toISOString(), date: check.receivedDate,
+        kind: "check_receipt", accountId: check.bankAccountId, amount: check.amount,
+        currency: next.settings.currency, sourceType: "check", sourceId: check.id,
+        note: `وصول چک ${check.number}`,
+      });
+      specializedCashAccounts.add(check.bankAccountId);
+    } else if (check.status === "برگشتی") {
+      const accountId = check.bankAccountId || before.bankAccountId;
+      if (accountId) {
+        cashEvents.push({
+          id: createId("cash-event"), at: new Date().toISOString(), date: check.receivedDate,
+          kind: "check_return", accountId, amount: 0,
+          currency: next.settings.currency, sourceType: "check", sourceId: check.id,
+          note: `برگشت چک ${check.number}`,
+        });
+        specializedCashAccounts.add(accountId);
+      }
+    }
+  }
   if (!hasExplicitInventoryEvents) {
     for (const product of next.products) {
       const before = previous.products.find(item => item.id === product.id)?.stock || 0;
@@ -1245,7 +1280,7 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
     for (const account of next.accounts) {
       const before = previous.accounts.find(item => item.id === account.id)?.balance || 0;
       const delta = account.balance - before;
-      if (!delta || next.transactions.some(item => cashSources.has(`${item.id}:${account.id}`))) continue;
+      if (!delta || specializedCashAccounts.has(account.id) || next.transactions.some(item => cashSources.has(`${item.id}:${account.id}`))) continue;
       cashEvents.push({
         id: createId("cash-event"),
         at: new Date().toISOString(),

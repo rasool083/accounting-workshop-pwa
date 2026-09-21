@@ -673,4 +673,33 @@ describe("event ledger projections", () => {
     expect(inventoryLedgerDiscrepancies(reconciled)).toHaveLength(0);
     expect(cashLedgerDiscrepancies(reconciled)).toHaveLength(0);
   });
+
+  it("records check receipt and reverses it on return", () => {
+    const previous = normalizeState({
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 0 }],
+      checks: [{
+        id: "check-1", number: "۱", partyId: "person", receivedDate: "1405/07/01",
+        dueDate: "1405/07/30", amount: 100, status: "نزد ما", bank: "بانک",
+      }],
+    });
+    const received = {
+      ...previous,
+      accounts: previous.accounts.map(account => ({ ...account, balance: 100 })),
+      checks: previous.checks.map(check => ({ ...check, status: "وصول شده" as const, bankAccountId: "bank" })),
+    };
+    const cleared = reconcileLedgerEvents(previous, received);
+    expect(cleared.cashEvents.at(-1)).toEqual(expect.objectContaining({ kind: "check_receipt", amount: 100, accountId: "bank" }));
+    expect(rebuildCashProjection(cleared).accounts[0].balance).toBe(100);
+    const returned = {
+      ...cleared,
+      accounts: cleared.accounts.map(account => ({ ...account, balance: 0 })),
+      checks: cleared.checks.map(check => ({ ...check, status: "برگشتی" as const })),
+    };
+    const reversed = reconcileLedgerEvents(cleared, returned);
+    expect(reversed.cashEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "reversal", amount: -100, accountId: "bank" }),
+      expect.objectContaining({ kind: "check_return", amount: 0, accountId: "bank" }),
+    ]));
+    expect(rebuildCashProjection(reversed).accounts[0].balance).toBe(0);
+  });
 });

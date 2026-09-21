@@ -5774,6 +5774,14 @@ function Checks({
             </small>
           </div>
         ))}
+        <div className="check-card">
+          <span className="mini-icon green">
+            <WalletCards size={17} />
+          </span>
+          <span>رویدادهای دفتر چک</span>
+          <strong>{formatNumber(state.cashEvents.filter(event => event.sourceType === "check").length)}</strong>
+          <small>وصول، برگشت و معکوس‌سازی</small>
+        </div>
       </div>
       <div className="toolbar check-filters">
         <label>
