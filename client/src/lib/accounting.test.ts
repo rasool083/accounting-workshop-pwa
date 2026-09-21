@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getSettlementBalances,
+  adjustInventoryBalance,
   executeProduction,
   quantityInBase,
   rebuildCheckAllocations,
@@ -169,6 +170,82 @@ describe("FIFO settlement balances", () => {
 });
 
 describe("production execution", () => {
+  it("uses the independent package price instead of package ingredient cost", () => {
+    const raw = {
+      id: "priced-raw", code: "PR", name: "ماده بسته", unit: "گرم", unit2: "گرم",
+      conversionRate: 1, stock: 0, minStock: 0, price: 2, category: "مواد اولیه" as const,
+    };
+    const pack = {
+      id: "priced-pack", code: "PP", name: "بسته قیمت‌گذاری‌شده", unit: "بسته", unit2: "بسته",
+      conversionRate: 1, stock: 1, minStock: 0, price: 50, category: "بسته تولید" as const,
+    };
+    const output = {
+      id: "priced-output", code: "PO", name: "محصول با بسته", unit: "عدد", unit2: "عدد",
+      conversionRate: 1, stock: 0, minStock: 0, price: 0, category: "محصول تولیدی" as const,
+    };
+    const formula = {
+      id: "priced-formula", name: "محصول با بسته", formulaType: "قطعه" as const,
+      outputProductId: output.id, outputName: output.name, outputQuantity: 1, outputUnit: "عدد",
+      materials: [{ id: "priced-line", productId: pack.id, quantity: 1, unit: "بسته" }],
+      costs: [], note: "",
+    };
+    const state = {
+      schemaVersion: 2, revision: 1, updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "بسته", "عدد"] },
+      people: [], products: [raw, pack, output], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [formula], productionRecords: [],
+    };
+    const result = executeProduction(state, formula.id, 1, "عدد", "1405/07/01");
+    expect(result.state.productionRecords[0].materialCost).toBe(50);
+    expect(result.state.products.find(item => item.id === pack.id)?.stock).toBe(0);
+  });
+
+  it("allows production to leave a missing raw material stock negative", () => {
+    const raw = {
+      id: "negative-raw", code: "NR", name: "ماده کسری", unit: "گرم", unit2: "گرم",
+      conversionRate: 1, stock: 0, minStock: 0, price: 2, category: "مواد اولیه" as const,
+    };
+    const output = {
+      id: "negative-output", code: "NO", name: "محصول کسری", unit: "عدد", unit2: "عدد",
+      conversionRate: 1, stock: 0, minStock: 0, price: 0, category: "محصول تولیدی" as const,
+    };
+    const formula = {
+      id: "negative-formula", name: "فرمول کسری", formulaType: "قطعه" as const,
+      outputProductId: output.id, outputName: output.name, outputQuantity: 1, outputUnit: "عدد",
+      materials: [{ id: "negative-line", productId: raw.id, quantity: 10, unit: "گرم" }],
+      costs: [], note: "",
+    };
+    const state = {
+      schemaVersion: 2, revision: 1, updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "عدد"] },
+      people: [], products: [raw, output], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [formula], productionRecords: [],
+    };
+    const result = executeProduction(state, formula.id, 1, "عدد");
+    expect(result.state.products.find(item => item.id === raw.id)?.stock).toBe(-10);
+  });
+
+  it("applies inventory balance in the selected unit without financial transactions", () => {
+    const product = {
+      id: "balance-product", code: "BP", name: "ماده بالانس", unit: "کیلوگرم", unit2: "گرم",
+      conversionRate: 1000, stock: 100, minStock: 0, price: 20, category: "مواد اولیه" as const,
+    };
+    const state = {
+      schemaVersion: 2, revision: 1, updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "کیلوگرم"] },
+      people: [], products: [product], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [], productionRecords: [],
+    };
+    const balanced = adjustInventoryBalance(state, product.id, 1.5, "کیلوگرم", "شمارش انبار");
+    const reduced = adjustInventoryBalance(balanced, product.id, -500, "گرم", "اصلاح شمارش");
+    expect(reduced.products[0].stock).toBeCloseTo(101);
+    expect(reduced.transactions).toHaveLength(0);
+    expect(reduced.audit.at(-1)?.action).toBe("STOCK_ADJUSTMENT");
+  });
+
   it("removes a production batch and reverses actual material and output stock", () => {
     const raw = {
       id: "delete-raw", code: "DR", name: "ماده حذف", unit: "گرم", unit2: "گرم",

@@ -73,6 +73,7 @@ import {
   suggestNextPartyNumber,
   quantityInBase,
   unitConversionToBase,
+  adjustInventoryBalance,
   executeProduction,
   removeProductionRun,
 } from "@/lib/accounting";
@@ -3872,6 +3873,7 @@ function Inventory({
   const [adjustForm, setAdjustForm] = useState({
     productId: "",
     amount: "",
+    unit: "",
     note: "",
   });
   const [form, setForm] = useState({
@@ -3896,34 +3898,34 @@ function Inventory({
   );
   function adjustStock(event: React.FormEvent) {
     event.preventDefault();
-    const amount = Number(adjustForm.amount.replace(/[^0-9.-]/g, "")) || 0;
+    const amount = Number(
+      adjustForm.amount
+        .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+        .replace(/[٫٬,]/g, ".")
+        .replace(/[^0-9.-]/g, "")
+    ) || 0;
     if (!adjustForm.productId || !amount) return;
     const product = state.products.find(
       item => item.id === adjustForm.productId
     );
     if (!product) return;
-    onSave(
-      {
-        ...state,
-        products: state.products.map(item =>
-          item.id === product.id
-            ? { ...item, stock: item.stock + amount }
-            : item
+    try {
+      onSave(
+        adjustInventoryBalance(
+          state,
+          product.id,
+          amount,
+          adjustForm.unit || product.unit,
+          adjustForm.note
         ),
-        audit: [
-          ...state.audit,
-          {
-            id: createId("stock-adjust"),
-            at: new Date().toISOString(),
-            action: "STOCK_ADJUSTMENT",
-            note: `${product.name}: ${amount > 0 ? "افزایش" : "کاهش"} ${Math.abs(amount)}؛ ${adjustForm.note || "بدون توضیح"}`,
-          },
-        ],
-      },
-      "اصلاح دستی موجودی ثبت شد"
-    );
+        "بالانس موجودی ثبت شد؛ اثر مالی ندارد"
+      );
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "بالانس موجودی ثبت نشد");
+      return;
+    }
     setAdjustOpen(false);
-    setAdjustForm({ productId: "", amount: "", note: "" });
+    setAdjustForm({ productId: "", amount: "", unit: "", note: "" });
   }
   const selectedProduct = state.products.find(
     product => product.id === selectedProductId
@@ -4119,7 +4121,7 @@ function Inventory({
           className="button button-ghost button-small"
           onClick={() => setAdjustOpen(true)}
         >
-          اصلاح موجودی
+          بالانس / اصلاح موجودی
         </button>
         <span className="soft-tag">
           {formatNumber(state.warehouses.length)} انبار فعال
@@ -4497,15 +4499,20 @@ function Inventory({
         </Dialog>
       )}
       {adjustOpen && (
-        <Dialog title="اصلاح دستی موجودی" onClose={() => setAdjustOpen(false)}>
+        <Dialog title="بالانس موجودی بدون اثر مالی" onClose={() => setAdjustOpen(false)}>
           <form onSubmit={adjustStock} className="form-grid">
             <label className="full-field">
               کالا
               <select
                 value={adjustForm.productId}
-                onChange={e =>
-                  setAdjustForm({ ...adjustForm, productId: e.target.value })
-                }
+                onChange={e => {
+                  const selected = state.products.find(item => item.id === e.target.value);
+                  setAdjustForm({
+                    ...adjustForm,
+                    productId: e.target.value,
+                    unit: selected?.unit || "",
+                  });
+                }}
               >
                 <option value="">انتخاب کالا</option>
                 {state.products.map(product => (
@@ -4516,15 +4523,30 @@ function Inventory({
               </select>
             </label>
             <label>
-              تغییر موجودی
+              مقدار بالانس موجودی
               <input
-                inputMode="numeric"
+                inputMode="decimal"
                 value={adjustForm.amount}
                 onChange={e =>
                   setAdjustForm({ ...adjustForm, amount: e.target.value })
                 }
-                placeholder="مثبت=افزایش، منفی=کاهش"
+                placeholder="مثبت=افزایش، منفی=کاهش؛ مثلاً +۱٫۵"
               />
+            </label>
+            <label>
+              واحد بالانس
+              <select
+                value={adjustForm.unit}
+                onChange={e => setAdjustForm({ ...adjustForm, unit: e.target.value })}
+                disabled={!adjustForm.productId}
+              >
+                {(() => {
+                  const selected = state.products.find(item => item.id === adjustForm.productId);
+                  return Array.from(new Set([selected?.unit, selected?.unit2, ...state.settings.units]))
+                    .filter(Boolean)
+                    .map(unit => <option key={unit} value={unit}>{unit}</option>);
+                })()}
+              </select>
             </label>
             <label>
               علت اصلاح
@@ -8300,7 +8322,7 @@ function Production({
                   </span>
                   <small>
                     {formula.formulaType === "بسته تولید"
-                      ? "بسته مستقل · انبار مواد اولیه"
+                      ? `بسته مستقل · انبار مواد اولیه · قیمت مستقل: ${formatMoney(product?.price || 0, state.settings.currency)}`
                       : "فرمول قطعه"}
                   </small>
                   <div className="production-formula-details">

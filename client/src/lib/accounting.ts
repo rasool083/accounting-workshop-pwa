@@ -376,8 +376,18 @@ export function executeProduction(
       .at(-1);
     return latest?.unitCost || 0;
   };
+  const standalonePrice = (product: Product) => {
+    const latest = state.priceHistory
+      .filter(item => item.productId === product.id && item.effectiveDate <= date)
+      .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
+    const price = Number(latest?.price ?? product.price) || 0;
+    const priceUnit = latest?.unit || product.unit;
+    return price / Math.max(0.000001, unitConversionToBase(product, priceUnit));
+  };
   const unitPrice = (product: Product) =>
-    Math.max(0, computedUnitCosts.get(product.id) || historicalUnitCost(product.id) || Number(product.price) || 0);
+    product.category === "بسته تولید"
+      ? Math.max(0, standalonePrice(product))
+      : Math.max(0, computedUnitCosts.get(product.id) || historicalUnitCost(product.id) || standalonePrice(product));
   const weightToGrams = (value: number, unit: string) => {
     if (unit === "کیلوگرم") return value * 1000;
     if (unit === "تن") return value * 1_000_000;
@@ -461,8 +471,6 @@ export function executeProduction(
           {}
         );
       }
-      if (materialProduct.stock < requiredBase)
-        throw new Error(`موجودی مادهٔ اولیهٔ «${materialProduct.name}» کافی نیست`);
       materialProduct.stock -= requiredBase;
       materialCost += requiredBase * unitPrice(materialProduct);
       const conversion = Math.max(0.000001, unitConversionToBase(materialProduct, material.unit));
@@ -874,6 +882,39 @@ export function quantityInBase(
   unit: string
 ) {
   return (Number(quantity) || 0) * unitConversionToBase(product, unit);
+}
+
+/**
+ * موجودی را بدون ثبت مبلغ مالی اصلاح می‌کند؛ مقدار ورودی می‌تواند واحد دوم باشد.
+ * مقدار مثبت افزایش و مقدار منفی کاهش موجودی است.
+ */
+export function adjustInventoryBalance(
+  state: AppState,
+  productId: string,
+  quantity: number,
+  unit: string,
+  note = ""
+): AppState {
+  const product = state.products.find(item => item.id === productId);
+  if (!product) throw new Error("کالای انتخاب‌شده پیدا نشد");
+  const deltaBase = quantityInBase(product, quantity, unit);
+  if (!Number.isFinite(deltaBase) || deltaBase === 0)
+    throw new Error("مقدار اصلاح موجودی معتبر نیست");
+  return {
+    ...state,
+    products: state.products.map(item =>
+      item.id === productId ? { ...item, stock: item.stock + deltaBase } : item
+    ),
+    audit: [
+      ...state.audit,
+      {
+        id: createId("stock-adjust"),
+        at: new Date().toISOString(),
+        action: "STOCK_ADJUSTMENT",
+        note: `${product.name}: ${quantity > 0 ? "افزایش" : "کاهش"} ${Math.abs(quantity)} ${unit}؛ ${note || "بدون توضیح"}`,
+      },
+    ].slice(-500),
+  };
 }
 
 export function todayJalali() {
