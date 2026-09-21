@@ -8408,6 +8408,22 @@ function Production({
                 costs: [],
                 note: "",
               };
+              const outputProduct = state.products.find(
+                item => item.id === (record.outputProductId || displayFormula.outputProductId)
+              );
+              const outputBaseQuantity = record.outputQuantityBase ?? (
+                outputProduct
+                  ? quantityInBase(
+                      outputProduct,
+                      record.actualOutputQuantity ?? record.outputQuantity,
+                      record.actualOutputUnit || displayFormula.outputUnit
+                    )
+                  : record.outputQuantity
+              );
+              const baseUnitCost = outputBaseQuantity > 0
+                ? record.totalCost / outputBaseQuantity
+                : record.unitCost;
+              const outputBaseUnit = outputProduct?.unit || displayFormula.outputUnit || "واحد پایه";
               return (
                 <details className="production-register-item" key={record.id}>
                   <summary>
@@ -8415,9 +8431,11 @@ function Production({
                     <span>{record.outputProductName || displayFormula.outputName || displayFormula.name}</span>
                     <span>{formatNumber(record.actualOutputQuantity ?? record.outputQuantity)} {record.actualOutputUnit || displayFormula.outputUnit}</span>
                     <strong>{formatMoney(record.totalCost, state.settings.currency)}</strong>
+                    <strong>هر {outputBaseUnit}: {formatMoney(baseUnitCost, state.settings.currency)}</strong>
                   </summary>
                   <div className="production-register-details">
                     <span>فرمول snapshot: {displayFormula.name}</span>
+                    <span>قیمت تمام‌شدهٔ هر {outputBaseUnit}: {formatMoney(baseUnitCost, state.settings.currency)}</span>
                     {record.pieceWeight ? <span>وزن واقعی: {formatNumber(record.pieceWeight)} {record.pieceWeightUnit || "گرم"}</span> : null}
                     {record.wastePercent ? <span>پرت: {formatNumber(record.wastePercent)}٪</span> : null}
                     <span>مواد واقعی: {(record.materialUsage || []).map(usage => `${formatNumber(usage.actualQuantity)} ${usage.unit}`).join("، ") || "ثبت نشده"}</span>

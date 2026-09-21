@@ -170,6 +170,33 @@ describe("FIFO settlement balances", () => {
 });
 
 describe("production execution", () => {
+  it("records unit cost per base output unit", () => {
+    const raw = {
+      id: "base-cost-raw", code: "BCR", name: "ماده پایه", unit: "گرم", unit2: "گرم",
+      conversionRate: 1, stock: 1000, minStock: 0, price: 1, category: "مواد اولیه" as const,
+    };
+    const output = {
+      id: "base-cost-output", code: "BCO", name: "محصول کیلوگرمی", unit: "کیلوگرم", unit2: "گرم",
+      conversionRate: 1000, stock: 0, minStock: 0, price: 0, category: "محصول تولیدی" as const,
+    };
+    const formula = {
+      id: "base-cost-formula", name: "فرمول پایه", formulaType: "قطعه" as const,
+      outputProductId: output.id, outputName: output.name, outputQuantity: 1, outputUnit: "کیلوگرم",
+      materials: [{ id: "base-cost-line", productId: raw.id, quantity: 100, unit: "گرم" }],
+      costs: [], note: "",
+    };
+    const state = {
+      schemaVersion: 2, revision: 1, updatedAt: "1405/01/01",
+      settings: { businessName: "آزمون", currency: "تومان", dayBasis: 30 as const, units: ["گرم", "کیلوگرم"] },
+      people: [], products: [raw, output], warehouses: [], invoices: [], priceHistory: [],
+      paymentRules: [], transactions: [], checks: [], accounts: [], audit: [],
+      productionFormulas: [formula], productionRecords: [],
+    };
+    const record = executeProduction(state, formula.id, 500, "گرم").state.productionRecords[0];
+    expect(record.outputQuantityBase).toBeCloseTo(0.5);
+    expect(record.unitCost).toBeCloseTo(100);
+  });
+
   it("uses the independent package price instead of package ingredient cost", () => {
     const raw = {
       id: "priced-raw", code: "PR", name: "ماده بسته", unit: "گرم", unit2: "گرم",
