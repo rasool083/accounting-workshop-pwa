@@ -7678,6 +7678,7 @@ function Production({
     packageOutput: false,
   });
   const [selectedFormulaId, setSelectedFormulaId] = useState("");
+  const [materialQuantityDrafts, setMaterialQuantityDrafts] = useState<Record<string, string>>({});
   const [productionDialog, setProductionDialog] = useState<{
     formula: ProductionFormula;
     quantity: string;
@@ -7753,9 +7754,14 @@ function Production({
   function saveProduction(event: React.FormEvent) {
     event.preventDefault();
     const quantity = quantityValue(form.outputQuantity);
-    const materials = form.materials.filter(
-      item => item.productId && Number(item.quantity) > 0
-    );
+    const materials = form.materials
+      .map(item => ({
+        ...item,
+        quantity: Object.prototype.hasOwnProperty.call(materialQuantityDrafts, item.id)
+          ? quantityValue(materialQuantityDrafts[item.id])
+          : Number(item.quantity) || 0,
+      }))
+      .filter(item => item.productId && item.quantity > 0);
     if (
       !form.name.trim() ||
       (form.formulaType === "قطعه" && !form.outputProductId) ||
@@ -7824,6 +7830,7 @@ function Production({
       note: "",
       packageOutput: false,
     });
+    setMaterialQuantityDrafts({});
     setSelectedFormulaId("");
   }
 
@@ -7842,6 +7849,9 @@ function Production({
       note: formula.note,
       packageOutput: false,
     });
+    setMaterialQuantityDrafts(
+      Object.fromEntries(formula.materials.map(material => [material.id, String(material.quantity)]))
+    );
   }
 
   function deleteFormula(formula: ProductionFormula) {
@@ -8102,13 +8112,18 @@ function Production({
                   </select>
                   <input
                     inputMode="decimal"
-                    value={material.quantity || ""}
+                    value={materialQuantityDrafts[material.id] ?? (material.quantity || "")}
                     onChange={event => {
                       const materials = [...form.materials];
+                      const rawValue = event.target.value;
                       materials[index] = {
                         ...material,
-                        quantity: quantityValue(event.target.value),
+                        quantity: quantityValue(rawValue),
                       };
+                      setMaterialQuantityDrafts(current => ({
+                        ...current,
+                        [material.id]: rawValue,
+                      }));
                       setForm({ ...form, materials });
                     }}
                     placeholder="مقدار مصرف"
