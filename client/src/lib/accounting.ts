@@ -1548,7 +1548,7 @@ export function settleChecksFIFO(
   const eligibleChecks = [...checks]
     .filter(
       check =>
-        !["باطل", "برگشتی", "عودت داده شده", "جایگزین شده"].includes(
+        !["باطل", "برگشتی", "عودت داده شده", "جایگزین شده", "خرج شده"].includes(
           check.status
         )
     )

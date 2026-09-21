@@ -177,6 +177,20 @@ describe("FIFO settlement balances", () => {
       "تسویه جزئی"
     );
   });
+
+  it("does not allocate a customer check after it is spent", () => {
+    const invoice = {
+      id: "purchase-check-invoice", number: "P-1", type: "فروش" as const,
+      date: "1405/01/01", partyId: "customer", items: [], allocations: [],
+      amount: 1000, paidAmount: 0, status: "باز" as const, note: "",
+    };
+    const spentCheck = {
+      id: "spent-customer-check", number: "C-1", partyId: "customer",
+      receivedDate: "1405/01/01", dueDate: "1405/02/01", amount: 1000,
+      status: "خرج شده" as const, bank: "", returnPartyId: "supplier",
+    };
+    expect(settleChecksFIFO([spentCheck], [invoice])).toEqual([]);
+  });
 });
 
 describe("Jalali calendar", () => {
