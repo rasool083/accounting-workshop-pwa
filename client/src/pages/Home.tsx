@@ -109,6 +109,14 @@ import {
 } from "@/lib/backup";
 import { loadVendorDirectory, saveVendorDirectory } from "@/lib/vendorDirectory";
 import { BUILD_IDENTITY, buildIdentityLabel } from "@/lib/buildIdentity";
+import {
+  createCredential,
+  hasLocalCredential,
+  validatePassword,
+  validatePin,
+  verifyCredential,
+  type LocalSecuritySettings,
+} from "@/lib/security";
 import VendorDirectory from "@/pages/VendorDirectory";
 
 const iconMap = {
@@ -401,8 +409,76 @@ function EmptyState({
   );
 }
 
+function LocalLockScreen({
+  security,
+  onUnlock,
+}: {
+  security?: LocalSecuritySettings;
+  onUnlock: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const hasPassword = Boolean(security?.password?.hash);
+  const hasPin = Boolean(security?.pin?.hash);
+
+  async function unlock(event: React.FormEvent) {
+    event.preventDefault();
+    if (!value || checking) return;
+    setChecking(true);
+    setError("");
+    const valid =
+      (hasPassword && security?.password
+        ? await verifyCredential(value, security.password)
+        : false) ||
+      (hasPin && security?.pin
+        ? await verifyCredential(value, security.pin)
+        : false);
+    setChecking(false);
+    if (!valid) {
+      setValue("");
+      setError("رمز عبور یا PIN صحیح نیست");
+      return;
+    }
+    onUnlock();
+  }
+
+  return (
+    <div className="lock-screen" dir="rtl">
+      <div className="lock-card">
+        <div className="backup-hero-icon"><LockKeyhole size={26} /></div>
+        <span className="section-kicker">امنیت محلی</span>
+        <h1>قفل کارگاه</h1>
+        <p>برای ورود به اطلاعات حسابداری، رمز عبور یا PIN ثبت‌شده را وارد کنید.</p>
+        <form onSubmit={unlock} className="lock-form">
+          <label>
+            رمز عبور یا PIN
+            <input
+              autoFocus
+              type="password"
+              inputMode={hasPin && !hasPassword ? "numeric" : "text"}
+              autoComplete="current-password"
+              value={value}
+              onChange={event => setValue(event.target.value)}
+              placeholder={hasPassword && hasPin ? "رمز عبور یا PIN" : hasPin ? "PIN" : "رمز عبور"}
+            />
+          </label>
+          {error && <p className="form-error">{error}</p>}
+          <button className="button button-primary" type="submit" disabled={checking || !value}>
+            <LockKeyhole size={16} /> {checking ? "در حال بررسی…" : "ورود به کارگاه"}
+          </button>
+        </form>
+        <small className="muted-cell">این قفل محلی است و جایگزین احراز هویت سرور یا رمزگذاری فایل پشتیبان نیست.</small>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [state, setState] = useState<AppState>(() => loadState());
+  const [isUnlocked, setIsUnlocked] = useState(() =>
+    !hasLocalCredential(loadState().settings.security)
+  );
   const [activePage, setActivePage] = useState<PageId>("dashboard");
   const [mobileNav, setMobileNav] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
@@ -502,6 +578,15 @@ export default function Home() {
     setPastStates(items => [...items.slice(-49), state]);
     setState(saveState(next));
     setNotice("تغییر دوباره اعمال شد");
+  }
+
+  if (!isUnlocked) {
+    return (
+      <LocalLockScreen
+        security={state.settings.security}
+        onUnlock={() => setIsUnlocked(true)}
+      />
+    );
   }
 
   function handleExport() {
@@ -9182,6 +9267,73 @@ function SettingsPage({
   const [unitDraft, setUnitDraft] = useState("");
   const [editingUnit, setEditingUnit] = useState<string | null>(null);
   const [unitsOpen, setUnitsOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [securityNotice, setSecurityNotice] = useState("");
+  const [savingSecurity, setSavingSecurity] = useState(false);
+  const currentSecurity = state.settings.security;
+  async function saveSecurity() {
+    setSecurityNotice("");
+    if (!password && !pin) {
+      setSecurityNotice("برای تغییر، رمز عبور یا PIN جدید را وارد کنید.");
+      return;
+    }
+    if (password) {
+      const error = validatePassword(password);
+      if (error) {
+        setSecurityNotice(error);
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setSecurityNotice("تکرار رمز عبور با رمز اصلی یکسان نیست.");
+        return;
+      }
+    }
+    if (pin) {
+      const error = validatePin(pin);
+      if (error) {
+        setSecurityNotice(error);
+        return;
+      }
+      if (pin !== pinConfirm) {
+        setSecurityNotice("تکرار PIN با PIN اصلی یکسان نیست.");
+        return;
+      }
+    }
+    setSavingSecurity(true);
+    try {
+      const security = {
+        ...(currentSecurity || {}),
+        ...(password ? { password: await createCredential(password) } : {}),
+        ...(pin ? { pin: await createCredential(pin) } : {}),
+      };
+      onSave(
+        { ...state, settings: { ...state.settings, security } },
+        "تنظیمات قفل محلی ذخیره شد"
+      );
+      setPassword("");
+      setPasswordConfirm("");
+      setPin("");
+      setPinConfirm("");
+      setSecurityNotice("قفل محلی فعال شد؛ دفعهٔ بعد رمز یا PIN لازم است.");
+    } catch (error) {
+      setSecurityNotice(error instanceof Error ? error.message : "ذخیرهٔ قفل ناموفق بود");
+    } finally {
+      setSavingSecurity(false);
+    }
+  }
+  function removeSecurity(kind: "password" | "pin") {
+    const next = { ...(currentSecurity || {}) };
+    delete next[kind];
+    const security = next.password || next.pin ? next : undefined;
+    onSave(
+      { ...state, settings: { ...state.settings, security } },
+      kind === "password" ? "رمز عبور حذف شد" : "PIN حذف شد"
+    );
+    setSecurityNotice("روش انتخاب‌شده حذف شد.");
+  }
   function saveUnit() {
     const value = unitDraft.trim();
     if (!value) return;
@@ -9326,6 +9478,47 @@ function SettingsPage({
               </div>
             </div>
           )}
+        </div>
+        <div className="security-settings">
+          <div className="security-settings-heading">
+            <div className="settings-folder-icon"><LockKeyhole size={20} /></div>
+            <div>
+              <span className="section-kicker">حفاظت از دستگاه</span>
+              <h3>رمز عبور و PIN</h3>
+              <p>قفل محلی هنگام بازشدن برنامه فعال می‌شود. متن رمزها ذخیره نمی‌شود؛ فقط hash امن آن‌ها نگهداری می‌شود.</p>
+            </div>
+          </div>
+          <div className="security-status-row">
+            <span>وضعیت فعلی</span>
+            <strong>{hasLocalCredential(currentSecurity) ? "قفل محلی فعال است" : "بدون قفل محلی"}</strong>
+          </div>
+          <div className="settings-form security-form">
+            <label>
+              رمز عبور جدید
+              <input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} placeholder="حداقل ۸ نویسه" />
+            </label>
+            <label>
+              تکرار رمز عبور
+              <input type="password" autoComplete="new-password" value={passwordConfirm} onChange={event => setPasswordConfirm(event.target.value)} placeholder="تکرار رمز عبور" />
+            </label>
+            <label>
+              PIN جدید
+              <input type="password" inputMode="numeric" autoComplete="new-password" value={pin} onChange={event => setPin(event.target.value)} placeholder="۴ تا ۸ رقم" />
+            </label>
+            <label>
+              تکرار PIN
+              <input type="password" inputMode="numeric" autoComplete="new-password" value={pinConfirm} onChange={event => setPinConfirm(event.target.value)} placeholder="تکرار PIN" />
+            </label>
+          </div>
+          {securityNotice && <p className="form-error security-notice">{securityNotice}</p>}
+          <div className="security-actions">
+            <button className="button button-primary" type="button" onClick={() => void saveSecurity()} disabled={savingSecurity}>
+              <LockKeyhole size={16} /> {savingSecurity ? "در حال ذخیره…" : "ذخیره رمز و PIN"}
+            </button>
+            {currentSecurity?.password && <button className="button button-ghost" type="button" onClick={() => removeSecurity("password")}>حذف رمز عبور</button>}
+            {currentSecurity?.pin && <button className="button button-ghost" type="button" onClick={() => removeSecurity("pin")}>حذف PIN</button>}
+          </div>
+          <p className="muted-cell">این قابلیت قفل محلی همین مرورگر است؛ فایل backup رمزگذاری نمی‌شود و برای پرتال مشتری یا احراز هویت آنلاین استفاده نمی‌شود.</p>
         </div>
         <div className="form-actions">
           <button

@@ -412,6 +412,10 @@ export interface AppState {
     currency: string;
     dayBasis: number | "شمسی";
     units: string[];
+    security?: {
+      password?: { salt: string; hash: string; iterations: number };
+      pin?: { salt: string; hash: string; iterations: number };
+    };
   };
   people: Person[];
   products: Product[];

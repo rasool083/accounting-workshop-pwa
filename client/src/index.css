@@ -2208,6 +2208,70 @@ tr:last-child td {
   border-color: #75a99a;
   box-shadow: 0 0 0 3px rgba(117, 169, 154, 0.12);
 }
+.security-settings {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid #e3eeeb;
+}
+.security-settings-heading {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.security-settings-heading h3 {
+  margin: 2px 0 5px;
+  color: #304d48;
+  font-size: 16px;
+}
+.security-settings-heading p {
+  max-width: 620px;
+  margin: 0;
+  color: #77918c;
+  font-size: 11px;
+  line-height: 1.8;
+}
+.security-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f2f8f5;
+  color: #66817a;
+  font-size: 11px;
+}
+.security-status-row strong { color: #39775c; }
+.security-form { grid-template-columns: repeat(2, 1fr); margin-top: 16px; }
+.security-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.security-notice { margin: 12px 0 0; }
+.lock-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 15% 10%, #e6f4ef 0, transparent 35%), #f4f8f7;
+}
+.lock-card {
+  width: min(100%, 420px);
+  padding: 34px;
+  border: 1px solid #dcebe6;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(47, 83, 75, 0.12);
+  text-align: right;
+}
+.lock-card h1 { margin: 8px 0; color: #294a44; font-size: 25px; }
+.lock-card > p { color: #708982; font-size: 12px; line-height: 1.9; }
+.lock-form { display: grid; gap: 14px; margin-top: 22px; }
+.lock-form label { color: #58706b; font-size: 11px; font-weight: 700; }
+.lock-form input { display: block; width: 100%; margin-top: 7px; border: 1px solid #dce8e4; border-radius: 10px; padding: 12px; background: #fbfefd; color: #304d48; font: inherit; outline: none; }
+.lock-form input:focus { border-color: #75a99a; box-shadow: 0 0 0 3px rgba(117, 169, 154, 0.12); }
+.form-error { color: #b14d4b; font-size: 11px; line-height: 1.8; }
+.lock-form button { width: 100%; justify-content: center; }
+@media (max-width: 720px) {
+  .security-form { grid-template-columns: 1fr; }
+}
 @media (max-width: 720px) {
   .settings-form {
     grid-template-columns: 1fr;
