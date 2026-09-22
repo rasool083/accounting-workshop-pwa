@@ -83,6 +83,8 @@ import {
   refreshIssuedCheckStatuses,
   settleIssuedCheck,
   appendPurchasePaymentCashEvents,
+  releasePurchasePaymentsForInvoice,
+  purchasePaymentIdsExclusiveToInvoice,
 } from "@/lib/accounting";
 import {
   createGoogleDriveAdapter,
@@ -1371,6 +1373,9 @@ function Invoices({
   );
   function voidInvoice(invoice: AppState["invoices"][number]) {
     if (invoice.status === "باطل") return;
+    const released = invoice.type === "خرید"
+      ? releasePurchasePaymentsForInvoice(state, invoice.id)
+      : state;
     const products = state.products.map(product => {
       const movement = invoice.items
         .filter(item => item.productId === product.id)
@@ -1383,9 +1388,9 @@ function Invoices({
     });
     onSave(
       rebuildCheckAllocations({
-        ...state,
+        ...released,
         products,
-        invoices: state.invoices.map(item =>
+        invoices: released.invoices.map(item =>
           item.id === invoice.id ? { ...item, status: "باطل" as const } : item
         ),
       }),
@@ -1404,6 +1409,10 @@ function Invoices({
   function openEdit(invoice: AppState["invoices"][number]) {
     if (invoice.status === "باطل") return;
     setEditingInvoice(invoice);
+    const exclusivePaymentIds = purchasePaymentIdsExclusiveToInvoice(
+      state,
+      invoice.id
+    );
     setForm({
       number: invoice.number,
       type: invoice.type,
@@ -1422,7 +1431,11 @@ function Invoices({
       payments:
         invoice.type === "خرید"
           ? state.purchasePayments
-              .filter(payment => payment.supplierId === invoice.partyId)
+              .filter(
+                payment =>
+                  payment.supplierId === invoice.partyId &&
+                  exclusivePaymentIds.has(payment.id)
+              )
               .map(payment => ({
                 ...blankPayment,
                 method: payment.method,
@@ -1455,11 +1468,14 @@ function Invoices({
                 (invoice.type === "فروش" ? movement : -movement),
             };
           });
+    const released = invoice.type === "خرید"
+      ? releasePurchasePaymentsForInvoice(state, invoice.id)
+      : state;
     onSave(
       rebuildCheckAllocations({
-        ...state,
+        ...released,
         products,
-        invoices: state.invoices.filter(item => item.id !== invoice.id),
+        invoices: released.invoices.filter(item => item.id !== invoice.id),
       }),
       invoice.status === "باطل"
         ? `فاکتور باطل ${invoice.number} حذف شد`
@@ -1512,6 +1528,9 @@ function Invoices({
             : ("باز" as const),
       note: form.note,
     };
+    const releasedState = editingInvoice && editingInvoice.type === "خرید"
+      ? releasePurchasePaymentsForInvoice(state, editingInvoice.id)
+      : state;
     const products = state.products.map(product => {
       const oldMovement =
         editingInvoice?.items
@@ -1576,14 +1595,14 @@ function Invoices({
       )?.id,
     }));
     const invoices = editingInvoice
-      ? state.invoices.map(item =>
+      ? releasedState.invoices.map(item =>
           item.id === editingInvoice.id ? invoice : item
         )
-      : [invoice, ...state.invoices];
+      : [invoice, ...releasedState.invoices];
     const spentCheckIds = paymentRecordsWithIssuedChecks
       .filter(payment => payment.method === "چک مشتری" && payment.customerCheckId)
       .map(payment => payment.customerCheckId!);
-    const nextChecks = state.checks.map(check =>
+    const nextChecks = releasedState.checks.map(check =>
       spentCheckIds.includes(check.id)
         ? {
             ...check,
@@ -1597,23 +1616,17 @@ function Invoices({
     );
     const nextState = appendPurchasePaymentCashEvents(rebuildPurchasePayables(
       rebuildCheckAllocations({
-        ...state,
+        ...releasedState,
         products,
         invoices,
         checks: nextChecks,
         purchasePayments: editingInvoice
-          ? state.purchasePayments
-              .filter(payment =>
-                !state.purchasePayableAllocations.some(
-                  allocation => allocation.invoiceId === invoice.id && allocation.paymentId === payment.id
-                )
-              )
-              .concat(paymentRecordsWithIssuedChecks)
-          : [...state.purchasePayments, ...paymentRecordsWithIssuedChecks],
+          ? releasedState.purchasePayments.concat(paymentRecordsWithIssuedChecks)
+          : [...releasedState.purchasePayments, ...paymentRecordsWithIssuedChecks],
         issuedChecks: editingInvoice
-          ? state.issuedChecks.filter(check => check.purchaseInvoiceId !== invoice.id)
+          ? releasedState.issuedChecks.filter(check => check.purchaseInvoiceId !== invoice.id)
               .concat(issuedChecks as AppState["issuedChecks"])
-          : [...state.issuedChecks, ...issuedChecks as AppState["issuedChecks"]],
+          : [...releasedState.issuedChecks, ...issuedChecks as AppState["issuedChecks"]],
       })
     ));
     onSave(

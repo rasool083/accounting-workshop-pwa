@@ -2028,32 +2028,115 @@ export function releasePurchasePayment(state: AppState, paymentId: string) {
       ? { ...check, status: "نزد ما" as const, spentForPaymentId: undefined, spentToPartyId: undefined }
       : check
   );
+  const cashReversals = state.cashEvents
+    .filter(
+      event =>
+        event.sourceType === "purchase_payment" &&
+        event.sourceId === paymentId &&
+        !state.cashEvents.some(
+          reversal => reversal.reversalOf === event.id
+        )
+    )
+    .map(event => ({
+      id: createId("cash-reversal"),
+      at: new Date().toISOString(),
+      date: todayJalali(),
+      kind: "reversal" as const,
+      accountId: event.accountId,
+      amount: event.amount,
+      currency: event.currency,
+      sourceType: "purchase_payment_reversal",
+      sourceId: paymentId,
+      reversalOf: event.id,
+      note: `معکوس‌سازی پرداخت خرید ${paymentId}`,
+    }));
+  const issuedCheck = payment.issuedCheckId
+    ? state.issuedChecks.find(check => check.id === payment.issuedCheckId)
+    : undefined;
+  const partnerEvents = issuedCheck
+    ? state.partnerObligationEvents.some(
+        event =>
+          event.issuedCheckId === issuedCheck.id &&
+          event.kind === "reversal" &&
+          event.reversalOf ===
+            state.partnerObligationEvents.find(
+              due => due.issuedCheckId === issuedCheck.id && due.kind === "due"
+            )?.id
+      )
+      ? state.partnerObligationEvents
+      : [
+          ...state.partnerObligationEvents,
+          ...(state.partnerObligationEvents
+            .filter(event => event.issuedCheckId === issuedCheck.id && event.kind === "due")
+            .map(event => ({
+              id: createId("partner-obligation"),
+              issuedCheckId: issuedCheck.id,
+              partnerId: issuedCheck.issuerPartyId,
+              date: todayJalali(),
+              kind: "reversal" as const,
+              amount: -event.amount,
+              reversalOf: event.id,
+              note: `معکوس‌سازی تعهد چک شریک ${issuedCheck.number}`,
+            }))),
+        ]
+    : state.partnerObligationEvents;
   return rebuildPurchasePayables({
     ...state,
     checks,
     purchasePayments: state.purchasePayments.filter(item => item.id !== paymentId),
-    cashEvents: [
-      ...state.cashEvents,
-      ...state.cashEvents
-        .filter(event => event.sourceType === "purchase_payment" && event.sourceId === paymentId)
-        .map(event => ({
-          id: createId("cash-reversal"),
-          at: new Date().toISOString(),
-          date: todayJalali(),
-          kind: "reversal" as const,
-          accountId: event.accountId,
-          amount: event.amount,
-          currency: event.currency,
-          sourceType: "purchase_payment_reversal",
-          sourceId: paymentId,
-          reversalOf: event.id,
-          note: `معکوس‌سازی پرداخت خرید ${paymentId}`,
-        })),
-    ],
+    cashEvents: [...state.cashEvents, ...cashReversals],
     issuedChecks: payment.issuedCheckId
       ? state.issuedChecks.map(check => check.id === payment.issuedCheckId ? { ...check, status: "باطل" as const } : check)
       : state.issuedChecks,
+    partnerObligationEvents: partnerEvents,
   });
+}
+
+/**
+ * Releases only payments whose FIFO allocations belong exclusively to one
+ * invoice. A payment shared by multiple supplier invoices is retained so an
+ * edit or deletion cannot silently disturb the other invoices.
+ */
+export function releasePurchasePaymentsForInvoice(
+  state: AppState,
+  invoiceId: string
+): AppState {
+  const allocations = state.purchasePayableAllocations.filter(
+    allocation => allocation.invoiceId === invoiceId
+  );
+  const paymentIds = new Set(
+    allocations
+      .filter(allocation =>
+        state.purchasePayableAllocations.every(
+          other =>
+            other.paymentId !== allocation.paymentId ||
+            other.invoiceId === invoiceId
+        )
+      )
+      .map(allocation => allocation.paymentId)
+  );
+  return Array.from(paymentIds).reduce(
+    (current, paymentId) => releasePurchasePayment(current, paymentId),
+    state
+  );
+}
+
+export function purchasePaymentIdsExclusiveToInvoice(
+  state: AppState,
+  invoiceId: string
+): Set<string> {
+  return new Set(
+    state.purchasePayableAllocations
+      .filter(allocation => allocation.invoiceId === invoiceId)
+      .filter(allocation =>
+        state.purchasePayableAllocations.every(
+          other =>
+            other.paymentId !== allocation.paymentId ||
+            other.invoiceId === invoiceId
+        )
+      )
+      .map(allocation => allocation.paymentId)
+  );
 }
 
 export function appendPurchasePaymentCashEvents(state: AppState): AppState {

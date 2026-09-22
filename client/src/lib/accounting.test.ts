@@ -24,6 +24,8 @@ import {
   settleIssuedCheck,
   appendPurchasePaymentCashEvents,
   unitConversionToBase,
+  releasePurchasePaymentsForInvoice,
+  purchasePaymentIdsExclusiveToInvoice,
 } from "./accounting";
 
 describe("unit conversion", () => {
@@ -256,6 +258,52 @@ describe("FIFO settlement balances", () => {
     expect(appendPurchasePaymentCashEvents(withEvent).cashEvents.filter(event => event.sourceType === "purchase_payment")).toHaveLength(1);
     const released = releasePurchasePayment(withEvent, "payment-cash");
     expect(released.cashEvents.at(-1)).toEqual(expect.objectContaining({ kind: "reversal", reversalOf: paymentEvents[0].id, amount: 250 }));
+  });
+
+  it("releases an invoice-only purchase payment but preserves a payment shared by invoices", () => {
+    const state = normalizeState({
+      invoices: [
+        { id: "buy-a", number: "A", type: "خرید", date: "1405/01/01", partyId: "supplier", items: [], allocations: [], amount: 100, paidAmount: 50, status: "تسویه جزئی", note: "" },
+        { id: "buy-b", number: "B", type: "خرید", date: "1405/01/02", partyId: "supplier", items: [], allocations: [], amount: 100, paidAmount: 50, status: "تسویه جزئی", note: "" },
+      ],
+      purchasePayments: [
+        { id: "shared", supplierId: "supplier", amount: 100, date: "1405/01/03", method: "نقدی", accountId: "bank", note: "" },
+        { id: "exclusive", supplierId: "supplier", amount: 50, date: "1405/01/04", method: "نقدی", accountId: "bank", note: "" },
+      ],
+      purchasePayableAllocations: [
+        { id: "alloc-1", paymentId: "shared", invoiceId: "buy-a", amount: 50, allocatedAt: "now" },
+        { id: "alloc-2", paymentId: "shared", invoiceId: "buy-b", amount: 50, allocatedAt: "now" },
+        { id: "alloc-3", paymentId: "exclusive", invoiceId: "buy-a", amount: 50, allocatedAt: "now" },
+      ],
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 150 }],
+      cashEvents: [
+        { id: "cash-shared", at: "now", date: "1405/01/03", kind: "payment", accountId: "bank", amount: -100, currency: "تومان", sourceType: "purchase_payment", sourceId: "shared", note: "" },
+        { id: "cash-exclusive", at: "now", date: "1405/01/04", kind: "payment", accountId: "bank", amount: -50, currency: "تومان", sourceType: "purchase_payment", sourceId: "exclusive", note: "" },
+      ],
+    });
+    expect(purchasePaymentIdsExclusiveToInvoice(state, "buy-a")).toEqual(new Set(["exclusive"]));
+    const released = releasePurchasePaymentsForInvoice(state, "buy-a");
+    const afterDelete = rebuildPurchasePayables({
+      ...released,
+      invoices: released.invoices.filter(invoice => invoice.id !== "buy-a"),
+    });
+    expect(afterDelete.purchasePayments.map(item => item.id)).toEqual(["shared"]);
+    expect(afterDelete.cashEvents.filter(item => item.kind === "reversal")).toHaveLength(1);
+    expect(afterDelete.cashEvents.filter(item => item.reversalOf === "cash-exclusive")).toHaveLength(1);
+    expect(afterDelete.purchasePayableAllocations).toEqual([
+      expect.objectContaining({ paymentId: "shared", invoiceId: "buy-b", amount: 100 }),
+    ]);
+  });
+
+  it("does not duplicate a cash reversal when an exclusive payment is released twice", () => {
+    const state = normalizeState({
+      purchasePayments: [{ id: "payment-once", supplierId: "supplier", amount: 10, date: "1405/01/01", method: "نقدی", accountId: "bank", note: "" }],
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 0 }],
+      cashEvents: [{ id: "cash-once", at: "now", date: "1405/01/01", kind: "payment", accountId: "bank", amount: -10, currency: "تومان", sourceType: "purchase_payment", sourceId: "payment-once", note: "" }],
+    });
+    const once = releasePurchasePayment(state, "payment-once");
+    const twice = releasePurchasePayment(once, "payment-once");
+    expect(twice.cashEvents.filter(item => item.reversalOf === "cash-once")).toHaveLength(1);
   });
 });
 
