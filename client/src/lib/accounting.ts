@@ -2032,10 +2032,55 @@ export function releasePurchasePayment(state: AppState, paymentId: string) {
     ...state,
     checks,
     purchasePayments: state.purchasePayments.filter(item => item.id !== paymentId),
+    cashEvents: [
+      ...state.cashEvents,
+      ...state.cashEvents
+        .filter(event => event.sourceType === "purchase_payment" && event.sourceId === paymentId)
+        .map(event => ({
+          id: createId("cash-reversal"),
+          at: new Date().toISOString(),
+          date: todayJalali(),
+          kind: "reversal" as const,
+          accountId: event.accountId,
+          amount: event.amount,
+          currency: event.currency,
+          sourceType: "purchase_payment_reversal",
+          sourceId: paymentId,
+          reversalOf: event.id,
+          note: `معکوس‌سازی پرداخت خرید ${paymentId}`,
+        })),
+    ],
     issuedChecks: payment.issuedCheckId
       ? state.issuedChecks.map(check => check.id === payment.issuedCheckId ? { ...check, status: "باطل" as const } : check)
       : state.issuedChecks,
   });
+}
+
+export function appendPurchasePaymentCashEvents(state: AppState): AppState {
+  const existing = new Set(
+    state.cashEvents
+      .filter(event => event.sourceType === "purchase_payment")
+      .map(event => event.sourceId)
+  );
+  const events = state.purchasePayments
+    .filter(payment =>
+      (payment.method === "نقدی" || payment.method === "حساب داخلی") &&
+      payment.accountId &&
+      !existing.has(payment.id)
+    )
+    .map(payment => ({
+      id: createId("cash-payment"),
+      at: new Date().toISOString(),
+      date: payment.date,
+      kind: "payment" as const,
+      accountId: payment.accountId!,
+      amount: payment.amount,
+      currency: state.settings.currency,
+      sourceType: "purchase_payment",
+      sourceId: payment.id,
+      note: `پرداخت خرید به تأمین‌کننده ${payment.supplierId}`,
+    }));
+  return events.length ? { ...state, cashEvents: [...state.cashEvents, ...events] } : state;
 }
 
 export function calculateLateProfit(

@@ -22,6 +22,7 @@ import {
   refreshIssuedCheckStatuses,
   releasePurchasePayment,
   settleIssuedCheck,
+  appendPurchasePaymentCashEvents,
   unitConversionToBase,
 } from "./accounting";
 
@@ -241,6 +242,20 @@ describe("FIFO settlement balances", () => {
     expect(released.checks[0].status).toBe("نزد ما");
     expect(released.purchasePayments).toHaveLength(0);
     expect(released.invoices[0].status).toBe("باز");
+  });
+
+  it("records cash payment events once and reverses them when released", () => {
+    const state = normalizeState({
+      accounts: [{ id: "bank-1", name: "بانک", type: "بانک", balance: 0 }],
+      purchasePayments: [{ id: "payment-cash", supplierId: "supplier", amount: 250, date: "1405/02/01", method: "نقدی", accountId: "bank-1", note: "" }],
+    });
+    const withEvent = appendPurchasePaymentCashEvents(state);
+    const paymentEvents = withEvent.cashEvents.filter(event => event.sourceType === "purchase_payment");
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0]).toEqual(expect.objectContaining({ kind: "payment", accountId: "bank-1", amount: 250 }));
+    expect(appendPurchasePaymentCashEvents(withEvent).cashEvents.filter(event => event.sourceType === "purchase_payment")).toHaveLength(1);
+    const released = releasePurchasePayment(withEvent, "payment-cash");
+    expect(released.cashEvents.at(-1)).toEqual(expect.objectContaining({ kind: "reversal", reversalOf: paymentEvents[0].id, amount: 250 }));
   });
 });
 
