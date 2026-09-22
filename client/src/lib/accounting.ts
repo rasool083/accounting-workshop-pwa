@@ -1095,6 +1095,20 @@ export function formatNumber(value: number) {
   return new Intl.NumberFormat("fa-IR").format(value || 0);
 }
 
+/**
+ * Calculates the invoice amount after discount. A fully discounted invoice is
+ * valid and intentionally returns zero; callers should validate the subtotal,
+ * not the final amount, when deciding whether the invoice has content.
+ */
+export function calculateInvoiceAmount(subtotal: number, discount: number) {
+  const safeSubtotal = Math.max(0, Number(subtotal) || 0);
+  const safeDiscount = Math.min(
+    safeSubtotal,
+    Math.max(0, Number(discount) || 0)
+  );
+  return Math.max(0, safeSubtotal - safeDiscount);
+}
+
 const STANDARD_UNIT_FACTORS: Record<string, number> = {
   میلی‌گرم: 0.000001,
   "میلی گرم": 0.000001,

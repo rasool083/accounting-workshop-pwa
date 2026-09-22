@@ -27,7 +27,19 @@ import {
   releasePurchasePaymentsForInvoice,
   purchasePaymentIdsExclusiveToInvoice,
   cashAccountReconciliation,
+  calculateInvoiceAmount,
 } from "./accounting";
+
+describe("invoice totals", () => {
+  it("allows a full discount without rejecting the invoice", () => {
+    expect(calculateInvoiceAmount(100_000, 100_000)).toBe(0);
+    expect(calculateInvoiceAmount(100_000, 120_000)).toBe(0);
+  });
+
+  it("does not allow a negative discount to increase the invoice", () => {
+    expect(calculateInvoiceAmount(100_000, -10_000)).toBe(100_000);
+  });
+});
 
 describe("unit conversion", () => {
   const massProduct = {

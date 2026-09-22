@@ -53,6 +53,7 @@ import {
   formatDate,
   formatMoney,
   formatNumber,
+  calculateInvoiceAmount,
   importPayload,
   loadState,
   navItems,
@@ -1375,11 +1376,9 @@ function Invoices({
         conversionRate
     );
   }, 0);
-  const discount = Math.min(
-    subtotal,
-    Number(form.discount.replace(/[^0-9.-]/g, "")) || 0
-  );
-  const calculatedAmount = Math.max(0, subtotal - discount);
+  const discountInput = Number(form.discount.replace(/[^0-9.-]/g, "")) || 0;
+  const discount = Math.min(subtotal, Math.max(0, discountInput));
+  const calculatedAmount = calculateInvoiceAmount(subtotal, discount);
   const purchasePaymentTotal = form.payments.reduce(
     (sum, payment) => sum + (Number(payment.amount.replace(/[^0-9.-]/g, "")) || 0),
     0
@@ -1498,7 +1497,7 @@ function Invoices({
   }
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!calculatedAmount) return;
+    if (subtotal <= 0) return;
     const items = form.items.map(row => {
       const product = state.products.find(item => item.id === row.productId);
       const quantity = Number(row.quantity) || 0;
