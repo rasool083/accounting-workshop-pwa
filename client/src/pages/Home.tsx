@@ -108,6 +108,7 @@ import {
   type RestoreSnapshot,
 } from "@/lib/backup";
 import { loadVendorDirectory, saveVendorDirectory } from "@/lib/vendorDirectory";
+import { BUILD_IDENTITY, buildIdentityLabel } from "@/lib/buildIdentity";
 import VendorDirectory from "@/pages/VendorDirectory";
 
 const iconMap = {
@@ -816,6 +817,14 @@ export default function Home() {
               <strong>ذخیره‌سازی محلی</strong>
               <small>اطلاعات روی همین دستگاه</small>
             </div>
+          </div>
+          <div
+            className="build-identity"
+            title={`منبع: ${BUILD_IDENTITY.repository} · شاخه: ${BUILD_IDENTITY.branch}`}
+            data-build-identity={BUILD_IDENTITY.repository}
+          >
+            <strong>{BUILD_IDENTITY.sourceLabel}</strong>
+            <small>{buildIdentityLabel()}</small>
           </div>
           <button
             className="settings-link"

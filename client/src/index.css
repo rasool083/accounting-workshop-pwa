@@ -267,6 +267,32 @@ select:focus-visible {
   display: block;
   margin-top: 3px;
 }
+.build-identity {
+  margin: 0 10px 12px;
+  padding: 8px 9px;
+  border: 1px solid rgba(128, 209, 166, 0.2);
+  border-radius: 9px;
+  background: rgba(128, 209, 166, 0.06);
+  direction: rtl;
+}
+.build-identity strong,
+.build-identity small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.build-identity strong {
+  color: #b9e6ce;
+  font-size: 10px;
+}
+.build-identity small {
+  margin-top: 3px;
+  color: #73958f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  direction: rtl;
+}
 .settings-link {
   display: flex;
   align-items: center;

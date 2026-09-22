@@ -1,12 +1,17 @@
 import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
 const PROJECT_ROOT = import.meta.dirname;
+const BUILD_COMMIT = process.env.VITE_BUILD_COMMIT || execSync("git rev-parse --short HEAD", {
+  cwd: PROJECT_ROOT,
+  encoding: "utf8",
+}).trim();
 const LOG_DIR = path.join(PROJECT_ROOT, ".manus-logs");
 const MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
 const TRIM_TARGET_BYTES = Math.floor(MAX_LOG_SIZE_BYTES * 0.6);
@@ -21,6 +26,9 @@ function vitePluginStorageProxy(): Plugin { return { name: "manus-storage-proxy"
 const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy()];
 export default defineConfig({
   base: process.env.GITHUB_ACTIONS ? "/accounting-workshop-pwa/" : "/",
+  define: {
+    "import.meta.env.VITE_BUILD_COMMIT": JSON.stringify(BUILD_COMMIT),
+  },
   plugins,
   resolve: {
     alias: {
