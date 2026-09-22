@@ -6,6 +6,17 @@ export type DriveBackupFile = {
   size?: string;
 };
 
+/**
+ * Both naming contracts are intentionally accepted during the transition:
+ * the old long prefix and the current short `backup-YYYY-MM-DD-NNN.json` name.
+ */
+export const BACKUP_FILENAME_MARKER = "backup";
+
+export function isBackupFilename(name: string) {
+  const normalized = name.trim().toLowerCase();
+  return normalized.includes(BACKUP_FILENAME_MARKER) && normalized.endsWith(".json");
+}
+
 export type GoogleDriveAdapter = {
   listBackups: () => Promise<DriveBackupFile[]>;
   uploadBackup: (filename: string, payload: string) => Promise<DriveBackupFile>;
@@ -154,7 +165,7 @@ export function createGoogleDriveAdapter(
   return {
     async listBackups() {
       const params = new URLSearchParams({
-        q: `${q}trashed = false and name contains 'accounting-workshop-backup'`,
+        q: `${q}trashed = false and mimeType = 'application/json' and name contains 'backup'`,
         pageSize: "100",
         orderBy: "modifiedTime desc",
         fields: "files(id,name,mimeType,modifiedTime,size)",
@@ -165,7 +176,7 @@ export function createGoogleDriveAdapter(
       );
       if (!response.ok) throw new Error(`Google Drive: ${response.status}`);
       const data = (await response.json()) as { files?: DriveBackupFile[] };
-      return data.files || [];
+      return (data.files || []).filter(file => isBackupFilename(file.name));
     },
     async uploadBackup(filename, payload) {
       const metadata = {
