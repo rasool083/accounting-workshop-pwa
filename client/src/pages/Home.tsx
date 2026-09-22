@@ -7506,6 +7506,45 @@ function Reports({
     link.click();
     URL.revokeObjectURL(url);
   }
+  const supplierReport = useMemo(() => {
+    return state.people
+      .filter(person => person.roles?.includes("تأمین‌کننده") || person.type === "تأمین‌کننده")
+      .map(supplier => {
+        const invoices = state.invoices.filter(
+          invoice => invoice.type === "خرید" && invoice.status !== "باطل" && invoice.partyId === supplier.id
+        );
+        const payments = state.purchasePayments.filter(payment => payment.supplierId === supplier.id);
+        const invoiceTotal = invoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+        const paymentTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
+        return {
+          supplier,
+          invoiceTotal,
+          paymentTotal,
+          payable: Math.max(0, invoiceTotal - paymentTotal),
+          credit: Math.max(0, paymentTotal - invoiceTotal),
+          invoiceCount: invoices.length,
+          paymentCount: payments.length,
+        };
+      })
+      .filter(row => row.invoiceTotal || row.paymentTotal)
+      .sort((a, b) => b.payable + b.credit - (a.payable + a.credit));
+  }, [state]);
+  const partnerObligationReport = useMemo(() => {
+    return state.people
+      .filter(person => person.roles?.includes("شریک") || person.type === "شریک")
+      .map(partner => {
+        const checks = state.issuedChecks.filter(check => check.issuerPartyId === partner.id);
+        const events = state.partnerObligationEvents.filter(event => event.partnerId === partner.id);
+        const issuedTotal = checks.reduce((sum, check) => sum + check.amount, 0);
+        const dueTotal = events.filter(event => event.kind === "due").reduce((sum, event) => sum + event.amount, 0);
+        const paidTotal = events.filter(event => event.kind === "paid").reduce((sum, event) => sum + event.amount, 0);
+        const returnedTotal = events.filter(event => event.kind === "returned").reduce((sum, event) => sum + event.amount, 0);
+        const outstanding = Math.max(0, dueTotal - paidTotal);
+        return { partner, checks, issuedTotal, dueTotal, paidTotal, returnedTotal, outstanding };
+      })
+      .filter(row => row.issuedTotal || row.dueTotal)
+      .sort((a, b) => b.outstanding - a.outstanding);
+  }, [state]);
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -7610,6 +7649,40 @@ function Reports({
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+      <div className="report-grid">
+        <div className="panel table-panel">
+          <div className="panel-heading">
+            <div><span className="section-kicker">حساب تأمین‌کنندگان</span><h3>فاکتور، پرداخت و مانده</h3></div>
+            <span className="soft-tag">تسویهٔ آزاد با FIFO</span>
+          </div>
+          <div className="table-wrap"><table>
+            <thead><tr><th>تأمین‌کننده</th><th>فاکتور خرید</th><th>پرداخت‌ها</th><th>مانده بدهی</th><th>پیش‌پرداخت</th></tr></thead>
+            <tbody>{supplierReport.length ? supplierReport.map(row => <tr key={row.supplier.id}>
+              <td><strong>{row.supplier.name}</strong><small className="muted-cell">{row.invoiceCount} فاکتور · {row.paymentCount} پرداخت</small></td>
+              <td>{formatMoney(row.invoiceTotal, state.settings.currency)}</td>
+              <td>{formatMoney(row.paymentTotal, state.settings.currency)}</td>
+              <td className="amount-negative">{formatMoney(row.payable, state.settings.currency)}</td>
+              <td className="amount-positive">{formatMoney(row.credit, state.settings.currency)}</td>
+            </tr>) : <tr><td colSpan={5}>برای تأمین‌کنندگان فاکتور یا پرداختی ثبت نشده است.</td></tr>}</tbody>
+          </table></div>
+        </div>
+        <div className="panel table-panel">
+          <div className="panel-heading">
+            <div><span className="section-kicker">تعهدات شرکا</span><h3>چک‌های صادرشده و وضعیت تعهد</h3></div>
+            <span className="soft-tag">رویدادمحور</span>
+          </div>
+          <div className="table-wrap"><table>
+            <thead><tr><th>شریک</th><th>کل چک‌ها</th><th>سررسید ثبت‌شده</th><th>پرداخت</th><th>تعهد باز</th></tr></thead>
+            <tbody>{partnerObligationReport.length ? partnerObligationReport.map(row => <tr key={row.partner.id}>
+              <td><strong>{row.partner.name}</strong><small className="muted-cell">{row.checks.length} چک</small></td>
+              <td>{formatMoney(row.issuedTotal, state.settings.currency)}</td>
+              <td>{formatMoney(row.dueTotal, state.settings.currency)}</td>
+              <td>{formatMoney(row.paidTotal, state.settings.currency)}</td>
+              <td className={row.outstanding ? "amount-negative" : "amount-positive"}>{formatMoney(row.outstanding, state.settings.currency)}</td>
+            </tr>) : <tr><td colSpan={5}>برای شرکا چک صادرشده‌ای ثبت نشده است.</td></tr>}</tbody>
+          </table></div>
         </div>
       </div>
       <section className="metric-grid profit-metric-grid">
