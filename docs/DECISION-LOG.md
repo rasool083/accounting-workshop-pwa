@@ -418,3 +418,10 @@ APK release تا اجرای unified backup، restore staged/atomic، OAuth nativ
 هیچ backup معتبر قبل از parse کامل، تطبیق manifest و کنترل checksum روی دفتر زنده اعمال نمی‌شود. برای هر restore موفق، وضعیت فعلی پیش از commit به‌عنوان snapshot محلی در کلید versioned نگهداری می‌شود و سه snapshot اخیر حفظ می‌شوند.
 
 checksum فعلی یک marker قطعی برای کشف خرابی یا تغییر تصادفی فایل است؛ رمزنگاری، امضای دیجیتال یا اثبات مالکیت نیست. برای APK و حفاظت در برابر مهاجم، encryption و مدیریت کلید در فاز native جداگانه لازم است.
+
+
+## ۱۴۰۵/۰۷/۰۱ — مدیریت snapshotهای rollback در رابط کاربری
+
+snapshotهای پیش از restore اکنون در همان صفحهٔ پشتیبان و بازیابی قابل مشاهده‌اند. بازیابی و حذف هر snapshot نیازمند تأیید کاربر است. بازیابی snapshot نیز مانند هر restore دیگر، ابتدا snapshot وضعیت فعلی را می‌سازد و سپس از مسیر validation، migration و rebuild موجود عبور می‌کند.
+
+snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive محل backupهای انتخابی کاربر است و snapshot rollback دستگاه بخشی از دادهٔ حساس محلی محسوب می‌شود. در فاز native آینده، نگهداری آن باید با secure storage/encryption بررسی شود.

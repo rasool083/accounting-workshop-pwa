@@ -231,3 +231,10 @@ fixture یکپارچهٔ عملیات در تست هسته اضافه و تأی�
 پیش از restore از فایل، متن یا Google Drive، payload واردشده کامل validate می‌شود. unified backup دارای checksum sectionهای حسابداری و تأمین‌کنندگان و manifest شمارنده است؛ دادهٔ دستکاری‌شده یا ناقص قبل از تغییر state رد می‌شود. پس از validation و پیش از commit، snapshot فعلی در localStorage ذخیره می‌شود و حداکثر سه نسخه نگه داشته می‌شود.
 
 این snapshot هنوز UI بازیابی مستقل ندارد و checksum رمزنگاری نیست. گام بعدی پیشنهادی: صفحهٔ مدیریت snapshotهای محلی و سپس encryption/secure storage در APK.
+
+
+## ۱۴۰۵/۰۷/۰۱ — تکمیل مدیریت snapshotهای محلی
+
+صفحهٔ پشتیبان و بازیابی فهرست snapshotهای محلی را با تاریخ، ساعت و حجم نشان می‌دهد. عملیات بازیابی و حذف با تأیید انجام می‌شود. Home پس از ایجاد snapshot یا حذف آن فهرست را تازه می‌کند. مسیر restore snapshot از همان checksum، manifest، migration و rebuild حسابداری استفاده می‌کند.
+
+اعتبارسنجی نهایی: ۴۵ تست موفق، type-check، build و diff check. گام بعدی پیشنهادی، آزمون اجرایی UI در preview و سپس طراحی صف backup برای APK است.

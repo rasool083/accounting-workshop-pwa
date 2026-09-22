@@ -100,9 +100,12 @@ import {
   type DriveBackupFile,
 } from "@/lib/googleDrive";
 import {
+  deleteRestoreSnapshot,
   exportUnifiedPayload,
   importUnifiedPayload,
+  listRestoreSnapshots,
   saveRestoreSnapshot,
+  type RestoreSnapshot,
 } from "@/lib/backup";
 import { loadVendorDirectory, saveVendorDirectory } from "@/lib/vendorDirectory";
 import VendorDirectory from "@/pages/VendorDirectory";
@@ -407,6 +410,7 @@ export default function Home() {
     LAST_VERIFIED_BACKUP,
   ]);
   const [driveLoading, setDriveLoading] = useState(false);
+  const [snapshotRevision, setSnapshotRevision] = useState(0);
   const [driveClientId, setDriveClientIdState] = useState(() =>
     getDriveClientId()
   );
@@ -528,6 +532,7 @@ export default function Home() {
   function applyImportedBackup(payload: string, message: string, action: string) {
     const imported = importAndRepairAllocations(payload);
     saveRestoreSnapshot(exportUnifiedPayload(state, loadVendorDirectory()));
+    setSnapshotRevision(current => current + 1);
     if (imported.vendorDirectory) saveVendorDirectory(imported.vendorDirectory);
     commitState(imported.state, message, action);
     return imported.unified;
@@ -565,6 +570,33 @@ export default function Home() {
         error instanceof Error ? error.message : "متن پشتیبان معتبر نیست"
       );
     }
+  }
+
+  function handleRestoreSnapshot(snapshot: RestoreSnapshot) {
+    if (
+      !window.confirm(
+        "وضعیت فعلی با snapshot محلی جایگزین شود؟ پیش از این کار یک snapshot جدید از وضعیت فعلی ساخته می‌شود."
+      )
+    )
+      return;
+    try {
+      applyImportedBackup(
+        snapshot.payload,
+        `بازیابی از snapshot محلی ${formatDate(snapshot.createdAt.slice(0, 10))}`,
+        "RESTORE_LOCAL_SNAPSHOT"
+      );
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "بازیابی snapshot ناموفق بود"
+      );
+    }
+  }
+
+  function handleDeleteSnapshot(snapshot: RestoreSnapshot) {
+    if (!window.confirm("این snapshot محلی حذف شود؟")) return;
+    deleteRestoreSnapshot(snapshot.id);
+    setSnapshotRevision(current => current + 1);
+    setNotice("snapshot محلی حذف شد");
   }
 
   function handleClearAll() {
@@ -941,6 +973,9 @@ export default function Home() {
               onDriveRefresh={handleDriveRefresh}
               driveClientId={driveClientId}
               onDriveConnect={handleDriveConnect}
+              snapshotRevision={snapshotRevision}
+              onRestoreSnapshot={handleRestoreSnapshot}
+              onDeleteSnapshot={handleDeleteSnapshot}
             />
           )}
           {activePage === "settings" && (
@@ -9326,6 +9361,9 @@ function BackupPage({
   onDriveRefresh,
   driveClientId,
   onDriveConnect,
+  snapshotRevision,
+  onRestoreSnapshot,
+  onDeleteSnapshot,
 }: {
   state: AppState;
   onExport: () => void;
@@ -9339,6 +9377,9 @@ function BackupPage({
   onDriveRefresh: () => void;
   driveClientId: string;
   onDriveConnect: (clientId: string) => void;
+  snapshotRevision: number;
+  onRestoreSnapshot: (snapshot: RestoreSnapshot) => void;
+  onDeleteSnapshot: (snapshot: RestoreSnapshot) => void;
 }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -9348,6 +9389,12 @@ function BackupPage({
     "newest"
   );
   const [clientIdDraft, setClientIdDraft] = useState(driveClientId);
+  const [snapshots, setSnapshots] = useState<RestoreSnapshot[]>(() =>
+    listRestoreSnapshots()
+  );
+  useEffect(() => {
+    setSnapshots(listRestoreSnapshots());
+  }, [snapshotRevision]);
   const recordCount =
     state.people.length +
     state.products.length +
@@ -9445,6 +9492,53 @@ function BackupPage({
             >
               اعتبارسنجی و بازیابی متن
             </button>
+          </div>
+          <div className="local-snapshots-box">
+            <div className="panel-heading">
+              <div>
+                <span className="section-kicker">Rollback points</span>
+                <h3>snapshotهای محلی پیش از بازیابی</h3>
+              </div>
+              <span className="soft-tag">{formatNumber(snapshots.length)} نسخه</span>
+            </div>
+            <p className="muted-cell">
+              قبل از هر بازیابی موفق، وضعیت قبلی اینجا نگهداری می‌شود. snapshotها
+              فقط روی همین دستگاه هستند و به Google Drive ارسال نمی‌شوند.
+            </p>
+            {snapshots.length ? (
+              <div className="local-snapshot-list">
+                {snapshots.map(snapshot => (
+                  <div className="local-snapshot-row" key={snapshot.id}>
+                    <div>
+                      <strong>{formatDate(snapshot.createdAt.slice(0, 10))}</strong>
+                      <small>
+                        {new Date(snapshot.createdAt).toLocaleTimeString("fa-IR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })} · {formatNumber(snapshot.size)} بایت
+                      </small>
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        className="button button-primary button-small"
+                        onClick={() => onRestoreSnapshot(snapshot)}
+                      >
+                        بازیابی
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        title="حذف snapshot"
+                        onClick={() => onDeleteSnapshot(snapshot)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <small className="drive-empty">هنوز snapshot پیش از بازیابی ساخته نشده است.</small>
+            )}
           </div>
           <div className="danger-zone">
             <div>

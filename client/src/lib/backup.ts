@@ -72,6 +72,40 @@ export function checksumJson(value: unknown) {
 
 const RESTORE_SNAPSHOT_KEY = "accounting-workshop-pwa:restore-snapshots:v1";
 
+export type RestoreSnapshot = {
+  id: string;
+  createdAt: string;
+  payload: string;
+  size: number;
+};
+
+export function listRestoreSnapshots(): RestoreSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed: unknown = JSON.parse(
+      localStorage.getItem(RESTORE_SNAPSHOT_KEY) || "[]"
+    );
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        item =>
+          item &&
+          typeof item === "object" &&
+          typeof item.id === "string" &&
+          typeof item.createdAt === "string" &&
+          typeof item.payload === "string"
+      )
+      .map(item => ({
+        id: item.id,
+        createdAt: item.createdAt,
+        payload: item.payload,
+        size: item.payload.length,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 /** Keep a short local rollback trail; this is intentionally not uploaded automatically. */
 export function saveRestoreSnapshot(payload: string) {
   if (typeof window === "undefined") return;
@@ -83,15 +117,21 @@ export function saveRestoreSnapshot(payload: string) {
     localStorage.setItem(
       RESTORE_SNAPSHOT_KEY,
       JSON.stringify(
-        [{ createdAt: new Date().toISOString(), payload }, ...snapshots].slice(
-          0,
-          3
-        )
+        [
+          { id: createBackupId(), createdAt: new Date().toISOString(), payload },
+          ...snapshots,
+        ].slice(0, 3)
       )
     );
   } catch {
     // A blocked or full localStorage must not make a valid restore impossible.
   }
+}
+
+export function deleteRestoreSnapshot(id: string) {
+  if (typeof window === "undefined") return;
+  const next = listRestoreSnapshots().filter(snapshot => snapshot.id !== id);
+  localStorage.setItem(RESTORE_SNAPSHOT_KEY, JSON.stringify(next));
 }
 
 function assertCollectionCounts(
