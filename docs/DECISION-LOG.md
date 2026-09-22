@@ -393,3 +393,12 @@ APK مالک کارگاه یک wrapper برای نسخهٔ local-first است و
 
 
 در پی آزمون regression، قرارداد مقایسه دقیق‌تر شد: quotation مبنا جدیدترین رکورد ماده است؛ فقط رکوردهای هم‌واحد و هم‌ارز با آن در شاخص قیمت وارد می‌شوند. `quoteCount` برای تاریخچه کل است و `comparableQuoteCount` برای شفافیت تعداد رکوردهای قابل مقایسه نمایش داده می‌شود. اگر آخرین quotation با واحد جدیدی ثبت شود، شاخص موقتاً بر همان مبنا قرار می‌گیرد و تبدیل خودکار انجام نمی‌شود.
+
+
+## ۱۴۰۵/۰۷/۰۱ — backup یکپارچه اما مستقل و توقف APK release
+
+Supplier Directory از دفتر حسابداری مستقل است، اما نباید از حفاظت کامل کارگاه خارج بماند. قرارداد آتی یک unified backup versioned با دو section نام‌دار `accounting` و `vendorDirectory` خواهد بود. export مستقل Supplier Directory همچنان باقی می‌ماند تا بازیابی یا انتقال sourcing بدون جایگزینی دفتر مالی ممکن باشد.
+
+Google Drive باید هر دو شکل را نگهداری کند، اما Drive منبع حقیقت یا sync چنددستگاهی نیست. در نسخهٔ فعلی، upload Drive هنوز عمدتاً payload حسابداری را ارسال می‌کند و اتصال وب access token کوتاه‌عمر دارد؛ بنابراین backup خودکار بدون بازبودن نشست فعلاً وعده داده نمی‌شود.
+
+APK release تا اجرای unified backup، restore staged/atomic، OAuth native با PKCE و secure storage، و آزمون واقعی روی حداقل دو دستگاه شروع نمی‌شود. مسیر انتشار نهایی AAB با Play App Signing و rollout مرحله‌ای است. OTA در نسخهٔ اول غیرفعال است.

@@ -569,3 +569,10 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 
 
 اعتبارسنجی پس از اصلاح قرارداد شمارنده‌ها با **۴۱ تست موفق**، type-check، build و diff check موفق تکمیل شد. `quoteCount` تعداد کل سابقهٔ ماده است و `comparableQuoteCount` تعداد استعلام‌هایی است که با واحد و ارز quotation مبنا یکسان‌اند.
+
+
+## ۱۴۰۵/۰۷/۰۱ — تحقیق راه آیندهٔ APK و اپ مشتری
+
+تحقیق جامع دربارهٔ Capacitor، AAB/APK، Play App Signing، in-app update، PWA service worker، migration داده، Google OAuth/Drive، unified backup و اپ مشتری read-only انجام و در `docs/APK-FUTURE-ROADMAP-RESEARCH.md` ثبت شد.
+
+نتیجهٔ مهم: پشتیبان تأمین‌کنندگان از نظر مدل داده مستقل باقی می‌ماند، اما backup کامل کارگاه باید در آینده شامل دو بخش accounting و vendorDirectory باشد. وضعیت فعلی upload Drive هنوز خودکار و یکپارچه نیست؛ این موضوع به‌عنوان فاز صفر پیش از APK باقی ماند.

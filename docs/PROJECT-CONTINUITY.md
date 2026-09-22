@@ -204,3 +204,14 @@ fixture یکپارچهٔ عملیات در تست هسته اضافه و تأی�
 
 
 اعتبارسنجی نهایی مرحلهٔ سخت‌سازی با **۴۱ تست موفق**، type-check موفق، build تولیدی موفق و diff check موفق انجام شد. دو failure اولیه از فرض نادرست تست دربارهٔ مبنای مقایسه بودند و با تفکیک `quoteCount`/`comparableQuoteCount` و تثبیت قرارداد «جدیدترین quotation به‌عنوان basis» اصلاح شدند.
+
+
+## ۱۴۰۵/۰۷/۰۱ — تحقیق راه آیندهٔ APK، backup و اپ مشتری
+
+تحقیق معماری آینده انجام شد و در `docs/APK-FUTURE-ROADMAP-RESEARCH.md` ثبت شد. نتیجهٔ اصلی این است که APK release تا پایان دورهٔ استفادهٔ واقعی و تکمیل قرارداد unified backup متوقف بماند.
+
+پشتیبان Supplier Directory عمداً مستقل طراحی شده است، چون دفتر sourcing الزاماً خرید و بدهی حسابداری نیست. بااین‌حال حفاظت کامل باید «یکپارچه اما مستقل» باشد: یک envelope نسخه‌دار باید بخش `accounting` و `vendorDirectory` را با هم داشته باشد و export مستقل Supplier Directory نیز حفظ شود.
+
+وضعیت فعلی هنوز این هدف را کامل نکرده است: upload فعلی Google Drive عمدتاً `exportPayload(state)` حسابداری را ارسال می‌کند و Supplier Directory فقط export مستقل/localStorage دارد. اتصال Drive فعلی در وب access token کوتاه‌عمر و scope موجود دارد و backup خودکار پس از بسته‌شدن برنامه تضمین نمی‌شود. این مورد به‌عنوان فاز صفر پیش از APK ثبت شد و نباید در مستندات به‌عنوان قابلیت تکمیل‌شده معرفی شود.
+
+راهبرد تحقیق‌شده: AAB با Play App Signing و rollout مرحله‌ای کانال اصلی Android باشد؛ APK هم‌امضا فقط برای QA/MDM/direct distribution کنترل‌شده استفاده شود؛ OTA در نسخهٔ اول خاموش بماند؛ PWA با prompt update و migration کنترل‌شده اجرا شود؛ اپ مشتری در repository جدا و با backend چندمستاجری، membership زنده و RLS فقط‌خواندنی ساخته شود.
