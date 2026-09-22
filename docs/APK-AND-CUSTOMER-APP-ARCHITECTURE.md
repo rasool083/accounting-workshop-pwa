@@ -78,3 +78,20 @@ customer_statement_snapshots(organization_id, party_id, close_id, ...)
 [4]: https://developer.android.com/identity/data/autobackup "Android Auto Backup Documentation"
 
 [5]: https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/ "OWASP API1 Broken Object Level Authorization"
+
+
+## تصمیم اجرایی دربارهٔ زمان انتشار و مخزن‌ها
+
+تا زمانی که نسخهٔ مرورگری و PWA با داده‌های واقعی کارگاه در یک دورهٔ کاری آزمایش نشده و ایرادهای محاسباتی، رابط کاربری و گزارش‌ها اصلاح نشده‌اند، APK release ساخته و منتشر نمی‌شود. پوشهٔ `android` فقط زیرساخت بسته‌بندی است و مانع ادامهٔ توسعهٔ نسخهٔ اصلی نیست.
+
+نسخهٔ اصلی کارگاه و APK مالک کارگاه در همین مخزن `accounting-workshop-pwa` نگهداری می‌شوند. این انتخاب باعث می‌شود موتور حسابداری، تست‌ها، migration، manifest، service worker و پوستهٔ Android از یک منبع نسخه‌گذاری شوند و اختلاف بین نسخهٔ وب و APK ایجاد نشود.
+
+اپ مشتری در آینده باید مخزن جدا داشته باشد. آن برنامه محصولی مستقل با Auth، API، مدل مجوز، applicationId و signing key جداست. جداکردن آن از APK مالک، احتمال افشای bundle و داده‌های local-first کارگاه را کم می‌کند و چرخهٔ انتشار آن را مستقل نگه می‌دارد.
+
+## سیاست به‌روزرسانی APK
+
+برای انتشار رسمی، روش اصلی Google Play یا یک کانال توزیع سازمانی با APK امضاشده خواهد بود. هر نسخه با `versionCode` افزایشی و `versionName` معنادار منتشر می‌شود. به‌روزرسانی عادی باید ابتدا backup قابل بازیابی بگیرد، سپس migration schema را اجرا کند و در پایان projectionهای inventory و cash را بازسازی و کنترل کند.
+
+به‌روزرسانی مستقیم با فایل APK فقط برای نصب آزمایشی یا توزیع کنترل‌شده مناسب است و باید با همان signing key انجام شود. تغییر applicationId یا signing key باعث می‌شود Android آن را برنامهٔ جدید تلقی کند و مسیر به‌روزرسانی عادی از بین برود.
+
+تا پیش از انتخاب کانال رسمی انتشار، از remote code loading یا قراردادن `server.url` در Capacitor استفاده نمی‌شود. برای برنامهٔ حسابداری، تغییرات قابل حسابرسی باید در release امضاشده و همراه با migration و یادداشت تغییرات ارائه شوند. به‌روزرسانی PWA از service worker جداست و جایگزین update APK محسوب نمی‌شود.
