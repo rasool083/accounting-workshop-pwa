@@ -155,7 +155,13 @@ export function exportUnifiedPayload(
   accounting: AppState,
   vendorDirectory: VendorDirectoryState
 ) {
-  const accountingPayload = parseJsonObject(exportPayload(accounting));
+  // Password/PIN are local-device controls, not business data. Never export
+  // their hashes into a portable backup or transfer the lock to another device.
+  const accountingForBackup: AppState = {
+    ...accounting,
+    settings: { ...accounting.settings, security: undefined },
+  };
+  const accountingPayload = parseJsonObject(exportPayload(accountingForBackup));
   const vendorPayload = parseJsonObject(exportVendorDirectory(vendorDirectory));
   const accountingData = accountingPayload.data;
   const vendorData = vendorPayload.data;

@@ -49,6 +49,24 @@ describe("unified backup contract", () => {
     );
   });
 
+  it("does not export local password or PIN credentials", () => {
+    const accounting = {
+      ...loadState(),
+      settings: {
+        ...loadState().settings,
+        security: {
+          password: { salt: "local-salt", hash: "local-password-hash", iterations: 120000 },
+          pin: { salt: "local-pin-salt", hash: "local-pin-hash", iterations: 120000 },
+        },
+      },
+    };
+    const payload = exportUnifiedPayload(accounting, vendorDirectory);
+    expect(payload).not.toContain("local-password-hash");
+    expect(payload).not.toContain("local-pin-hash");
+    const restored = importUnifiedPayload(payload);
+    expect(restored.accounting.settings.security).toBeUndefined();
+  });
+
   it("imports the legacy accounting-only payload without changing vendor data", () => {
     const accounting = loadState();
     const restored = importUnifiedPayload(exportPayload(accounting));

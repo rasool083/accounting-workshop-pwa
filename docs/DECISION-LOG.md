@@ -425,3 +425,16 @@ checksum فعلی یک marker قطعی برای کشف خرابی یا تغیی�
 snapshotهای پیش از restore اکنون در همان صفحهٔ پشتیبان و بازیابی قابل مشاهده‌اند. بازیابی و حذف هر snapshot نیازمند تأیید کاربر است. بازیابی snapshot نیز مانند هر restore دیگر، ابتدا snapshot وضعیت فعلی را می‌سازد و سپس از مسیر validation، migration و rebuild موجود عبور می‌کند.
 
 snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive محل backupهای انتخابی کاربر است و snapshot rollback دستگاه بخشی از دادهٔ حساس محلی محسوب می‌شود. در فاز native آینده، نگهداری آن باید با secure storage/encryption بررسی شود.
+
+
+## ۱۴۰۵/۰۷/۰۱ — عدم انتقال رمز و PIN محلی در backup
+
+**مسئله:** پس از افزودن قفل محلی، `settings.security` می‌توانست همراه backup صادر شود؛ در این حالت hash/salt قفل دستگاه مبدأ در فایل قابل‌انتقال قرار می‌گرفت و restore روی دستگاه دیگر نیز همان قفل را فعال می‌کرد.
+
+**تصمیم:** credentialهای محلی دادهٔ کسب‌وکار محسوب نمی‌شوند. `exportUnifiedPayload` پیش از export، بخش `settings.security` را حذف می‌کند. بنابراین backup حسابداری و unified backup شامل رمز یا PIN، salt یا hash آن‌ها نیست و restore قفل دستگاه مقصد را تغییر نمی‌دهد. قفل فقط در localStorage همان دستگاه باقی می‌ماند.
+
+**محدودیت:** این تصمیم به معنی رمزگذاری فایل backup نیست؛ backup همچنان باید مانند فایل حساس نگهداری شود. رمزگذاری و secure storage native در فاز APK جداگانه بررسی می‌شود.
+
+**آزمون:** regression جدید عدم وجود hash رمز و PIN در payload و نبودن `settings.security` پس از import را کنترل می‌کند. مجموع آزمون‌ها ۴۹ مورد موفق، type-check و build موفق است.
+
+**وضعیت:** انجام‌شده
