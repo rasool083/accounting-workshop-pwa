@@ -67,6 +67,21 @@ describe("unified backup contract", () => {
     expect(restored.accounting.settings.security).toBeUndefined();
   });
 
+  it("strips credentials when restoring a legacy backup that already contains them", () => {
+    const accounting = {
+      ...loadState(),
+      settings: {
+        ...loadState().settings,
+        security: {
+          pin: { salt: "old-salt", hash: "old-pin-hash", iterations: 120000 },
+        },
+      },
+    };
+    const restored = importUnifiedPayload(exportPayload(accounting));
+    expect(restored.unified).toBe(false);
+    expect(restored.accounting.settings.security).toBeUndefined();
+  });
+
   it("imports the legacy accounting-only payload without changing vendor data", () => {
     const accounting = loadState();
     const restored = importUnifiedPayload(exportPayload(accounting));

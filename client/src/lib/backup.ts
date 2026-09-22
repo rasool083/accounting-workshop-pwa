@@ -79,6 +79,13 @@ export type RestoreSnapshot = {
   size: number;
 };
 
+function stripLocalSecurity(accounting: AppState): AppState {
+  return {
+    ...accounting,
+    settings: { ...accounting.settings, security: undefined },
+  };
+}
+
 export function listRestoreSnapshots(): RestoreSnapshot[] {
   if (typeof window === "undefined") return [];
   try {
@@ -214,7 +221,7 @@ export function importUnifiedPayload(payload: string): ImportedBackup {
   const parsed = parseJsonObject(payload);
   if (parsed.format !== UNIFIED_BACKUP_FORMAT) {
     return {
-      accounting: importPayload(payload),
+      accounting: stripLocalSecurity(importPayload(payload)),
       unified: false,
     };
   }
@@ -283,7 +290,7 @@ export function importUnifiedPayload(payload: string): ImportedBackup {
     throw new Error("checksum backup معتبر نیست؛ فایل ناقص یا تغییر داده شده است");
   }
 
-  const accounting = importPayload(JSON.stringify(accountingSection));
+  const accounting = stripLocalSecurity(importPayload(JSON.stringify(accountingSection)));
   const vendorDirectory = importVendorDirectory(JSON.stringify(vendorSection));
   return { accounting, vendorDirectory, unified: true };
 }

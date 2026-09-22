@@ -268,3 +268,10 @@ fixture یکپارچهٔ عملیات در تست هسته اضافه و تأی�
 پس از افزودن قفل محلی، قرارداد backup سخت‌سازی شد: `settings.security` شامل salt/hash رمز و PIN از unified backup حذف می‌شود. بنابراین credential محلی نه در فایل backup قرار می‌گیرد و نه با restore به دستگاه دیگر منتقل می‌شود. عبارت قبلی دربارهٔ قابل‌انتقال‌بودن hash/salt credential برای backup دیگر معتبر نیست و این تصمیم جدید مرجع است. backup همچنان رمزگذاری‌شده نیست و باید فایل حساس تلقی شود؛ encryption و secure storage native در فاز APK باقی می‌ماند.
 
 اعتبارسنجی این مرحله: ۴۹ تست موفق، `pnpm check` موفق و `pnpm build` موفق.
+
+
+## ۱۴۰۵/۰۷/۰۱ — سخت‌سازی restore برای backupهای قدیمی
+
+کنترل مرزبندی امنیت فقط برای backupهای جدید کافی نبود. مسیر `importUnifiedPayload` اکنون پس از import هر دو نوع unified و legacy، `settings.security` را حذف می‌کند؛ بنابراین حتی فایل‌هایی که پیش از اصلاح، hash/salt رمز یا PIN محلی را در خود داشتند، هنگام restore قفل دستگاه مبدأ را منتقل نمی‌کنند. آزمون regression این سناریوی legacy را نیز پوشش می‌دهد.
+
+نتیجهٔ نهایی مرحله: ۵۰ تست موفق، type-check موفق و build موفق.
