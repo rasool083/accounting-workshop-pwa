@@ -359,6 +359,71 @@ describe("FIFO settlement balances", () => {
     });
     expect(cashAccountReconciliation(state)[0]).toEqual(expect.objectContaining({ recorded: 500, projected: 500, difference: 0, receipts: 500, payments: 0 }));
   });
+
+  it("runs the integrated purchase, checks, partner obligation, cash and reversal flow", () => {
+    const state = normalizeState({
+      settings: { currency: "تومان", dayBasis: 30 },
+      people: [
+        { id: "supplier", code: "S", name: "تأمین‌کننده", type: "تأمین‌کننده", roles: ["تأمین‌کننده"] },
+        { id: "customer", code: "C", name: "مشتری", type: "مشتری", roles: ["مشتری"] },
+        { id: "partner", code: "P", name: "شریک", type: "شریک", roles: ["شریک"] },
+      ],
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 980 }],
+      cashEvents: [{
+        id: "opening-bank", at: "now", date: "1405/01/01", kind: "opening_balance",
+        accountId: "bank", amount: 1000, currency: "تومان", sourceType: "opening_balance", note: "",
+      }],
+      invoices: [
+        { id: "buy-1", number: "B1", type: "خرید" as const, date: "1405/01/01", partyId: "supplier", items: [], allocations: [], amount: 120, paidAmount: 0, status: "باز" as const, note: "" },
+        { id: "buy-2", number: "B2", type: "خرید" as const, date: "1405/01/02", partyId: "supplier", items: [], allocations: [], amount: 60, paidAmount: 0, status: "باز" as const, note: "" },
+      ],
+      checks: [{
+        id: "customer-check", number: "C-1", partyId: "customer", receivedDate: "1405/01/01",
+        dueDate: "1405/02/01", amount: 100, status: "خرج شده" as const, bank: "",
+        spentForPaymentId: "payment-customer", spentToPartyId: "supplier",
+      }],
+      purchasePayments: [
+        { id: "payment-customer", supplierId: "supplier", amount: 100, date: "1405/01/03", method: "چک مشتری" as const, customerCheckId: "customer-check", note: "" },
+        { id: "payment-cash", supplierId: "supplier", amount: 20, date: "1405/01/03", method: "نقدی" as const, accountId: "bank", note: "" },
+        { id: "payment-partner", supplierId: "supplier", amount: 60, date: "1405/01/03", method: "چک شریک" as const, issuedCheckId: "issued-partner", note: "" },
+      ],
+      issuedChecks: [{
+        id: "issued-partner", number: "P-1", issuerPartyId: "partner", dateIssued: "1405/01/03",
+        dueDate: "1405/02/01", amount: 60, status: "صادر شده" as const, purpose: "خرید" as const, note: "",
+      }],
+    });
+    const withPayables = rebuildPurchasePayables(appendPurchasePaymentCashEvents(state));
+    expect(withPayables.invoices.map(invoice => [invoice.status, invoice.paidAmount])).toEqual([
+      ["تسویه شده", 120],
+      ["تسویه شده", 60],
+    ]);
+    expect(withPayables.cashEvents.find(event => event.sourceId === "payment-cash")?.amount).toBe(-20);
+    expect(cashAccountReconciliation(withPayables)[0]).toEqual(expect.objectContaining({ recorded: 980, projected: 980, difference: 0 }));
+
+    const due = refreshIssuedCheckStatuses(withPayables, "1405/02/01");
+    expect(due.issuedChecks[0].status).toBe("سررسید شده");
+    expect(due.partnerObligationEvents).toEqual([
+      expect.objectContaining({ issuedCheckId: "issued-partner", kind: "due", amount: 60 }),
+    ]);
+
+    const released = releasePurchasePaymentsForInvoice(due, "buy-1");
+    const afterDelete = rebuildPurchasePayables({
+      ...released,
+      invoices: released.invoices.filter(invoice => invoice.id !== "buy-1"),
+    });
+    expect(afterDelete.checks[0].status).toBe("نزد ما");
+    expect(afterDelete.purchasePayments.map(payment => payment.id)).toEqual(["payment-partner"]);
+    expect(afterDelete.invoices[0]).toEqual(expect.objectContaining({ id: "buy-2", status: "تسویه شده", paidAmount: 60 }));
+    const cashPaymentEvent = withPayables.cashEvents.find(event => event.sourceId === "payment-cash");
+    expect(cashPaymentEvent).toBeDefined();
+    expect(afterDelete.cashEvents.filter(event => event.reversalOf === cashPaymentEvent?.id)).toHaveLength(1);
+    expect(afterDelete.cashEvents.reduce((sum, event) => sum + event.amount, 0)).toBe(1000);
+
+    const releasedPartner = releasePurchasePayment(afterDelete, "payment-partner");
+    expect(releasedPartner.issuedChecks[0].status).toBe("باطل");
+    expect(releasedPartner.partnerObligationEvents.at(-1)).toEqual(expect.objectContaining({ kind: "reversal", amount: -60 }));
+    expect(rebuildPurchasePayables(releasedPartner).invoices[0]).toEqual(expect.objectContaining({ status: "باز", paidAmount: 0 }));
+  });
 });
 
 describe("Jalali calendar", () => {
