@@ -255,10 +255,32 @@ describe("FIFO settlement balances", () => {
     const withEvent = appendPurchasePaymentCashEvents(state);
     const paymentEvents = withEvent.cashEvents.filter(event => event.sourceType === "purchase_payment");
     expect(paymentEvents).toHaveLength(1);
-    expect(paymentEvents[0]).toEqual(expect.objectContaining({ kind: "payment", accountId: "bank-1", amount: 250 }));
+    expect(paymentEvents[0]).toEqual(expect.objectContaining({ kind: "payment", accountId: "bank-1", amount: -250 }));
     expect(appendPurchasePaymentCashEvents(withEvent).cashEvents.filter(event => event.sourceType === "purchase_payment")).toHaveLength(1);
     const released = releasePurchasePayment(withEvent, "payment-cash");
     expect(released.cashEvents.at(-1)).toEqual(expect.objectContaining({ kind: "reversal", reversalOf: paymentEvents[0].id, amount: 250 }));
+  });
+
+  it("normalizes legacy positive purchase-payment events as cash outflows", () => {
+    const normalized = normalizeState({
+      settings: { currency: "تومان" },
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: -250 }],
+      cashEvents: [{
+        id: "legacy-payment",
+        at: "now",
+        date: "1405/01/01",
+        kind: "payment",
+        accountId: "bank",
+        amount: 250,
+        currency: "تومان",
+        sourceType: "purchase_payment",
+        sourceId: "payment-legacy",
+        note: "پرداخت خرید",
+      }],
+    });
+    expect(normalized.schemaVersion).toBe(5);
+    expect(normalized.cashEvents[0].amount).toBe(-250);
+    expect(rebuildCashProjection(normalized).accounts[0].balance).toBe(-250);
   });
 
   it("releases an invoice-only purchase payment but preserves a payment shared by invoices", () => {
@@ -744,7 +766,7 @@ describe("event ledger projections", () => {
       products: [{ id: "p", name: "کالا", code: "P", unit: "عدد", stock: 12, price: 0 }],
       accounts: [{ id: "cash", name: "صندوق", type: "صندوق", balance: 500 }],
     });
-    expect(legacy.schemaVersion).toBe(4);
+    expect(legacy.schemaVersion).toBe(5);
     expect(legacy.inventoryEvents).toHaveLength(1);
     expect(legacy.inventoryEvents[0].quantityBase).toBe(12);
     expect(legacy.cashEvents).toHaveLength(1);

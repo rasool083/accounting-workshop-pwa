@@ -1,5 +1,5 @@
-export const CURRENT_SCHEMA_VERSION = 4;
-export const BACKUP_FORMAT_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
+export const BACKUP_FORMAT_VERSION = 5;
 
 export type PageId =
   | "dashboard"
@@ -889,7 +889,19 @@ export function normalizeState(input: unknown): AppState {
         note: "موجودی جاری پیش از فعال‌سازی دفتر رویداد",
       }));
   const cashEvents = Array.isArray(source.cashEvents)
-    ? source.cashEvents
+    ? source.cashEvents.map(event =>
+        isRecord(event) &&
+        event.sourceType === "purchase_payment" &&
+        event.kind === "payment" &&
+        typeof event.amount === "number" &&
+        event.amount > 0
+          ? {
+              ...event,
+              amount: -event.amount,
+              note: `${typeof event.note === "string" ? event.note : "پرداخت خرید"}؛ اصلاح جهت رویداد در migration نسخه ۵`,
+            }
+          : event
+      )
     : normalizedAccounts.map(account => ({
         id: `opening-account-${account.id}`,
         at: new Date(0).toISOString(),
@@ -2081,7 +2093,7 @@ export function releasePurchasePayment(state: AppState, paymentId: string) {
       date: todayJalali(),
       kind: "reversal" as const,
       accountId: event.accountId,
-      amount: event.amount,
+      amount: -event.amount,
       currency: event.currency,
       sourceType: "purchase_payment_reversal",
       sourceId: paymentId,
@@ -2195,7 +2207,7 @@ export function appendPurchasePaymentCashEvents(state: AppState): AppState {
       date: payment.date,
       kind: "payment" as const,
       accountId: payment.accountId!,
-      amount: payment.amount,
+      amount: -Math.abs(payment.amount),
       currency: state.settings.currency,
       sourceType: "purchase_payment",
       sourceId: payment.id,

@@ -134,6 +134,18 @@ function statusClass(status: string) {
   return "status-warning";
 }
 
+function printWithTarget(target: string) {
+  const className = `print-${target}`;
+  document.body.classList.add(className);
+  const cleanup = () => {
+    document.body.classList.remove(className);
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  window.setTimeout(cleanup, 1500);
+}
+
 function backupDateKey() {
   return todayJalali().replace(/\//g, "-");
 }
@@ -2498,7 +2510,7 @@ function Invoices({
                 <>
                   <button
                     className="button button-ghost"
-                    onClick={() => window.print()}
+                    onClick={() => printWithTarget("invoice")}
                   >
                     چاپ فاکتور
                   </button>
@@ -6034,7 +6046,7 @@ function Checks({
     return "مرجع";
   }
   return (
-    <div className="page-stack page-enter">
+    <div className="page-stack page-enter checks-page">
       <PageIntro
         kicker="مدیریت تعهدات"
         title="چک‌ها"
@@ -6162,7 +6174,7 @@ function Checks({
         </button>
         <button
           className="button button-ghost button-small"
-          onClick={() => window.print()}
+          onClick={() => printWithTarget("checks")}
         >
           چاپ گزارش
         </button>
@@ -6959,7 +6971,7 @@ function MonthClose({
     URL.revokeObjectURL(url);
   }
   return (
-    <div className="page-stack page-enter">
+    <div className="page-stack page-enter month-close-page">
       <PageIntro
         kicker="کنترل پایان دوره"
         title="بستن ماه"
@@ -6986,7 +6998,7 @@ function MonthClose({
         }}
       />
       <div className="month-close-actions">
-        <button className="button button-ghost" onClick={() => window.print()}>
+        <button className="button button-ghost" onClick={() => printWithTarget("month-close")}>
           چاپ گزارش / ذخیره PDF
         </button>
         <button className="button button-ghost" onClick={downloadDetails}>
@@ -7570,7 +7582,7 @@ function Reports({
     [state]
   );
   return (
-    <div className="page-stack page-enter">
+    <div className="page-stack page-enter reports-page">
       <PageIntro
         kicker="دید مدیریتی"
         title="گزارش‌ها"
@@ -7742,29 +7754,29 @@ function Reports({
           tone="mint"
         />
         <MetricCard
-          label="بهای تقریبی فروش"
+          label="ارزش فروش تقریبی"
           value={formatMoney(
             profitReport.estimatedCost,
             state.settings.currency
           )}
-          helper="بر اساس قیمت پایه فعلی کالا"
+          helper="بر اساس قیمت پایهٔ فروش فعلی کالا"
           icon={<Boxes size={20} />}
           tone="amber"
         />
         <MetricCard
-          label="سود ناخالص تقریبی"
+          label="انحراف فروش از قیمت پایه"
           value={formatMoney(profitReport.grossProfit, state.settings.currency)}
-          helper="فروش منهای بهای تقریبی"
+          helper="فروش معتبر منهای ارزش فروش با قیمت پایهٔ فعلی"
           icon={<ChartNoAxesCombined size={20} />}
           tone={profitReport.grossProfit >= 0 ? "indigo" : "rose"}
         />
         <MetricCard
-          label="ارزش موجودی"
+          label="ارزش فروش بالقوهٔ موجودی"
           value={formatMoney(
             profitReport.inventoryValue,
             state.settings.currency
           )}
-          helper="موجودی فعلی × قیمت پایه"
+          helper="موجودی فعلی × قیمت پایهٔ فروش؛ بهای دفتری نیست"
           icon={<WalletCards size={20} />}
           tone="violet"
         />
@@ -7838,7 +7850,7 @@ function Reports({
           <div className="panel-heading-actions">
             <button
               className="button button-ghost"
-              onClick={() => window.print()}
+              onClick={() => printWithTarget("statement")}
             >
               چاپ
             </button>
@@ -7926,7 +7938,7 @@ function Reports({
           </div>
           <button
             className="button button-ghost"
-            onClick={() => window.print()}
+            onClick={() => printWithTarget("ledger")}
           >
             چاپ دفتر
           </button>

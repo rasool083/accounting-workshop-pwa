@@ -3214,3 +3214,196 @@ tr:last-child td {
 .production-register-details .form-actions {
   flex-basis: 100%;
 }
+
+
+/* A4 print contract: each print action opts into exactly one document scope. */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    font-size: 10px !important;
+  }
+
+  body.print-invoice .sidebar,
+  body.print-invoice .topbar,
+  body.print-invoice .toast,
+  body.print-invoice .dialog-header,
+  body.print-checks .sidebar,
+  body.print-checks .topbar,
+  body.print-checks .toast,
+  body.print-month-close .sidebar,
+  body.print-month-close .topbar,
+  body.print-month-close .toast,
+  body.print-statement .sidebar,
+  body.print-statement .topbar,
+  body.print-statement .toast,
+  body.print-ledger .sidebar,
+  body.print-ledger .topbar,
+  body.print-ledger .toast {
+    display: none !important;
+  }
+
+  body.print-invoice .dialog-backdrop {
+    display: block !important;
+    position: static !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  body.print-invoice .dialog,
+  body.print-invoice .invoice-detail {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body.print-invoice .invoice-detail,
+  body.print-invoice .invoice-detail * {
+    visibility: visible !important;
+  }
+
+  body.print-checks * {
+    visibility: hidden !important;
+  }
+  body.print-checks .checks-page,
+  body.print-checks .checks-page * {
+    visibility: visible !important;
+  }
+  body.print-checks .checks-page {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.print-month-close * {
+    visibility: hidden !important;
+  }
+  body.print-month-close .month-close-page,
+  body.print-month-close .month-close-page * {
+    visibility: visible !important;
+  }
+  body.print-month-close .month-close-page {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body.print-month-close .month-close-actions,
+  body.print-month-close .close-controls {
+    display: none !important;
+  }
+  body.print-month-close .month-invoice-details {
+    position: static !important;
+    width: 100% !important;
+    margin: 12px 0 0 !important;
+  }
+
+  body.print-statement * {
+    visibility: hidden !important;
+  }
+  body.print-statement .customer-statement-panel,
+  body.print-statement .customer-statement-panel * {
+    visibility: visible !important;
+  }
+  body.print-statement .customer-statement-panel {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  body.print-statement .statement-controls,
+  body.print-statement .customer-statement-panel .panel-heading-actions {
+    display: none !important;
+  }
+
+  body.print-ledger * {
+    visibility: hidden !important;
+  }
+  body.print-ledger .ledger-panel,
+  body.print-ledger .ledger-panel * {
+    visibility: visible !important;
+  }
+  body.print-ledger .ledger-panel {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  body.print-ledger .ledger-panel .panel-heading-actions,
+  body.print-ledger .ledger-controls {
+    display: none !important;
+  }
+
+  body.print-invoice table,
+  body.print-checks table,
+  body.print-month-close table,
+  body.print-statement table,
+  body.print-ledger table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+
+  body.print-invoice th,
+  body.print-invoice td,
+  body.print-checks th,
+  body.print-checks td,
+  body.print-month-close th,
+  body.print-month-close td,
+  body.print-statement th,
+  body.print-statement td,
+  body.print-ledger th,
+  body.print-ledger td {
+    padding: 5px 4px !important;
+    border: 1px solid #cfd5d2 !important;
+    color: #111 !important;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+  }
+
+  body.print-invoice .table-wrap,
+  body.print-checks .table-wrap,
+  body.print-month-close .table-wrap,
+  body.print-statement .table-wrap,
+  body.print-ledger .table-wrap {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body.print-invoice tr,
+  body.print-checks tr,
+  body.print-month-close tr,
+  body.print-statement tr,
+  body.print-ledger tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.print-invoice .form-actions,
+  body.print-checks .button,
+  body.print-checks .check-filters,
+  body.print-month-close .button,
+  body.print-statement .button,
+  body.print-ledger .button {
+    display: none !important;
+  }
+}
