@@ -509,3 +509,12 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 انتقال بین حساب‌ها با دو رویداد مستقل خروجی و ورودی بازسازی می‌شود و حساب مقصد و مبدأ در آزمون ledger پوشش داده شدند. ماندهٔ افتتاحیه نیز در تطبیق حساب لحاظ می‌شود.
 
 در ممیزی اجرایی قبل از مرحله، داشبورد، صفحهٔ بانک‌ها و صندوق‌ها و صفحهٔ گزارش‌ها در preview باز شدند. یک خطای واقعی duplicate React در محیط preview پیدا شد و با alias و `dedupe` برای `react` و `react-dom` در تنظیمات Vite رفع شد. اعتبارسنجی نهایی: ۳۱ تست موفق، type-check، build و `git diff --check` موفق.
+
+
+## ۱۴۰۵/۰۶/۳۱ — آماده‌سازی زیرساخت APK و معماری اپ مشتری
+
+پوستهٔ native Android با Capacitor به پروژه اضافه شد. وابستگی‌های Capacitor نسخهٔ ۸، فایل `capacitor.config.ts`، پوشهٔ `android` و فرمان‌های `android:init`، `android:sync` و `android:open` اضافه شدند. `pnpm android:init` با موفقیت build وب، ایجاد پروژهٔ Android و sync را انجام داد و `cap doctor` وضعیت Android را سالم اعلام کرد.
+
+در این محیط Android SDK و `adb` برای نصب روی دستگاه یا build نهایی release موجود نیستند؛ بنابراین خروجی فعلی زیرساخت آمادهٔ انتقال به Android Studio است، نه APK نهایی امضاشده.
+
+معماری اپ مشتری نیز بررسی و مستند شد. اپ مشتری باید با applicationId و backend مستقل، Auth، tenant isolation و Row-Level Security ساخته شود. استفاده از localStorage یا APK مالک برای نمایش محدود حساب مشتری از نظر امنیتی پذیرفته نیست.

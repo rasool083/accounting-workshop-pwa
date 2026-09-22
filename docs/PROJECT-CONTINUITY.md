@@ -123,3 +123,14 @@
 اعتبارسنجی نهایی این مرحله ۳۱ تست موفق، type-check، build و diff check است. هشدار حجم chunk تولیدی همچنان غیرمسدودکننده است و به بهینه‌سازی عملکرد منتقل شد.
 
 **گام بعدی:** سخت‌سازی PWA و آماده‌سازی APK، شامل migration، backup/restore، service worker، offline و آزمون موبایل.
+
+
+## ۱۴۰۵/۰۶/۳۱ — آماده‌سازی زیرساخت APK و تفکیک اپ مشتری
+
+زیرساخت Capacitor برای APK مالک کارگاه آماده شد. `capacitor.config.ts` با شناسهٔ مستقل `ir.workshop.accounting`، مسیر build وب و سیاست عدم mixed content اضافه شد. وابستگی‌های Capacitor و فرمان‌های `android:init`، `android:sync` و `android:open` به package اضافه شدند.
+
+محیط فعلی Java دارد، اما Android SDK و `adb` ندارد؛ بنابراین ایجاد پوشهٔ native Android و build نهایی APK به محیط دارای Android Studio/SDK منتقل شد. این موضوع مانع build وب و PWA نیست.
+
+ممیزی معماری اپ مشتری تکمیل شد. اپ مشتری باید برنامه‌ای جدا با applicationId جدا، backend احراز هویت‌شده و Row-Level Security باشد. استفاده از APK مالک، localStorage، لینک دارای partyId یا فایل JSON کامل کارگاه برای مشتری مجاز نیست. قرارداد کامل در `docs/APK-AND-CUSTOMER-APP-ARCHITECTURE.md` ثبت شد.
+
+**گام بعدی:** نصب Android SDK در محیط build، اجرای `android:init` و ساخت APK debug؛ هم‌زمان طراحی schema و policyهای backend مشتری با یک tenant آزمایشی.

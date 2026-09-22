@@ -1,0 +1,80 @@
+# معماری APK کارگاه و اپلیکیشن مشتری
+
+## نتیجهٔ تصمیم
+
+برای برنامهٔ کارگاه، زیرساخت بسته‌بندی با Capacitor آماده شد. این مسیر، build فعلی React/Vite را در یک پوستهٔ Android قرار می‌دهد و قابلیت‌های local-first، PWA و نصب مستقیم روی گوشی مالک کارگاه را حفظ می‌کند. این مرحله هنوز APK نهایی امضاشده یا پروژهٔ Android قابل انتشار تولید نمی‌کند، زیرا محیط فعلی Android SDK و `adb` ندارد.
+
+اپلیکیشن مشتری نباید از همین APK یا از فایل localStorage آن استفاده کند. نسخهٔ کارگاه کل داده‌های حسابداری را در دستگاه مالک نگه می‌دارد و `partyId` مجوز امنیتی نیست. اپ مشتری باید یک برنامهٔ جداگانهٔ read-only باشد که فقط از API احراز هویت‌شده داده دریافت کند.
+
+## زیرساخت APK کارگاه
+
+تنظیمات `capacitor.config.ts` با شناسهٔ برنامهٔ `ir.workshop.accounting`، نام فارسی برنامه و مسیر `dist/public` ایجاد شده است. وابستگی‌های `@capacitor/core`، `@capacitor/android` و `@capacitor/cli` در پروژه ثبت شده‌اند.
+
+فرمان‌های رسمی پروژه چنین هستند:
+
+```bash
+pnpm build
+pnpm android:init   # فقط یک بار؛ پروژهٔ android را ایجاد می‌کند
+pnpm android:sync   # build وب و انتقال فایل‌ها به Android
+pnpm android:open   # باز کردن پروژه در Android Studio
+```
+
+پیش از اجرای `android:init` باید Android Studio، Android SDK، Platform Tools، Build Tools و یک JDK سازگار روی محیط توسعه نصب شوند. بعد از ایجاد پوشهٔ `android`، این پوشه باید مانند کد منبع بررسی شود و فایل‌های secrets یا keystore در Git قرار نگیرند.
+
+نسخهٔ فعلی PWA دارای `manifest.webmanifest`، آیکن‌های نصب و service worker است. service worker فقط پوستهٔ برنامه و فایل‌های same-origin را cache می‌کند و API یا اطلاعات حساس را در cache عمومی قرار نمی‌دهد. دادهٔ حسابداری همچنان باید از مسیر backup رمزگذاری‌شده یا export نسخه‌دار مدیریت شود؛ Android Auto Backup جایگزین backup قابل فهم حسابداری نیست.
+
+## مرز امنیتی اپ مشتری
+
+اپ مشتری فقط باید این داده‌ها را نمایش دهد:
+
+- فاکتورهای فروش متعلق به همان مشتری؛
+- مبلغ فاکتور، اقلام، پرداخت‌ها و مانده؛
+- چک‌های دریافت‌شده از همان مشتری و وضعیت آن‌ها؛
+- تخصیص چک به فاکتورها؛
+- صورت‌حساب خواندنی و وضعیت بستن ماه مرتبط با همان مشتری.
+
+اپ مشتری نباید فهرست مشتریان، تأمین‌کنندگان، حساب‌های بانک و صندوق، موجودی انبار، قیمت خرید، فرمول تولید، بهای تمام‌شده، چک‌های دیگران، backup کامل یا تنظیمات کارگاه را دریافت کند. پنهان‌کردن این بخش‌ها در React کافی نیست؛ API و database نیز باید آن‌ها را برنگردانند.
+
+## معماری پیشنهادی backend
+
+مدل چندمستاجری باید یک کارگاه را به‌عنوان `organization` و مشتری را به‌عنوان `customer_user` ثبت کند. عضویت کاربر در کارگاه و نقش او باید جداگانه نگهداری شود.
+
+```text
+organizations
+organization_members(user_id, organization_id, role)
+customer_profiles(user_id, organization_id, party_id)
+invoices(organization_id, party_id, ...)
+checks(organization_id, party_id, ...)
+check_allocations(organization_id, invoice_id, check_id, ...)
+customer_statement_snapshots(organization_id, party_id, close_id, ...)
+```
+
+در هر درخواست، سرور باید هویت کاربر، عضویت او در سازمان و ارتباط `party_id` با همان کاربر را بررسی کند. policy دیتابیس باید هم `organization_id` و هم `party_id` را کنترل کند. شناسهٔ فاکتور یا شمارهٔ مشتری نباید به‌تنهایی مجوز دسترسی باشد.
+
+برای MVP، پیشنهاد می‌شود مشتری فقط گزارش‌های read-only را ببیند و اطلاعات از ledger اصلی به view یا endpoint محدود تبدیل شود. محاسبات مانده، status چک و تخصیص FIFO باید در سرور یا یک snapshot تأییدشده انجام شوند؛ مشتری نباید JSON کامل ledger را دانلود کند.
+
+## احراز هویت و نشست
+
+ورود مشتری می‌تواند با magic link، OTP یا رمز عبور انجام شود. نشست باید کوتاه‌عمر و قابل لغو باشد. refresh token در storage ناامن وب یا URL قرار نگیرد. logout باید نشست محلی را پاک کند. برای هر endpoint آزمون منفی لازم است: تغییر `party_id`، تغییر `invoice_id`، حذف `organization_id` از درخواست و استفاده از توکن مشتری دیگر نباید داده‌ای برگرداند.
+
+## مسیر انتشار مرحله‌ای
+
+ابتدا APK مالک کارگاه با Capacitor ساخته و روی دو دستگاه واقعی آزمایش می‌شود. سپس backup و restore، به‌روزرسانی نسخه، حالت آفلاین، rotation صفحه و Android back button آزمون می‌شوند.
+
+در مرحلهٔ بعد backend مشتری با Auth و Row-Level Security ساخته می‌شود. ابتدا یک مشتری آزمایشی و چند فاکتور مصنوعی استفاده می‌شود. پس از تأیید اینکه مشتری A هیچ رکوردی از مشتری B نمی‌بیند، رابط موبایل read-only ساخته می‌شود. در پایان، APK مشتری با `applicationId` مستقل، signing key مستقل و بدون دسترسی به دادهٔ local-first مالک منتشر خواهد شد.
+
+## موارد ممنوع
+
+قرار دادن کلید سرویس، service-role key یا token دائمی در APK ممنوع است. ارسال فایل JSON کامل کارگاه به اپ مشتری ممنوع است. ساختن لینک مخفی با `partyId` یا token بدون انقضا راهکار امنیتی محسوب نمی‌شود. استفاده از Google Sheet عمومی یا لینک ناشناس برای اطلاعات مالی نیز فقط در محیط آزمایشی قابل قبول است.
+
+## References
+
+[1]: https://capacitorjs.com/docs/android "Capacitor Android Documentation"
+
+[2]: https://capacitorjs.com/docs/config "Capacitor Configuration Documentation"
+
+[3]: https://supabase.com/docs/guides/database/postgres/row-level-security "Supabase Row Level Security Documentation"
+
+[4]: https://developer.android.com/identity/data/autobackup "Android Auto Backup Documentation"
+
+[5]: https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/ "OWASP API1 Broken Object Level Authorization"
