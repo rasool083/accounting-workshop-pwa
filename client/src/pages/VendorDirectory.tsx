@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
-import { BarChart3, Building2, ClipboardList, Pencil, Plus, Search, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { BarChart3, Building2, ClipboardList, Download, Pencil, Plus, Search, Trash2, TrendingDown, TrendingUp, Upload, X } from "lucide-react";
 import { formatMoney, formatNumber, todayJalali } from "@/lib/accounting";
 import {
   createVendor,
   createVendorQuote,
+  exportVendorDirectory,
   getMaterialStats,
+  importVendorDirectory,
   loadVendorDirectory,
   materialNames,
   quoteUnitKey,
@@ -35,6 +37,7 @@ export default function VendorDirectory({ onNotice }: Props) {
   const [showVendorForm, setShowVendorForm] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [expandedVendorId, setExpandedVendorId] = useState<string | null>(null);
+  const backupInput = useRef<HTMLInputElement>(null);
 
   const materials = useMemo(() => materialNames(directory), [directory]);
   const filteredVendors = useMemo(() => directory.vendors.filter(vendor => {
@@ -52,6 +55,30 @@ export default function VendorDirectory({ onNotice }: Props) {
   function persist(next: VendorDirectoryState, message: string) {
     setDirectory(saveVendorDirectory(next));
     onNotice?.(message);
+  }
+
+  function downloadBackup() {
+    const blob = new Blob([exportVendorDirectory(directory)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `supplier-directory-${todayJalali().replace(/\//g, "-")}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    onNotice?.("پشتیبان مستقل دفتر تأمین‌کنندگان دانلود شد");
+  }
+
+  async function handleBackupImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const imported = importVendorDirectory(await file.text());
+      if (!window.confirm(`جایگزینی اطلاعات فعلی با ${imported.vendors.length} تأمین‌کننده و ${imported.quotes.length} استعلام انجام شود؟`)) return;
+      persist(imported, "دفتر تأمین‌کنندگان بازیابی شد");
+    } catch (error) {
+      onNotice?.(error instanceof Error ? error.message : "بازیابی فایل ناموفق بود");
+    }
   }
 
   function submitVendor(event: React.FormEvent) {
@@ -94,7 +121,8 @@ export default function VendorDirectory({ onNotice }: Props) {
   return <div className="page-stack page-enter vendor-directory-page">
     <div className="page-intro">
       <div><span className="section-kicker">منابع خرید · مستقل از حسابداری</span><h1>دفتر تأمین‌کنندگان و استعلام‌ها</h1><p>تأمین‌کننده را حتی بدون خرید ثبت کنید؛ سابقهٔ قیمت، واحد، شرایط و زمان تحویل برای مقایسه و تصمیم‌گیری نگهداری می‌شود.</p></div>
-      <div className="page-intro-actions"><button className="button button-primary" onClick={() => { setEditingVendorId(null); setVendorForm(blankVendor); setShowVendorForm(true); }}><Plus size={16} /> تأمین‌کننده جدید</button><button className="button button-ghost" onClick={() => setShowQuoteForm(true)}><ClipboardList size={16} /> ثبت استعلام قیمت</button></div>
+      <div className="page-intro-actions"><button className="button button-primary" onClick={() => { setEditingVendorId(null); setVendorForm(blankVendor); setShowVendorForm(true); }}><Plus size={16} /> تأمین‌کننده جدید</button><button className="button button-ghost" onClick={() => setShowQuoteForm(true)}><ClipboardList size={16} /> ثبت استعلام قیمت</button><button className="button button-ghost" onClick={downloadBackup}><Download size={15} /> پشتیبان مستقل</button><button className="button button-ghost" onClick={() => backupInput.current?.click()}><Upload size={15} /> بازیابی</button></div>
+      <input ref={backupInput} type="file" accept="application/json,.json" hidden onChange={handleBackupImport} />
     </div>
 
     <div className="vendor-metrics">
@@ -123,7 +151,7 @@ export default function VendorDirectory({ onNotice }: Props) {
       </section>
 
       <section className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">Price Intelligence</span><h3>مقایسه و تحلیل قیمت</h3></div><select value={selectedMaterial} onChange={event => setSelectedMaterial(event.target.value)}><option value="">همهٔ مواد</option>{materials.map(material => <option key={material}>{material}</option>)}</select></div>
-        <div className="material-stat-list">{stats.slice(0, selectedMaterial ? 1 : 6).map(stat => <button className="material-stat-row" key={stat.materialName} onClick={() => setSelectedMaterial(stat.materialName)}><span><strong>{stat.materialName}</strong><small>{formatNumber(stat.vendorCount)} تأمین‌کننده · {formatNumber(stat.quoteCount)} استعلام</small></span><span><b>{stat.lowestPrice != null ? formatMoney(stat.lowestPrice, "تومان") : "—"}</b><small>کمترین قیمت ثبت‌شده</small></span><span className={stat.changePercent != null && stat.changePercent > 0 ? "amount-negative" : "amount-positive"}>{stat.changePercent != null ? <>{stat.changePercent > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}{formatNumber(Number(Math.abs(stat.changePercent).toFixed(1)))}٪</> : "—"}</span></button>)}{!stats.length && <p className="muted-cell">برای تحلیل، حداقل یک استعلام قیمت ثبت کنید.</p>}</div>
+        <div className="material-stat-list">{stats.slice(0, selectedMaterial ? 1 : 6).map(stat => <button className="material-stat-row" key={stat.materialName} onClick={() => setSelectedMaterial(stat.materialName)}><span><strong>{stat.materialName}</strong><small>{formatNumber(stat.vendorCount)} تأمین‌کننده · {formatNumber(stat.quoteCount)} استعلام · {formatNumber(stat.comparableQuoteCount)} هم‌واحد</small></span><span><b>{stat.lowestPrice != null ? formatMoney(stat.lowestPrice, stat.comparisonCurrency || "تومان") : "—"}</b><small>کمترین قیمت هم‌واحد · {stat.comparisonUnit || "—"}</small></span><span className={stat.changePercent != null && stat.changePercent > 0 ? "amount-negative" : "amount-positive"}>{stat.changePercent != null ? <>{stat.changePercent > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}{formatNumber(Number(Math.abs(stat.changePercent).toFixed(1)))}٪</> : "—"}</span></button>)}{!stats.length && <p className="muted-cell">برای تحلیل، حداقل یک استعلام قیمت ثبت کنید.</p>}</div>
       </section>
     </div>
 
