@@ -1238,6 +1238,18 @@ export interface LedgerDiscrepancy {
   difference: number;
 }
 
+export interface CashAccountReconciliation {
+  accountId: string;
+  accountName: string;
+  accountType: Account["type"];
+  recorded: number;
+  projected: number;
+  difference: number;
+  eventCount: number;
+  receipts: number;
+  payments: number;
+}
+
 export function inventoryLedgerDiscrepancies(state: AppState): LedgerDiscrepancy[] {
   const rebuilt = rebuildInventoryProjection(state);
   return state.products.flatMap(product => {
@@ -1257,6 +1269,32 @@ export function cashLedgerDiscrepancies(state: AppState): LedgerDiscrepancy[] {
     return Math.abs(difference) > 0.000001
       ? [{ id: account.id, label: account.name, recorded: account.balance, projected, difference }]
       : [];
+  });
+}
+
+/**
+ * Returns the auditable balance of every cash, bank, and partner account.
+ * `recorded` is the UI projection; `projected` is rebuilt only from the
+ * append-only cash events. Event totals explain the source of each balance.
+ */
+export function cashAccountReconciliation(
+  state: AppState
+): CashAccountReconciliation[] {
+  const rebuilt = rebuildCashProjection(state);
+  return state.accounts.map(account => {
+    const events = state.cashEvents.filter(event => event.accountId === account.id);
+    const projected = rebuilt.accounts.find(item => item.id === account.id)?.balance ?? 0;
+    return {
+      accountId: account.id,
+      accountName: account.name,
+      accountType: account.type,
+      recorded: account.balance,
+      projected,
+      difference: account.balance - projected,
+      eventCount: events.length,
+      receipts: events.filter(event => event.amount > 0).reduce((sum, event) => sum + event.amount, 0),
+      payments: events.filter(event => event.amount < 0).reduce((sum, event) => sum + Math.abs(event.amount), 0),
+    };
   });
 }
 

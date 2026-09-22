@@ -80,6 +80,7 @@ import {
   reconcileLedgerEvents,
   inventoryLedgerDiscrepancies,
   cashLedgerDiscrepancies,
+  cashAccountReconciliation,
   refreshIssuedCheckStatuses,
   settleIssuedCheck,
   appendPurchasePaymentCashEvents,
@@ -7564,6 +7565,10 @@ function Reports({
       .filter(event => event.sourceType === "purchase_payment" || event.sourceType === "purchase_payment_reversal")
       .sort((a, b) => jalaliDateKey(b.date).localeCompare(jalaliDateKey(a.date)));
   }, [state]);
+  const cashReconciliation = useMemo(
+    () => cashAccountReconciliation(state),
+    [state]
+  );
   return (
     <div className="page-stack page-enter">
       <PageIntro
@@ -7630,6 +7635,24 @@ function Reports({
         <div className="panel-heading"><div><span className="section-kicker">گردش پرداخت خرید</span><h3>دفتر نقدی و بانک</h3></div><span className="soft-tag">رویداد مستقل و قابل reversal</span></div>
         <div className="table-wrap"><table><thead><tr><th>تاریخ</th><th>حساب</th><th>نوع رویداد</th><th>مبلغ</th><th>شرح</th></tr></thead><tbody>
           {purchaseCashReport.length ? purchaseCashReport.map(event => <tr key={event.id}><td>{formatDate(event.date)}</td><td>{state.accounts.find(account => account.id === event.accountId)?.name || "حساب حذف‌شده"}</td><td><span className={`status-pill ${event.kind === "reversal" ? "status-warning" : "status-success"}`}>{event.kind === "reversal" ? "معکوس‌سازی پرداخت" : "پرداخت خرید"}</span></td><td>{formatMoney(event.amount, state.settings.currency)}</td><td>{event.note}</td></tr>) : <tr><td colSpan={5}>برای پرداخت‌های خرید نقدی یا بانکی رویدادی ثبت نشده است.</td></tr>}
+        </tbody></table></div>
+      </div>
+      <div className="panel table-panel">
+        <div className="panel-heading">
+          <div><span className="section-kicker">کنترل دفتر رویداد</span><h3>مغایرت بانک و صندوق</h3></div>
+          <span className="soft-tag">ماندهٔ ثبت‌شده در برابر بازسازی‌شده</span>
+        </div>
+        <div className="table-wrap"><table><thead><tr><th>حساب</th><th>نوع</th><th>ماندهٔ ثبت‌شده</th><th>ماندهٔ ledger</th><th>اختلاف</th><th>دریافت</th><th>پرداخت</th><th>رویداد</th></tr></thead><tbody>
+          {cashReconciliation.length ? cashReconciliation.map(row => <tr key={row.accountId}>
+            <td><strong>{row.accountName}</strong></td>
+            <td>{row.accountType}</td>
+            <td>{formatMoney(row.recorded, state.settings.currency)}</td>
+            <td>{formatMoney(row.projected, state.settings.currency)}</td>
+            <td className={Math.abs(row.difference) > 0.000001 ? "amount-negative" : "amount-positive"}>{formatMoney(row.difference, state.settings.currency)}</td>
+            <td>{formatMoney(row.receipts, state.settings.currency)}</td>
+            <td>{formatMoney(row.payments, state.settings.currency)}</td>
+            <td>{formatNumber(row.eventCount)}</td>
+          </tr>) : <tr><td colSpan={8}>حسابی برای تطبیق ثبت نشده است.</td></tr>}
         </tbody></table></div>
       </div>
       <div className="panel table-panel aging-panel">

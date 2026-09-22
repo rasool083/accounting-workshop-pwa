@@ -26,6 +26,7 @@ import {
   unitConversionToBase,
   releasePurchasePaymentsForInvoice,
   purchasePaymentIdsExclusiveToInvoice,
+  cashAccountReconciliation,
 } from "./accounting";
 
 describe("unit conversion", () => {
@@ -304,6 +305,37 @@ describe("FIFO settlement balances", () => {
     const once = releasePurchasePayment(state, "payment-once");
     const twice = releasePurchasePayment(once, "payment-once");
     expect(twice.cashEvents.filter(item => item.reversalOf === "cash-once")).toHaveLength(1);
+  });
+
+  it("rebuilds both sides of an inter-account transfer and reports no discrepancy", () => {
+    const state = normalizeState({
+      accounts: [
+        { id: "bank", name: "بانک", type: "بانک", balance: 900 },
+        { id: "cash", name: "صندوق", type: "صندوق", balance: 100 },
+      ],
+      transactions: [{
+        id: "transfer-1", type: "انتقال بین حساب‌ها", date: "1405/01/01",
+        fromAccountId: "bank", toAccountId: "cash", amount: 100,
+        status: "ثبت شده", note: "انتقال آزمایشی",
+      }],
+      cashEvents: [
+        { id: "bank-opening", at: "now", date: "1405/01/01", kind: "opening_balance", accountId: "bank", amount: 1000, currency: "تومان", sourceType: "opening_balance", note: "" },
+        { id: "cash-opening", at: "now", date: "1405/01/01", kind: "opening_balance", accountId: "cash", amount: 0, currency: "تومان", sourceType: "opening_balance", note: "" },
+        { id: "transfer-out", at: "now", date: "1405/01/01", kind: "transfer", accountId: "bank", counterAccountId: "cash", amount: -100, currency: "تومان", sourceType: "transaction", sourceId: "transfer-1", note: "" },
+        { id: "transfer-in", at: "now", date: "1405/01/01", kind: "transfer", accountId: "cash", counterAccountId: "bank", amount: 100, currency: "تومان", sourceType: "transaction", sourceId: "transfer-1", note: "" },
+      ],
+    });
+    const rows = cashAccountReconciliation(state);
+    expect(rows.find(row => row.accountId === "bank")).toEqual(expect.objectContaining({ recorded: 900, projected: 900, difference: 0, eventCount: 2 }));
+    expect(rows.find(row => row.accountId === "cash")).toEqual(expect.objectContaining({ recorded: 100, projected: 100, difference: 0, eventCount: 2 }));
+  });
+
+  it("keeps an opening balance in the reconstructed account ledger", () => {
+    const state = normalizeState({
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 500 }],
+      cashEvents: [{ id: "opening", at: "now", date: "1405/01/01", kind: "opening_balance", accountId: "bank", amount: 500, currency: "تومان", sourceType: "opening_balance", note: "" }],
+    });
+    expect(cashAccountReconciliation(state)[0]).toEqual(expect.objectContaining({ recorded: 500, projected: 500, difference: 0, receipts: 500, payments: 0 }));
   });
 });
 
