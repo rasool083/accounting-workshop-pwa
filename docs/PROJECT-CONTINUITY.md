@@ -215,3 +215,12 @@ fixture یکپارچهٔ عملیات در تست هسته اضافه و تأی�
 وضعیت فعلی هنوز این هدف را کامل نکرده است: upload فعلی Google Drive عمدتاً `exportPayload(state)` حسابداری را ارسال می‌کند و Supplier Directory فقط export مستقل/localStorage دارد. اتصال Drive فعلی در وب access token کوتاه‌عمر و scope موجود دارد و backup خودکار پس از بسته‌شدن برنامه تضمین نمی‌شود. این مورد به‌عنوان فاز صفر پیش از APK ثبت شد و نباید در مستندات به‌عنوان قابلیت تکمیل‌شده معرفی شود.
 
 راهبرد تحقیق‌شده: AAB با Play App Signing و rollout مرحله‌ای کانال اصلی Android باشد؛ APK هم‌امضا فقط برای QA/MDM/direct distribution کنترل‌شده استفاده شود؛ OTA در نسخهٔ اول خاموش بماند؛ PWA با prompt update و migration کنترل‌شده اجرا شود؛ اپ مشتری در repository جدا و با backend چندمستاجری، membership زنده و RLS فقط‌خواندنی ساخته شود.
+
+
+## ۱۴۰۵/۰۷/۰۱ — تکمیل فاز صفر unified backup
+
+فاز صفر roadmap APK تکمیل شد. فایل `client/src/lib/backup.ts` قرارداد unified backup v1 را پیاده می‌کند و شامل حسابداری و Supplier Directory است. Home در دانلود محلی، upload و restore Drive، import فایل و خروجی JSON گزارش‌ها از این قرارداد استفاده می‌کند.
+
+سازگاری backward حفظ شد: backupهای قدیمی accounting-only قابل import هستند و چون section تأمین‌کنندگان ندارند، اطلاعات فعلی Supplier Directory را تغییر نمی‌دهند. restore unified هر دو دفتر را بازسازی می‌کند. اعتبارسنجی نهایی: ۴۳ تست موفق، type-check، build و diff check.
+
+گام بعدی پیشنهادی، سخت‌سازی restore است: snapshot خودکار پیش از restore، checksum و اعتبارسنجی تعداد رکوردها، سپس صف backup و OAuth native برای APK.

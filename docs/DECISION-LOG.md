@@ -402,3 +402,12 @@ Supplier Directory از دفتر حسابداری مستقل است، اما ن�
 Google Drive باید هر دو شکل را نگهداری کند، اما Drive منبع حقیقت یا sync چنددستگاهی نیست. در نسخهٔ فعلی، upload Drive هنوز عمدتاً payload حسابداری را ارسال می‌کند و اتصال وب access token کوتاه‌عمر دارد؛ بنابراین backup خودکار بدون بازبودن نشست فعلاً وعده داده نمی‌شود.
 
 APK release تا اجرای unified backup، restore staged/atomic، OAuth native با PKCE و secure storage، و آزمون واقعی روی حداقل دو دستگاه شروع نمی‌شود. مسیر انتشار نهایی AAB با Play App Signing و rollout مرحله‌ای است. OTA در نسخهٔ اول غیرفعال است.
+
+
+## ۱۴۰۵/۰۷/۰۱ — قرارداد اجرایی unified backup v1
+
+پشتیبان کامل کارگاه اکنون با format `accounting-workshop-unified-backup-v1` ساخته می‌شود. envelope شامل `backupId`، زمان ایجاد، آمار رکوردها و دو section مستقل است: `accounting` با قرارداد فعلی دفتر حسابداری و `vendorDirectory` با قرارداد `vendor-directory-backup-v1`.
+
+مسیرهای دانلود محلی، upload Google Drive و خروجی JSON گزارش‌ها از همین قرارداد استفاده می‌کنند. restore unified ابتدا هر دو بخش را parse و validate می‌کند، سپس دفتر حسابداری را از مسیر migration/rebuild موجود و دفتر تأمین‌کنندگان را از مسیر validator خودش برمی‌گرداند. فایل‌های legacy accounting-only همچنان معتبرند و فقط بخش تأمین‌کنندگان را تغییر نمی‌دهند.
+
+این مرحله هنوز OAuth پایدار native یا اجرای backup در زمان بسته‌بودن APK را پیاده نمی‌کند؛ آن قابلیت‌ها در فاز APK باقی می‌مانند.

@@ -576,3 +576,10 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 تحقیق جامع دربارهٔ Capacitor، AAB/APK، Play App Signing، in-app update، PWA service worker، migration داده، Google OAuth/Drive، unified backup و اپ مشتری read-only انجام و در `docs/APK-FUTURE-ROADMAP-RESEARCH.md` ثبت شد.
 
 نتیجهٔ مهم: پشتیبان تأمین‌کنندگان از نظر مدل داده مستقل باقی می‌ماند، اما backup کامل کارگاه باید در آینده شامل دو بخش accounting و vendorDirectory باشد. وضعیت فعلی upload Drive هنوز خودکار و یکپارچه نیست؛ این موضوع به‌عنوان فاز صفر پیش از APK باقی ماند.
+
+
+## ۱۴۰۵/۰۷/۰۱ — پیاده‌سازی unified backup حسابداری و تأمین‌کنندگان
+
+قرارداد `accounting-workshop-unified-backup-v1` اضافه شد. خروجی‌های اصلی backup، upload Google Drive و خروجی JSON گزارش‌ها اکنون شامل دو بخش مستقل `accounting` و `vendorDirectory` هستند. بازیابی unified هر دو بخش را برمی‌گرداند و فایل‌های قدیمی accounting-only همچنان بدون تغییر دفتر تأمین‌کنندگان قابل بازیابی‌اند.
+
+برای این مرحله تست‌های regression اضافه شد و اعتبارسنجی کامل با **۴۳ تست موفق، type-check موفق، build تولیدی موفق و diff check موفق** انجام شد.

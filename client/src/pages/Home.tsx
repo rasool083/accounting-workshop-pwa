@@ -50,12 +50,10 @@ import {
   appendAudit,
   calculateMetrics,
   createId,
-  exportPayload,
   formatDate,
   formatMoney,
   formatNumber,
   calculateInvoiceAmount,
-  importPayload,
   loadState,
   navItems,
   personName,
@@ -101,6 +99,11 @@ import {
   setDriveClientId,
   type DriveBackupFile,
 } from "@/lib/googleDrive";
+import {
+  exportUnifiedPayload,
+  importUnifiedPayload,
+} from "@/lib/backup";
+import { loadVendorDirectory, saveVendorDirectory } from "@/lib/vendorDirectory";
 import VendorDirectory from "@/pages/VendorDirectory";
 
 const iconMap = {
@@ -498,7 +501,7 @@ export default function Home() {
   function handleExport() {
     const dateKey = backupDateKey();
     const sequence = nextLocalBackupSequence(dateKey);
-    const blob = new Blob([exportPayload(state)], {
+    const blob = new Blob([exportUnifiedPayload(state, loadVendorDirectory())], {
       type: "application/json;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
@@ -513,7 +516,19 @@ export default function Home() {
   }
 
   function importAndRepairAllocations(payload: string) {
-    return rebuildCheckAllocations(importPayload(payload));
+    const imported = importUnifiedPayload(payload);
+    return {
+      state: rebuildCheckAllocations(imported.accounting),
+      vendorDirectory: imported.vendorDirectory,
+      unified: imported.unified,
+    };
+  }
+
+  function applyImportedBackup(payload: string, message: string, action: string) {
+    const imported = importAndRepairAllocations(payload);
+    if (imported.vendorDirectory) saveVendorDirectory(imported.vendorDirectory);
+    commitState(imported.state, message, action);
+    return imported.unified;
   }
 
   function handleImport(event: React.ChangeEvent<HTMLInputElement>) {
@@ -522,8 +537,12 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const next = importAndRepairAllocations(String(reader.result));
-        commitState(next, `بازیابی از ${file.name}`, "RESTORE");
+        const unified = applyImportedBackup(
+          String(reader.result),
+          `بازیابی از ${file.name}`,
+          "RESTORE"
+        );
+        if (!unified) setNotice("نسخهٔ قدیمی حسابداری بازیابی شد؛ دفتر تأمین‌کنندگان تغییری نکرد");
       } catch (error) {
         setNotice(
           error instanceof Error ? error.message : "خواندن فایل ناموفق بود"
@@ -536,10 +555,11 @@ export default function Home() {
 
   function handleManualImport(payload: string) {
     try {
-      const next = importAndRepairAllocations(payload.trim());
+      const imported = importAndRepairAllocations(payload.trim());
       if (!window.confirm("اطلاعات فعلی با این متن پشتیبان جایگزین شود؟"))
         return;
-      commitState(next, "بازیابی با متن JSON", "RESTORE_MANUAL");
+      if (imported.vendorDirectory) saveVendorDirectory(imported.vendorDirectory);
+      commitState(imported.state, "بازیابی با متن JSON", "RESTORE_MANUAL");
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "متن پشتیبان معتبر نیست"
@@ -583,7 +603,7 @@ export default function Home() {
       const filename = backupFilename(dateKey, sequence);
       const uploaded = await adapter.uploadBackup(
         filename,
-        exportPayload(state)
+        exportUnifiedPayload(state, loadVendorDirectory())
       );
       setDriveBackups(current => [
         uploaded,
@@ -677,8 +697,7 @@ export default function Home() {
         token,
         PROJECT_BACKUPS_FOLDER_ID
       ).downloadBackup(file.id);
-      const next = importAndRepairAllocations(payload);
-      commitState(next, `بازیابی از ${file.name}`, "RESTORE_DRIVE");
+      applyImportedBackup(payload, `بازیابی از ${file.name}`, "RESTORE_DRIVE");
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "بازیابی از Drive ناموفق بود"
@@ -7594,7 +7613,9 @@ function Reports({
         description="عددهای کلیدی کارگاه را برای تصمیم‌گیری سریع کنار هم ببینید."
         actionLabel="خروجی JSON"
         onAction={() => {
-          const blob = new Blob([exportPayload(state)], {
+          const blob = new Blob([
+            exportUnifiedPayload(state, loadVendorDirectory()),
+          ], {
             type: "application/json",
           });
           const url = URL.createObjectURL(blob);
