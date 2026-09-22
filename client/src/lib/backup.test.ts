@@ -59,4 +59,32 @@ describe("unified backup contract", () => {
       accounting.settings.businessName
     );
   });
+
+  it("rejects a payload whose section was changed after export", () => {
+    const accounting = loadState();
+    const parsed = JSON.parse(
+      exportUnifiedPayload(accounting, vendorDirectory)
+    ) as {
+      sections: {
+        vendorDirectory: { data: { vendors: Array<{ name?: string }> } };
+      };
+    };
+    parsed.sections.vendorDirectory.data.vendors[0].name = "دادهٔ دستکاری‌شده";
+
+    expect(() => importUnifiedPayload(JSON.stringify(parsed))).toThrow(
+      "checksum"
+    );
+  });
+
+  it("rejects a payload whose manifest count does not match its data", () => {
+    const accounting = loadState();
+    const parsed = JSON.parse(exportUnifiedPayload(accounting, vendorDirectory)) as {
+      counts: { vendorDirectory: { vendors: number } };
+    };
+    parsed.counts.vendorDirectory.vendors += 1;
+
+    expect(() => importUnifiedPayload(JSON.stringify(parsed))).toThrow(
+      "تعداد تأمین‌کنندگان"
+    );
+  });
 });

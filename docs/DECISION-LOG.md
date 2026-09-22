@@ -411,3 +411,10 @@ APK release تا اجرای unified backup، restore staged/atomic، OAuth nativ
 مسیرهای دانلود محلی، upload Google Drive و خروجی JSON گزارش‌ها از همین قرارداد استفاده می‌کنند. restore unified ابتدا هر دو بخش را parse و validate می‌کند، سپس دفتر حسابداری را از مسیر migration/rebuild موجود و دفتر تأمین‌کنندگان را از مسیر validator خودش برمی‌گرداند. فایل‌های legacy accounting-only همچنان معتبرند و فقط بخش تأمین‌کنندگان را تغییر نمی‌دهند.
 
 این مرحله هنوز OAuth پایدار native یا اجرای backup در زمان بسته‌بودن APK را پیاده نمی‌کند؛ آن قابلیت‌ها در فاز APK باقی می‌مانند.
+
+
+## ۱۴۰۵/۰۷/۰۱ — قرارداد restore ایمن‌تر
+
+هیچ backup معتبر قبل از parse کامل، تطبیق manifest و کنترل checksum روی دفتر زنده اعمال نمی‌شود. برای هر restore موفق، وضعیت فعلی پیش از commit به‌عنوان snapshot محلی در کلید versioned نگهداری می‌شود و سه snapshot اخیر حفظ می‌شوند.
+
+checksum فعلی یک marker قطعی برای کشف خرابی یا تغییر تصادفی فایل است؛ رمزنگاری، امضای دیجیتال یا اثبات مالکیت نیست. برای APK و حفاظت در برابر مهاجم، encryption و مدیریت کلید در فاز native جداگانه لازم است.

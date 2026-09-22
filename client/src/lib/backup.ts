@@ -24,6 +24,10 @@ export type UnifiedBackupEnvelope = {
     accounting: Record<string, number>;
     vendorDirectory: { vendors: number; quotes: number };
   };
+  checksums: {
+    accounting: string;
+    vendorDirectory: string;
+  };
 };
 
 export type ImportedBackup = {
@@ -55,6 +59,58 @@ function countVendorDirectory(directory: VendorDirectoryState) {
   };
 }
 
+/** A deterministic integrity marker; this is not encryption or authentication. */
+export function checksumJson(value: unknown) {
+  const text = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+const RESTORE_SNAPSHOT_KEY = "accounting-workshop-pwa:restore-snapshots:v1";
+
+/** Keep a short local rollback trail; this is intentionally not uploaded automatically. */
+export function saveRestoreSnapshot(payload: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = JSON.parse(
+      localStorage.getItem(RESTORE_SNAPSHOT_KEY) || "[]"
+    );
+    const snapshots = Array.isArray(existing) ? existing : [];
+    localStorage.setItem(
+      RESTORE_SNAPSHOT_KEY,
+      JSON.stringify(
+        [{ createdAt: new Date().toISOString(), payload }, ...snapshots].slice(
+          0,
+          3
+        )
+      )
+    );
+  } catch {
+    // A blocked or full localStorage must not make a valid restore impossible.
+  }
+}
+
+function assertCollectionCounts(
+  data: unknown,
+  expected: Record<string, number>
+) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("دادهٔ بخش backup ساختار مجموعه‌ای ندارد");
+  }
+  const record = data as Record<string, unknown>;
+  for (const [key, count] of Object.entries(expected)) {
+    if (typeof count !== "number") continue;
+    const actual = record[key];
+    if (Array.isArray(actual) && actual.length !== count) {
+      throw new Error(`تعداد رکوردهای ${key} با manifest backup مطابقت ندارد`);
+    }
+  }
+}
+
 export function exportUnifiedPayload(
   accounting: AppState,
   vendorDirectory: VendorDirectoryState
@@ -72,29 +128,36 @@ export function exportUnifiedPayload(
     throw new Error("ساختار داخلی backup برای ترکیب معتبر نیست");
   }
 
+  const accountingSection = {
+    format: accountingPayload.format,
+    backupFormatVersion: accountingPayload.backupFormatVersion,
+    schemaVersion: accountingPayload.schemaVersion,
+    exportedAt: accountingPayload.exportedAt,
+    collections: accountingCollections,
+    data: accountingData,
+  };
+  const vendorSection = {
+    format: vendorPayload.format,
+    exportedAt: vendorPayload.exportedAt,
+    data: vendorData,
+  };
+
   const envelope: UnifiedBackupEnvelope = {
     format: UNIFIED_BACKUP_FORMAT,
     backupId: createBackupId(),
     createdAt: new Date().toISOString(),
     application: "حسابداری کارگاه",
     sections: {
-      accounting: {
-        format: accountingPayload.format,
-        backupFormatVersion: accountingPayload.backupFormatVersion,
-        schemaVersion: accountingPayload.schemaVersion,
-        exportedAt: accountingPayload.exportedAt,
-        collections: accountingCollections,
-        data: accountingData,
-      },
-      vendorDirectory: {
-        format: vendorPayload.format,
-        exportedAt: vendorPayload.exportedAt,
-        data: vendorData,
-      },
+      accounting: accountingSection,
+      vendorDirectory: vendorSection,
     },
     counts: {
       accounting: (accountingCollections || {}) as Record<string, number>,
       vendorDirectory: countVendorDirectory(vendorDirectory),
+    },
+    checksums: {
+      accounting: checksumJson(accountingSection),
+      vendorDirectory: checksumJson(vendorSection),
     },
   };
 
@@ -124,9 +187,57 @@ export function importUnifiedPayload(payload: string): ImportedBackup {
     throw new Error("بخش حسابداری یا تأمین‌کنندگان در backup وجود ندارد");
   }
 
-  const accounting = importPayload(JSON.stringify(accountingSection));
-  const vendorDirectory = importVendorDirectory(
-    JSON.stringify(vendorSection)
+  const counts = parsed.counts;
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) {
+    throw new Error("manifest شمارنده‌های backup وجود ندارد");
+  }
+  const countRecord = counts as Record<string, unknown>;
+  const accountingCounts = countRecord.accounting;
+  const vendorCounts = countRecord.vendorDirectory;
+  if (
+    !accountingCounts || typeof accountingCounts !== "object" || Array.isArray(accountingCounts) ||
+    !vendorCounts || typeof vendorCounts !== "object" || Array.isArray(vendorCounts)
+  ) {
+    throw new Error("manifest شمارنده‌های backup ناقص است");
+  }
+
+  const accountingRecord = accountingSection as Record<string, unknown>;
+  const vendorRecord = vendorSection as Record<string, unknown>;
+  assertCollectionCounts(
+    accountingRecord.data,
+    accountingCounts as Record<string, number>
   );
+  const vendorData = vendorRecord.data as Record<string, unknown> | undefined;
+  if (!vendorData || typeof vendorData !== "object" || Array.isArray(vendorData)) {
+    throw new Error("دادهٔ دفتر تأمین‌کنندگان در backup ناقص است");
+  }
+  const vendorCountRecord = vendorCounts as Record<string, unknown>;
+  if (
+    !Array.isArray(vendorData.vendors) ||
+    vendorData.vendors.length !== vendorCountRecord.vendors
+  ) {
+    throw new Error("تعداد تأمین‌کنندگان با manifest backup مطابقت ندارد");
+  }
+  if (
+    !Array.isArray(vendorData.quotes) ||
+    vendorData.quotes.length !== vendorCountRecord.quotes
+  ) {
+    throw new Error("تعداد استعلام‌ها با manifest backup مطابقت ندارد");
+  }
+
+  const checksums = parsed.checksums;
+  if (!checksums || typeof checksums !== "object" || Array.isArray(checksums)) {
+    throw new Error("checksumهای backup وجود ندارد");
+  }
+  const checksumRecord = checksums as Record<string, unknown>;
+  if (
+    checksumRecord.accounting !== checksumJson(accountingSection) ||
+    checksumRecord.vendorDirectory !== checksumJson(vendorSection)
+  ) {
+    throw new Error("checksum backup معتبر نیست؛ فایل ناقص یا تغییر داده شده است");
+  }
+
+  const accounting = importPayload(JSON.stringify(accountingSection));
+  const vendorDirectory = importVendorDirectory(JSON.stringify(vendorSection));
   return { accounting, vendorDirectory, unified: true };
 }

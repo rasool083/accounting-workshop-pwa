@@ -583,3 +583,10 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 قرارداد `accounting-workshop-unified-backup-v1` اضافه شد. خروجی‌های اصلی backup، upload Google Drive و خروجی JSON گزارش‌ها اکنون شامل دو بخش مستقل `accounting` و `vendorDirectory` هستند. بازیابی unified هر دو بخش را برمی‌گرداند و فایل‌های قدیمی accounting-only همچنان بدون تغییر دفتر تأمین‌کنندگان قابل بازیابی‌اند.
 
 برای این مرحله تست‌های regression اضافه شد و اعتبارسنجی کامل با **۴۳ تست موفق، type-check موفق، build تولیدی موفق و diff check موفق** انجام شد.
+
+
+## ۱۴۰۵/۰۷/۰۱ — سخت‌سازی restore با snapshot و integrity check
+
+پیش از هر restore موفق، snapshot یکپارچهٔ وضعیت فعلی در localStorage با نگهداری حداکثر سه نسخه ساخته می‌شود. backupهای unified اکنون manifest شمارنده و checksum قطعی برای هر دو section دارند. restore در صورت مغایرت تعداد رکوردها یا تغییر محتوای section متوقف می‌شود. checksum فقط کنترل integrity است و رمزنگاری یا احراز اصالت محسوب نمی‌شود.
+
+تست‌های tamper و مغایرت manifest افزوده شد. اعتبارسنجی این مرحله با ۴ تست backup، type-check، build و diff check موفق انجام شد.

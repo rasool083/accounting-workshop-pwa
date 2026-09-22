@@ -224,3 +224,10 @@ fixture یکپارچهٔ عملیات در تست هسته اضافه و تأی�
 سازگاری backward حفظ شد: backupهای قدیمی accounting-only قابل import هستند و چون section تأمین‌کنندگان ندارند، اطلاعات فعلی Supplier Directory را تغییر نمی‌دهند. restore unified هر دو دفتر را بازسازی می‌کند. اعتبارسنجی نهایی: ۴۳ تست موفق، type-check، build و diff check.
 
 گام بعدی پیشنهادی، سخت‌سازی restore است: snapshot خودکار پیش از restore، checksum و اعتبارسنجی تعداد رکوردها، سپس صف backup و OAuth native برای APK.
+
+
+## ۱۴۰۵/۰۷/۰۱ — تکمیل سخت‌سازی restore
+
+پیش از restore از فایل، متن یا Google Drive، payload واردشده کامل validate می‌شود. unified backup دارای checksum sectionهای حسابداری و تأمین‌کنندگان و manifest شمارنده است؛ دادهٔ دستکاری‌شده یا ناقص قبل از تغییر state رد می‌شود. پس از validation و پیش از commit، snapshot فعلی در localStorage ذخیره می‌شود و حداکثر سه نسخه نگه داشته می‌شود.
+
+این snapshot هنوز UI بازیابی مستقل ندارد و checksum رمزنگاری نیست. گام بعدی پیشنهادی: صفحهٔ مدیریت snapshotهای محلی و سپس encryption/secure storage در APK.

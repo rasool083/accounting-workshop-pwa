@@ -102,6 +102,7 @@ import {
 import {
   exportUnifiedPayload,
   importUnifiedPayload,
+  saveRestoreSnapshot,
 } from "@/lib/backup";
 import { loadVendorDirectory, saveVendorDirectory } from "@/lib/vendorDirectory";
 import VendorDirectory from "@/pages/VendorDirectory";
@@ -526,6 +527,7 @@ export default function Home() {
 
   function applyImportedBackup(payload: string, message: string, action: string) {
     const imported = importAndRepairAllocations(payload);
+    saveRestoreSnapshot(exportUnifiedPayload(state, loadVendorDirectory()));
     if (imported.vendorDirectory) saveVendorDirectory(imported.vendorDirectory);
     commitState(imported.state, message, action);
     return imported.unified;
@@ -555,11 +557,9 @@ export default function Home() {
 
   function handleManualImport(payload: string) {
     try {
-      const imported = importAndRepairAllocations(payload.trim());
       if (!window.confirm("اطلاعات فعلی با این متن پشتیبان جایگزین شود؟"))
         return;
-      if (imported.vendorDirectory) saveVendorDirectory(imported.vendorDirectory);
-      commitState(imported.state, "بازیابی با متن JSON", "RESTORE_MANUAL");
+      applyImportedBackup(payload.trim(), "بازیابی با متن JSON", "RESTORE_MANUAL");
     } catch (error) {
       setNotice(
         error instanceof Error ? error.message : "متن پشتیبان معتبر نیست"
