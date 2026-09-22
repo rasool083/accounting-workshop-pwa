@@ -3407,3 +3407,43 @@ tr:last-child td {
     display: none !important;
   }
 }
+
+/* Supplier directory: independent sourcing workspace, separate from accounting ledgers. */
+.vendor-directory-page { --vendor-accent: #0f766e; }
+.vendor-directory-page .page-intro { align-items: flex-start; }
+.vendor-directory-page .page-intro-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.vendor-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.vendor-metrics .metric-card { min-height: 132px; }
+.vendor-metrics .metric-card strong { font-size: 1.25rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vendor-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vendor-toolbar .search-box { flex: 1 1 280px; min-width: 220px; }
+.vendor-toolbar select, .vendor-directory-page .panel-heading select { min-height: 40px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 0 10px; color: var(--ink); }
+.vendor-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 16px; align-items: start; }
+.vendor-directory-page .table-panel { overflow: hidden; }
+.vendor-directory-page .table-wrap { overflow-x: auto; }
+.vendor-directory-page table { min-width: 720px; }
+.vendor-name-button { display: grid; gap: 3px; text-align: right; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; }
+.vendor-name-button strong { color: var(--ink); }
+.vendor-name-button small, .vendor-directory-page td small { color: var(--muted); }
+.tag-list { display: flex; gap: 5px; flex-wrap: wrap; max-width: 240px; }
+.tag-list button, .tag-list span { border: 1px solid color-mix(in srgb, var(--vendor-accent) 25%, transparent); color: var(--vendor-accent); background: color-mix(in srgb, var(--vendor-accent) 8%, transparent); border-radius: 999px; padding: 3px 8px; font-size: .72rem; cursor: pointer; }
+.row-actions { display: flex; gap: 5px; }
+.icon-button.danger { color: #b42318; }
+.vendor-detail { display: flex; justify-content: space-between; gap: 20px; padding: 16px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--vendor-accent) 5%, transparent); }
+.vendor-detail p { margin: 5px 0 0; color: var(--muted); }
+.vendor-detail > div:last-child { display: grid; gap: 5px; text-align: left; }
+.material-stat-list { display: grid; }
+.material-stat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 60px; align-items: center; gap: 12px; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 13px 3px; text-align: right; color: inherit; cursor: pointer; }
+.material-stat-row:last-child { border-bottom: 0; }
+.material-stat-row:hover, .vendor-directory-page tr.is-selected { background: color-mix(in srgb, var(--vendor-accent) 6%, transparent); }
+.material-stat-row span { display: grid; gap: 3px; }
+.material-stat-row span:nth-child(2) { text-align: left; }
+.material-stat-row span:last-child { display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
+.material-stat-row small { color: var(--muted); font-size: .72rem; }
+.vendor-modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 38%); }
+.vendor-modal { width: min(720px, 100%); max-height: min(90vh, 760px); overflow: auto; box-shadow: 0 24px 70px rgb(15 23 42 / 22%); }
+.vendor-modal .form-grid { margin-top: 16px; }
+.vendor-modal .form-grid textarea { min-height: 78px; resize: vertical; }
+.vendor-modal .form-actions { justify-content: flex-start; margin-top: 18px; }
+@media (max-width: 1050px) { .vendor-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vendor-layout { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .vendor-metrics { grid-template-columns: 1fr 1fr; gap: 8px; } .vendor-metrics .metric-card { min-height: 112px; padding: 12px; } .vendor-toolbar { align-items: stretch; } .vendor-toolbar select, .vendor-toolbar .soft-tag { width: 100%; } .vendor-detail { display: grid; } .material-stat-row { grid-template-columns: minmax(0, 1fr) auto; } .material-stat-row > span:last-child { grid-column: 2; grid-row: 1; } .material-stat-row > span:nth-child(2) { grid-column: 1 / -1; grid-row: 2; text-align: right; } }

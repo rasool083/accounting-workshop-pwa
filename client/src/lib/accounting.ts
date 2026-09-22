@@ -3,6 +3,7 @@ export const BACKUP_FORMAT_VERSION = 5;
 
 export type PageId =
   | "dashboard"
+  | "vendorDirectory"
   | "invoices"
   | "transactions"
   | "banks"
@@ -2321,6 +2322,12 @@ export const navItems: Array<{
     label: "فاکتورها",
     caption: "فروش و خرید",
     icon: "file-text",
+  },
+  {
+    id: "vendorDirectory",
+    label: "تأمین‌کنندگان و استعلام",
+    caption: "فهرست و مقایسه قیمت",
+    icon: "clipboard-list",
   },
   {
     id: "transactions",

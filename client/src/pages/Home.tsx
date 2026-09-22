@@ -6,6 +6,7 @@ import {
   Banknote,
   Boxes,
   ChartNoAxesCombined,
+  ClipboardList,
   Check,
   Calendar,
   ChevronDown,
@@ -100,6 +101,7 @@ import {
   setDriveClientId,
   type DriveBackupFile,
 } from "@/lib/googleDrive";
+import VendorDirectory from "@/pages/VendorDirectory";
 
 const iconMap = {
   "layout-dashboard": LayoutDashboard,
@@ -109,6 +111,7 @@ const iconMap = {
   boxes: Boxes,
   "file-clock": FileClock,
   "chart-no-axes-combined": ChartNoAxesCombined,
+  "clipboard-list": ClipboardList,
   "cloud-cog": Cloud,
   settings: Settings2,
   tags: Tags,
@@ -835,6 +838,9 @@ export default function Home() {
               state={state}
               onSave={(next, msg) => updateState(next, msg)}
             />
+          )}
+          {activePage === "vendorDirectory" && (
+            <VendorDirectory onNotice={setNotice} />
           )}
           {activePage === "dashboard" && (
             <Dashboard
