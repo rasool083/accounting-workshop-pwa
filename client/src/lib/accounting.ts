@@ -1349,6 +1349,71 @@ export function cashAccountReconciliation(
   });
 }
 
+export type IntegritySeverity = "خطا" | "هشدار" | "اطلاعات";
+
+export interface IntegrityFinding {
+  id: string;
+  severity: IntegritySeverity;
+  area: string;
+  message: string;
+  entityId?: string;
+}
+
+/** ممیزی read-only برای کشف ارجاع‌های شکسته، تکرار شماره و عدم تطابق ledger. */
+export function auditDataIntegrity(state: AppState): IntegrityFinding[] {
+  const findings: IntegrityFinding[] = [];
+  const add = (id: string, severity: IntegritySeverity, area: string, message: string, entityId?: string) => findings.push({ id, severity, area, message, entityId });
+  const duplicateValues = (values: Array<{ id: string; value: string }>, area: string, label: string) => {
+    const seen = new Map<string, string>();
+    values.forEach(item => {
+      const previous = seen.get(item.value);
+      if (previous) add(`duplicate-${area}-${item.value}`, "خطا", area, `${label} «${item.value}» تکراری است.`, item.id);
+      else if (item.value) seen.set(item.value, item.id);
+    });
+  };
+  duplicateValues(state.invoices.filter(item => item.status !== "باطل").map(item => ({ id: item.id, value: item.number })), "فاکتور", "شماره فاکتور");
+  duplicateValues(state.checks.filter(item => item.status !== "باطل").map(item => ({ id: item.id, value: item.number })), "چک", "شماره چک");
+  const people = new Set(state.people.map(item => item.id));
+  const products = new Set(state.products.map(item => item.id));
+  const accounts = new Set(state.accounts.map(item => item.id));
+  const checks = new Map(state.checks.map(item => [item.id, item]));
+  const invoices = new Map(state.invoices.map(item => [item.id, item]));
+  const payments = new Map(state.purchasePayments.map(item => [item.id, item]));
+  state.invoices.forEach(invoice => {
+    if (invoice.partyId && !people.has(invoice.partyId)) add(`invoice-party-${invoice.id}`, "خطا", "فاکتور", `طرف حساب فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
+    if (invoice.paymentRuleId && !state.paymentRules.some(rule => rule.id === invoice.paymentRuleId)) add(`invoice-rule-${invoice.id}`, "هشدار", "فاکتور", `شرایط پرداخت فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
+    invoice.items.forEach(item => {
+      if (item.productId && !products.has(item.productId)) add(`invoice-product-${invoice.id}-${item.id}`, "خطا", "فاکتور", `کالای ردیف ${item.description} در فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
+    });
+    const totalAllocated = invoice.allocations.reduce((sum, item) => sum + Math.max(0, item.amount), 0);
+    if (totalAllocated > invoice.amount + 0.01) add(`invoice-allocation-${invoice.id}`, "خطا", "تخصیص چک", `مجموع تخصیص‌های فاکتور ${invoice.number} از مبلغ فاکتور بیشتر است.`, invoice.id);
+    invoice.allocations.forEach(allocation => {
+      if (!checks.has(allocation.checkId)) add(`allocation-check-${invoice.id}-${allocation.checkId}`, "خطا", "تخصیص چک", `چک تخصیص‌یافته به فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
+    });
+  });
+  const allocatedByCheck = new Map<string, number>();
+  state.invoices.forEach(invoice => invoice.allocations.forEach(allocation => allocatedByCheck.set(allocation.checkId, (allocatedByCheck.get(allocation.checkId) || 0) + Math.max(0, allocation.amount))));
+  checks.forEach((check, checkId) => {
+    if (check.partyId && !people.has(check.partyId)) add(`check-party-${checkId}`, "خطا", "چک", `طرف حساب چک ${check.number} پیدا نشد.`, checkId);
+    if (check.bankAccountId && !accounts.has(check.bankAccountId)) add(`check-account-${checkId}`, "خطا", "چک", `حساب بانکی چک ${check.number} پیدا نشد.`, checkId);
+    if ((allocatedByCheck.get(checkId) || 0) > check.amount + 0.01) add(`check-allocation-${checkId}`, "خطا", "تخصیص چک", `مجموع تخصیص‌های چک ${check.number} از مبلغ چک بیشتر است.`, checkId);
+  });
+  state.purchasePayableAllocations.forEach(allocation => {
+    if (!payments.has(allocation.paymentId)) add(`purchase-payment-${allocation.id}`, "خطا", "خرید", "تخصیص پرداخت خرید به پرداخت موجود ارجاع نمی‌دهد.", allocation.id);
+    if (!invoices.has(allocation.invoiceId)) add(`purchase-invoice-${allocation.id}`, "خطا", "خرید", "تخصیص پرداخت خرید به فاکتور موجود ارجاع نمی‌دهد.", allocation.id);
+  });
+  state.inventoryEvents.forEach(event => {
+    if (!products.has(event.productId)) add(`inventory-product-${event.id}`, "خطا", "دفتر موجودی", "رویداد موجودی به کالای حذف‌شده ارجاع می‌دهد.", event.id);
+  });
+  state.cashEvents.forEach(event => {
+    if (!accounts.has(event.accountId)) add(`cash-account-${event.id}`, "خطا", "دفتر نقدی", "رویداد نقدی به حساب حذف‌شده ارجاع می‌دهد.", event.id);
+  });
+  inventoryLedgerDiscrepancies(state).forEach(item => add(`inventory-ledger-${item.id}`, "هشدار", "دفتر موجودی", `موجودی ${item.label} با دفتر رویداد ${item.difference} اختلاف دارد.`, item.id));
+  cashLedgerDiscrepancies(state).forEach(item => add(`cash-ledger-${item.id}`, "هشدار", "دفتر نقدی", `مانده ${item.label} با دفتر رویداد ${item.difference} اختلاف دارد.`, item.id));
+  if (!findings.length) add("integrity-ok", "اطلاعات", "ممیزی", "هیچ ارجاع شکسته، تخصیص بیش از سقف یا مغایرت projection پیدا نشد.");
+  return findings;
+}
+
 /**
  * Bridges legacy mutation paths while the UI is being migrated to explicit
  * events. A caller that already appended source events is not duplicated.

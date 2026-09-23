@@ -82,6 +82,7 @@ import {
   reconcileLedgerEvents,
   inventoryLedgerDiscrepancies,
   cashLedgerDiscrepancies,
+  auditDataIntegrity,
   cashAccountReconciliation,
   refreshIssuedCheckStatuses,
   settleIssuedCheck,
@@ -7821,6 +7822,7 @@ function Reports({
     () => cashAccountReconciliation(state),
     [state]
   );
+  const integrityFindings = useMemo(() => auditDataIntegrity(state), [state]);
   return (
     <div className="page-stack page-enter reports-page">
       <PageIntro
@@ -7885,6 +7887,18 @@ function Reports({
           </div>
         </div>
       </div>
+      <section className="panel table-panel integrity-panel">
+        <div className="panel-heading">
+          <div><span className="section-kicker">کنترل سلامت داده</span><h3>ممیزی یکپارچگی حسابداری</h3></div>
+          <span className={`status-pill ${integrityFindings.some(item => item.severity === "خطا") ? "status-danger" : integrityFindings.some(item => item.severity === "هشدار") ? "status-warning" : "status-success"}`}>
+            {integrityFindings.some(item => item.severity === "خطا") ? "نیازمند بررسی" : integrityFindings.some(item => item.severity === "هشدار") ? "هشدار" : "سالم"}
+          </span>
+        </div>
+        <p className="muted-cell">این کنترل فقط خواندنی است و شماره‌های تکراری، ارجاع‌های شکسته، تخصیص بیش از سقف و اختلاف projection با دفتر رویداد را پیدا می‌کند.</p>
+        <div className="table-wrap"><table><thead><tr><th>شدت</th><th>حوزه</th><th>شرح</th></tr></thead><tbody>
+          {integrityFindings.map(finding => <tr key={finding.id}><td><span className={`status-pill ${finding.severity === "خطا" ? "status-danger" : finding.severity === "هشدار" ? "status-warning" : "status-success"}`}>{finding.severity}</span></td><td>{finding.area}</td><td>{finding.message}</td></tr>)}
+        </tbody></table></div>
+      </section>
       <div className="panel table-panel">
         <div className="panel-heading"><div><span className="section-kicker">گردش پرداخت خرید</span><h3>دفتر نقدی و بانک</h3></div><span className="soft-tag">رویداد مستقل و قابل reversal</span></div>
         <div className="table-wrap"><table><thead><tr><th>تاریخ</th><th>حساب</th><th>نوع رویداد</th><th>مبلغ</th><th>شرح</th></tr></thead><tbody>

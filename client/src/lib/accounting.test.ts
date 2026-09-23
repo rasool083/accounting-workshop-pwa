@@ -29,6 +29,7 @@ import {
   cashAccountReconciliation,
   calculateInvoiceAmount,
   calculateEffectiveProfitForAllocation,
+  auditDataIntegrity,
 } from "./accounting";
 
 describe("invoice totals", () => {
@@ -1000,5 +1001,22 @@ describe("event ledger projections", () => {
       expect.objectContaining({ kind: "check_return", amount: 0, accountId: "bank" }),
     ]));
     expect(rebuildCashProjection(reversed).accounts[0].balance).toBe(0);
+  });
+});
+
+
+describe("data integrity audit", () => {
+  it("detects duplicate invoice numbers and broken allocation references", () => {
+    const state = normalizeState({
+      people: [],
+      products: [],
+      invoices: [
+        { id: "i-1", number: "100", type: "فروش", date: "1405/01/01", items: [], allocations: [{ checkId: "missing", amount: 10, allocatedAt: "1405/01/01" }], amount: 100, paidAmount: 10, status: "باز", note: "" },
+        { id: "i-2", number: "100", type: "خرید", date: "1405/01/02", items: [], allocations: [], amount: 50, paidAmount: 0, status: "باز", note: "" },
+      ],
+    });
+    const findings = auditDataIntegrity(state);
+    expect(findings.some(item => item.message.includes("شماره فاکتور") && item.severity === "خطا")).toBe(true);
+    expect(findings.some(item => item.message.includes("چک تخصیص‌یافته") && item.severity === "خطا")).toBe(true);
   });
 });
