@@ -774,7 +774,7 @@ const seedState: AppState = {
       active: true,
       dayBasis: 30,
       graceDays: 0,
-      tiers: [{ id: "tier-1", maxDays: 30, rate: 0, note: "بدون سود" }],
+      tiers: [{ id: "tier-1", maxDays: 30, rate: 0, note: "بدون هزینه دیرکرد" }],
     },
   ],
   transactions: [],
@@ -1001,7 +1001,19 @@ export function normalizeState(input: unknown): AppState {
           collectedDate:
             typeof check.collectedDate === "string"
               ? check.collectedDate
-              : undefined,
+              : check.status === "وصول شده"
+                ? (Array.isArray(source.transactions)
+                    ? source.transactions.find(
+                        transaction =>
+                          transaction.type === "دریافت" &&
+                          typeof transaction.note === "string" &&
+                          transaction.note.includes(`__check:${check.id}`)
+                      )?.date
+                    : undefined) ||
+                  check.receivedDate ||
+                  check.dueDate ||
+                  undefined
+                : undefined,
           invoiceDate:
             typeof check.invoiceDate === "string"
               ? check.invoiceDate
@@ -1864,7 +1876,17 @@ export function calculateEffectiveProfitForAllocation(
   let currentCost = 0;
   for (const item of invoice.items) {
     const quantityBase = Number(item.quantityBase ?? item.quantity) || 0;
-    const saleUnitCost = Number(item.unitCostAtSale);
+    const saleProduction = [...state.productionRecords]
+      .filter(record =>
+        record.outputProductId === item.productId &&
+        jalaliDateKey(record.date) <= jalaliDateKey(invoice.date) &&
+        Number.isFinite(record.unitCost) && record.unitCost >= 0
+      )
+      .sort((a, b) =>
+        jalaliDateKey(b.date).localeCompare(jalaliDateKey(a.date)) ||
+        b.id.localeCompare(a.id)
+      )[0];
+    const saleUnitCost = Number(item.unitCostAtSale ?? saleProduction?.unitCost);
     if (!Number.isFinite(saleUnitCost) || saleUnitCost < 0) apparentUnitCostKnown = false;
     else apparentCost += quantityBase * saleUnitCost;
     const production = [...state.productionRecords]
@@ -1920,13 +1942,18 @@ export interface CollectionProfitReportRow {
 /** تمام تخصیص‌های وصول‌شده را به‌صورت ردیف‌های قابل تجمیع برمی‌گرداند. */
 export function buildCollectionProfitReport(state: AppState): CollectionProfitReportRow[] {
   const rows: CollectionProfitReportRow[] = [];
-  state.invoices
-    .filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل")
-    .forEach(invoice => {
-      invoice.allocations.forEach(allocation => {
-        const check = state.checks.find(item => item.id === allocation.checkId);
-        const breakdown = calculateEffectiveProfitForAllocation(state, invoice, allocation, check);
-        if (!breakdown || !check) return;
+  const settlements = settleChecksFIFO(
+    state.checks,
+    state.invoices,
+    state.paymentRules,
+    state.settings.dayBasis
+  );
+  settlements.forEach(allocation => {
+    const invoice = state.invoices.find(item => item.id === allocation.invoiceId);
+    const check = state.checks.find(item => item.id === allocation.checkId);
+    if (!invoice || !check || invoice.type !== "فروش" || invoice.status === "باطل") return;
+    const breakdown = calculateEffectiveProfitForAllocation(state, invoice, allocation, check);
+    if (!breakdown) return;
         const parts = breakdown.collectionDate.split("/");
         const year = parts[0] || "نامشخص";
         const month = parts.length >= 2 ? `${year}/${parts[1]}` : year;
@@ -1949,8 +1976,7 @@ export function buildCollectionProfitReport(state: AppState): CollectionProfitRe
           apparentRate: breakdown.apparentRate,
           effectiveRate: breakdown.effectiveRate,
         });
-      });
-    });
+  });
   return rows.sort((a, b) =>
     jalaliDateKey(b.collectionDate).localeCompare(jalaliDateKey(a.collectionDate)) ||
     a.invoiceNumber.localeCompare(b.invoiceNumber)
@@ -2507,7 +2533,7 @@ export const navItems: Array<{
   {
     id: "paymentRules",
     label: "شرایط پرداخت",
-    caption: "پله‌های سود",
+    caption: "پله‌های هزینه دیرکرد",
     icon: "percent",
   },
   {

@@ -2141,7 +2141,7 @@ function Invoices({
                                           روز
                                         </span>
                                         <span>
-                                          سود:{" "}
+                                          هزینه دیرکرد:{" "}
                                           {formatMoney(
                                             item.profit || 0,
                                             state.settings.currency
@@ -5582,7 +5582,7 @@ function PaymentRules({
     name: "",
     dayBasis: "30",
     graceDays: "0",
-    tiers: [{ maxDays: "30", rate: "0", note: "بدون سود" }],
+    tiers: [{ maxDays: "30", rate: "0", note: "بدون هزینه دیرکرد" }],
   });
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -5614,7 +5614,7 @@ function PaymentRules({
       },
       editingRule
         ? "تمام اطلاعات شرایط پرداخت ویرایش شد"
-        : "شرایط پرداخت و پله‌های سود ثبت شد"
+        : "شرایط پرداخت و پله‌های هزینه دیرکرد ثبت شد"
     );
     setOpen(false);
     setEditingRule(null);
@@ -5622,7 +5622,7 @@ function PaymentRules({
       name: "",
       dayBasis: "30",
       graceDays: "0",
-      tiers: [{ maxDays: "30", rate: "0", note: "بدون سود" }],
+      tiers: [{ maxDays: "30", rate: "0", note: "بدون هزینه دیرکرد" }],
     });
   }
   function addTier() {
@@ -5726,7 +5726,7 @@ function PaymentRules({
                       روز
                     </span>
                     <strong>{formatNumber(tier.rate * 100)}٪</strong>
-                    <small>{tier.note || "پلهٔ سود"}</small>
+                    <small>{tier.note || "پلهٔ هزینه دیرکرد"}</small>
                   </div>
                 ))}
             </div>
@@ -5769,7 +5769,7 @@ function PaymentRules({
             </label>
             <div className="tier-editor">
               <div className="tier-editor-head">
-                <span>پله‌های سود</span>
+                <span>پله‌های هزینه دیرکرد</span>
                 <button type="button" className="text-button" onClick={addTier}>
                   <Plus size={14} />
                   افزودن پله
@@ -5794,7 +5794,7 @@ function PaymentRules({
                     placeholder="تا چند روز"
                   />
                   <input
-                    aria-label="درصد سود"
+                    aria-label="درصد هزینه دیرکرد"
                     inputMode="decimal"
                     value={tier.rate}
                     onChange={e =>
@@ -6691,7 +6691,7 @@ function Checks({
                                       )}
                                     </span>
                                     <span>
-                                      سود:{" "}
+                                      هزینه دیرکرد:{" "}
                                       {formatMoney(
                                         item.profit,
                                         state.settings.currency
@@ -9534,7 +9534,7 @@ function SettingsPage({
             />
           </label>
           <label>
-            مبنای روزشمار سود
+            مبنای روزشمار هزینه دیرکرد
             <select
               value={dayBasis}
               onChange={event => setDayBasis(event.target.value)}
