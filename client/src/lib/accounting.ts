@@ -69,6 +69,8 @@ export interface InvoiceItem {
   total: number;
   quantityBase?: number;
   conversionRate?: number;
+  /** بهای تمام‌شدهٔ هر واحد پایه در زمان ثبت فروش؛ برای سود ظاهری. */
+  unitCostAtSale?: number;
 }
 export interface CheckAllocation {
   checkId: string;
@@ -302,6 +304,8 @@ export interface Check {
   partyId?: string;
   dueDate: string;
   receivedDate: string;
+  /** تاریخ واقعی وصول؛ با سررسید یا تاریخ دریافت یکی فرض نمی‌شود. */
+  collectedDate?: string;
   invoiceDate?: string;
   paymentRuleId?: string;
   amount: number;
@@ -994,6 +998,10 @@ export function normalizeState(input: unknown): AppState {
             typeof check.receivedDate === "string"
               ? check.receivedDate
               : check.dueDate || "",
+          collectedDate:
+            typeof check.collectedDate === "string"
+              ? check.collectedDate
+              : undefined,
           invoiceDate:
             typeof check.invoiceDate === "string"
               ? check.invoiceDate
@@ -1820,6 +1828,73 @@ export function getSettlementBalances(
     });
   });
   return result;
+}
+
+export interface EffectiveProfitBreakdown {
+  collectionDate: string;
+  apparentCost: number;
+  currentCost: number;
+  apparentProfit: number;
+  effectiveProfit: number;
+  apparentRate: number;
+  effectiveRate: number;
+  costBasisKnown: boolean;
+}
+
+/**
+ * سود هر تخصیص را در دو مبنا گزارش می‌کند: سود ظاهری بر اساس بهای ثبت‌شده
+ * هنگام فروش و سود مؤثر بر اساس آخرین بهای تولید موجود تا تاریخ واقعی وصول.
+ * تاریخ سررسید عمداً در این محاسبه استفاده نمی‌شود.
+ */
+export function calculateEffectiveProfitForAllocation(
+  state: AppState,
+  invoice: Invoice,
+  allocation: Pick<FIFOSettlement, "amount" | "principalAmount"> | CheckAllocation,
+  check?: Check
+): EffectiveProfitBreakdown | null {
+  const collectionDate = check?.collectedDate;
+  if (!collectionDate || check?.status !== "وصول شده") return null;
+  const principalAmount = allocation.principalAmount ?? allocation.amount;
+  const ratio = invoice.amount > 0
+    ? Math.min(1, Math.max(0, principalAmount / invoice.amount))
+    : 0;
+  let apparentUnitCostKnown = true;
+  let currentUnitCostKnown = true;
+  let apparentCost = 0;
+  let currentCost = 0;
+  for (const item of invoice.items) {
+    const quantityBase = Number(item.quantityBase ?? item.quantity) || 0;
+    const saleUnitCost = Number(item.unitCostAtSale);
+    if (!Number.isFinite(saleUnitCost) || saleUnitCost < 0) apparentUnitCostKnown = false;
+    else apparentCost += quantityBase * saleUnitCost;
+    const production = [...state.productionRecords]
+      .filter(record =>
+        record.outputProductId === item.productId &&
+        jalaliDateKey(record.date) <= jalaliDateKey(collectionDate) &&
+        Number.isFinite(record.unitCost) && record.unitCost >= 0
+      )
+      .sort((a, b) =>
+        jalaliDateKey(b.date).localeCompare(jalaliDateKey(a.date)) ||
+        b.id.localeCompare(a.id)
+      )[0];
+    const currentUnitCost = production?.unitCost ?? saleUnitCost;
+    if (!Number.isFinite(currentUnitCost) || currentUnitCost < 0) currentUnitCostKnown = false;
+    else currentCost += quantityBase * currentUnitCost;
+  }
+  const allocatedApparentCost = apparentCost * ratio;
+  const allocatedCurrentCost = currentCost * ratio;
+  const apparentProfit = allocation.amount - allocatedApparentCost;
+  const effectiveProfit = allocation.amount - allocatedCurrentCost;
+  return {
+    collectionDate,
+    apparentCost: allocatedApparentCost,
+    currentCost: allocatedCurrentCost,
+    apparentProfit,
+    effectiveProfit,
+    apparentRate: allocatedApparentCost > 0 ? apparentProfit / allocatedApparentCost : 0,
+    effectiveRate: allocatedCurrentCost > 0 ? effectiveProfit / allocatedCurrentCost : 0,
+    costBasisKnown: apparentUnitCostKnown && currentUnitCostKnown,
+  };
 }
 
 export function allocateCheckFIFO(

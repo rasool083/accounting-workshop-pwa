@@ -63,6 +63,7 @@ import {
   jalaliDateKey,
   transactionLabel,
   calculateLateProfit,
+  calculateEffectiveProfitForAllocation,
   settleChecksFIFO,
   getSettlementBalances,
   allocateCheckFIFO,
@@ -1658,6 +1659,16 @@ function Invoices({
       const unitPrice = Number(row.unitPrice.replace(/[^0-9.-]/g, "")) || 0;
       const unit = row.unit || product?.unit || "عدد";
       const conversionRate = product ? unitConversionToBase(product, unit) : 1;
+      const existingItem = editingInvoice?.items.find(item => item.productId === row.productId);
+      const latestCost = [...state.productionRecords]
+        .filter(record =>
+          record.outputProductId === row.productId &&
+          jalaliDateKey(record.date) <= jalaliDateKey(form.date) &&
+          Number.isFinite(record.unitCost) &&
+          record.unitCost >= 0
+        )
+        .sort((a, b) => jalaliDateKey(b.date).localeCompare(jalaliDateKey(a.date)))[0]
+        ?.unitCost;
       return {
         id: createId("invoice-item"),
         productId: row.productId || undefined,
@@ -1668,6 +1679,10 @@ function Invoices({
         quantityBase: quantity * conversionRate,
         unitPrice,
         total: quantity * unitPrice * conversionRate,
+        unitCostAtSale:
+          form.type === "فروش"
+            ? existingItem?.unitCostAtSale ?? latestCost
+            : undefined,
       };
     });
     const invoice = {
@@ -2091,6 +2106,9 @@ function Invoices({
                                             : check?.status === "جایگزین شده"
                                               ? "replaced"
                                               : "open";
+                                    const profit = check && invoice
+                                      ? calculateEffectiveProfitForAllocation(state, invoice, item, check)
+                                      : null;
                                     return (
                                       <div
                                         className={`allocation-detail-card check-allocation-card check-row-${tone}`}
@@ -2128,6 +2146,16 @@ function Invoices({
                                             state.settings.currency
                                           )}
                                         </span>
+                                        {profit && (
+                                          <>
+                                            <span>
+                                              سود ظاهری: {formatMoney(profit.apparentProfit, state.settings.currency)} · {formatNumber(profit.apparentRate * 100)}٪
+                                            </span>
+                                            <span>
+                                              سود مؤثر: {formatMoney(profit.effectiveProfit, state.settings.currency)} · {formatNumber(profit.effectiveRate * 100)}٪ · وصول {formatDate(profit.collectionDate)}
+                                            </span>
+                                          </>
+                                        )}
                                         <span>
                                           مانده چک پس از تخصیص:{" "}
                                           {check
@@ -6000,6 +6028,12 @@ function Checks({
         ? {
             ...item,
             status,
+            collectedDate:
+              status === "وصول شده"
+                ? item.status === "وصول شده"
+                  ? item.collectedDate || todayJalali()
+                  : todayJalali()
+                : item.collectedDate,
             bankAccountId: accountId || undefined,
             bank:
               state.accounts.find(item => item.id === accountId)?.name ||
@@ -6102,6 +6136,10 @@ function Checks({
       returnPartyId: form.returnPartyId || undefined,
       replacementOf: form.replacementOf || undefined,
       status: form.status,
+      collectedDate:
+        form.status === "وصول شده"
+          ? editingCheck?.collectedDate || todayJalali()
+          : editingCheck?.collectedDate,
       receivedDate: form.receivedDate,
       dueDate: form.dueDate,
       amount,
@@ -6622,6 +6660,9 @@ function Checks({
                                   allocationBalances.get(
                                     `${item.checkId}:${item.invoiceId}`
                                   );
+                                const profit = invoice
+                                  ? calculateEffectiveProfitForAllocation(state, invoice, item, check)
+                                  : null;
                                 return (
                                   <div
                                     className="allocation-detail-card"
@@ -6655,6 +6696,16 @@ function Checks({
                                         state.settings.currency
                                       )}
                                     </span>
+                                    {profit && (
+                                      <>
+                                        <span>
+                                          سود ظاهری: {formatMoney(profit.apparentProfit, state.settings.currency)} · {formatNumber(profit.apparentRate * 100)}٪
+                                        </span>
+                                        <span>
+                                          سود مؤثر: {formatMoney(profit.effectiveProfit, state.settings.currency)} · {formatNumber(profit.effectiveRate * 100)}٪ · وصول {formatDate(profit.collectionDate)}
+                                        </span>
+                                      </>
+                                    )}
                                     <span>
                                       اختلاف تاریخ:{" "}
                                       {formatNumber(item.days || 0)} روز

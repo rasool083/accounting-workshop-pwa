@@ -28,6 +28,7 @@ import {
   purchasePaymentIdsExclusiveToInvoice,
   cashAccountReconciliation,
   calculateInvoiceAmount,
+  calculateEffectiveProfitForAllocation,
 } from "./accounting";
 
 describe("invoice totals", () => {
@@ -67,6 +68,45 @@ describe("unit conversion", () => {
       conversionRate: 36,
     };
     expect(quantityInBase(product, 10, "کارتن")).toBe(360);
+  });
+});
+
+describe("effective profit at collection", () => {
+  it("uses the actual collection date and current production cost", () => {
+    const state = normalizeState({
+      products: [{ id: "product-a", code: "A", name: "کالای A", unit: "عدد", stock: 0, minStock: 0, price: 300000 }],
+      productionRecords: [{
+        id: "batch-current", formulaId: "formula-a", outputProductId: "product-a",
+        outputProductName: "کالای A", date: "1405/03/01", outputQuantity: 1,
+        materialCost: 180000, overheadCost: 0, totalCost: 180000, unitCost: 180000,
+        note: "",
+      }],
+    });
+    const invoice = {
+      id: "invoice-a", number: "A-1", type: "فروش" as const, date: "1405/01/01",
+      items: [{ id: "item-a", productId: "product-a", description: "کالای A", quantity: 1,
+        unit: "عدد", unitPrice: 300000, total: 300000, quantityBase: 1,
+        unitCostAtSale: 160000 }],
+      allocations: [], amount: 300000, paidAmount: 300000, status: "تسویه شده" as const, note: "",
+    };
+    const check = {
+      id: "check-a", number: "A-CHECK", partyId: "customer", receivedDate: "1405/01/01",
+      dueDate: "1405/03/01", collectedDate: "1405/03/05", amount: 336000,
+      status: "وصول شده" as const, bank: "بانک",
+    };
+    const result = calculateEffectiveProfitForAllocation(
+      state,
+      invoice,
+      { amount: 336000, principalAmount: 300000 },
+      check
+    )!;
+    expect(result.collectionDate).toBe("1405/03/05");
+    expect(result.apparentCost).toBe(160000);
+    expect(result.currentCost).toBe(180000);
+    expect(result.apparentProfit).toBe(176000);
+    expect(result.effectiveProfit).toBe(156000);
+    expect(result.apparentRate).toBeCloseTo(1.1);
+    expect(result.effectiveRate).toBeCloseTo(156000 / 180000);
   });
 });
 
