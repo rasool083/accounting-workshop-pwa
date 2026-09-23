@@ -963,14 +963,25 @@ export function normalizeState(input: unknown): AppState {
       ? source.warehouses
       : seedState.warehouses,
     invoices: Array.isArray(source.invoices)
-      ? source.invoices.map(invoice => ({
-          ...invoice,
-          items: Array.isArray(invoice.items) ? invoice.items : [],
-          allocations: Array.isArray(invoice.allocations)
-            ? invoice.allocations
-            : [],
-          paidAmount: Number(invoice.paidAmount) || 0,
-        }))
+      ? source.invoices.map(invoice => {
+          const paidAmount = Number(invoice.paidAmount) || 0;
+          const invoiceAmount = Number(invoice.amount) || 0;
+          return {
+            ...invoice,
+            items: Array.isArray(invoice.items) ? invoice.items : [],
+            allocations: Array.isArray(invoice.allocations)
+              ? invoice.allocations
+              : [],
+            paidAmount,
+            // Legacy floating-point residue must not leave a fully paid invoice partial.
+            status:
+              invoice.status === "تسویه جزئی" &&
+              paidAmount > 0 &&
+              invoiceAmount - paidAmount <= 0.01
+                ? ("تسویه شده" as const)
+                : invoice.status,
+          };
+        })
       : [],
     priceHistory: Array.isArray(source.priceHistory) ? source.priceHistory : [],
     paymentRules: Array.isArray(source.paymentRules)
@@ -1385,7 +1396,8 @@ export function auditDataIntegrity(state: AppState): IntegrityFinding[] {
     invoice.items.forEach(item => {
       if (item.productId && !products.has(item.productId)) add(`invoice-product-${invoice.id}-${item.id}`, "خطا", "فاکتور", `کالای ردیف ${item.description} در فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
     });
-    const totalAllocated = invoice.allocations.reduce((sum, item) => sum + Math.max(0, item.amount), 0);
+    // مبلغ allocation شامل هزینهٔ دیرکرد است؛ سقف فاکتور فقط با اصل تخصیص سنجیده می‌شود.
+    const totalAllocated = invoice.allocations.reduce((sum, item) => sum + Math.max(0, item.principalAmount ?? item.amount), 0);
     if (totalAllocated > invoice.amount + 0.01) add(`invoice-allocation-${invoice.id}`, "خطا", "تخصیص چک", `مجموع تخصیص‌های فاکتور ${invoice.number} از مبلغ فاکتور بیشتر است.`, invoice.id);
     invoice.allocations.forEach(allocation => {
       if (!checks.has(allocation.checkId)) add(`allocation-check-${invoice.id}-${allocation.checkId}`, "خطا", "تخصیص چک", `چک تخصیص‌یافته به فاکتور ${invoice.number} پیدا نشد.`, invoice.id);

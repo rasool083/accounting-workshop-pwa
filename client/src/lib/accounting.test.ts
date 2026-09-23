@@ -1020,3 +1020,21 @@ describe("data integrity audit", () => {
     expect(findings.some(item => item.message.includes("چک تخصیص‌یافته") && item.severity === "خطا")).toBe(true);
   });
 });
+
+
+describe("late-cost allocation integrity", () => {
+  it("does not flag late cost as invoice over-allocation", () => {
+    const state = normalizeState({
+      people: [{ id: "customer", code: "C1", name: "مشتری", type: "مشتری", roles: ["مشتری"], phone: "", balance: 0 }],
+      invoices: [{
+        id: "invoice-1010", number: "1010", type: "فروش", date: "1405/06/07", partyId: "customer",
+        items: [], allocations: [{ checkId: "check-z006", amount: 188338064.51612905, principalAmount: 161999999.99999997, profit: 26338064.516129047, allocatedAt: "1405/06/26" }],
+        amount: 162000000, paidAmount: 161999999.99999997, status: "تسویه جزئی", note: "",
+      }],
+      checks: [{ id: "check-z006", number: "Z006", partyId: "customer", dueDate: "1405/08/30", receivedDate: "1405/06/26", amount: 350000000, status: "نزد ما", bank: "حساب بانکی" }],
+    });
+    expect(state.invoices[0].status).toBe("تسویه شده");
+    const findings = auditDataIntegrity(state);
+    expect(findings.some(item => item.id === "invoice-allocation-invoice-1010")).toBe(false);
+  });
+});
