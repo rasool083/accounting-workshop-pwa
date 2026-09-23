@@ -453,3 +453,16 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **گام بعدی:** fixture چرخهٔ خرید چکی، پرداخت تأمین‌کننده، reversal فاکتور و مغایرت حساب نقدی اضافه شود؛ سپس سناریوهای موبایل/PWA روی همین fixture بررسی شوند.
 
 **وضعیت:** انجام‌شده
+
+
+## ۱۴۰۵/۰۷/۰۲ — قرارداد قابل‌آزمون PWA پیش از APK
+
+**بررسی:** چرخهٔ خرید و reversal از قبل در تست یکپارچهٔ حسابداری وجود داشت؛ خلأ مرحلهٔ بعد در manifest، service worker، نصب standalone و مرز cache بود.
+
+**تصمیم:** manifest باید فارسی/RTL، مسیر نسبی برای استقرار زیرمسیر، standalone و آیکون‌های ۱۹۲/۵۱۲ داشته باشد. service worker باید cache نسخه‌دار داشته باشد، هنگام فعال‌سازی cacheهای قبلی را حذف کند، درخواست‌های غیر GET را cache نکند، مسیر navigation را برای آفلاین به پوسته برگرداند و فقط assetهای same-origin را cache کند. هیچ دادهٔ مالی یا localStorage نباید وارد cache عمومی service worker شود.
+
+**آزمون:** `client/src/lib/pwa.test.ts` این قرارداد را کنترل می‌کند. نتیجهٔ نهایی ۵۴ تست موفق، type-check و build موفق است.
+
+**گام بعدی:** اجرای آزمون نصب واقعی PWA در Chrome موبایل یا محیط دارای Android/SDK، سپس بررسی migration و حفظ localStorage بعد از update؛ بدون این آزمون‌ها APK release شروع نمی‌شود.
+
+**وضعیت:** انجام‌شده
