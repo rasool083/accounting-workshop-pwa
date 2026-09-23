@@ -1897,6 +1897,66 @@ export function calculateEffectiveProfitForAllocation(
   };
 }
 
+export interface CollectionProfitReportRow {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  checkId: string;
+  checkNumber: string;
+  partyId?: string;
+  collectionDate: string;
+  month: string;
+  year: string;
+  collectedAmount: number;
+  lateCost: number;
+  apparentCost: number;
+  currentCost: number;
+  apparentProfit: number;
+  effectiveProfit: number;
+  apparentRate: number;
+  effectiveRate: number;
+}
+
+/** تمام تخصیص‌های وصول‌شده را به‌صورت ردیف‌های قابل تجمیع برمی‌گرداند. */
+export function buildCollectionProfitReport(state: AppState): CollectionProfitReportRow[] {
+  const rows: CollectionProfitReportRow[] = [];
+  state.invoices
+    .filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل")
+    .forEach(invoice => {
+      invoice.allocations.forEach(allocation => {
+        const check = state.checks.find(item => item.id === allocation.checkId);
+        const breakdown = calculateEffectiveProfitForAllocation(state, invoice, allocation, check);
+        if (!breakdown || !check) return;
+        const parts = breakdown.collectionDate.split("/");
+        const year = parts[0] || "نامشخص";
+        const month = parts.length >= 2 ? `${year}/${parts[1]}` : year;
+        rows.push({
+          id: `${invoice.id}:${check.id}`,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.number,
+          checkId: check.id,
+          checkNumber: check.number,
+          partyId: invoice.partyId,
+          collectionDate: breakdown.collectionDate,
+          month,
+          year,
+          collectedAmount: allocation.amount,
+          lateCost: allocation.profit || 0,
+          apparentCost: breakdown.apparentCost,
+          currentCost: breakdown.currentCost,
+          apparentProfit: breakdown.apparentProfit,
+          effectiveProfit: breakdown.effectiveProfit,
+          apparentRate: breakdown.apparentRate,
+          effectiveRate: breakdown.effectiveRate,
+        });
+      });
+    });
+  return rows.sort((a, b) =>
+    jalaliDateKey(b.collectionDate).localeCompare(jalaliDateKey(a.collectionDate)) ||
+    a.invoiceNumber.localeCompare(b.invoiceNumber)
+  );
+}
+
 export function allocateCheckFIFO(
   check: Check,
   invoices: Invoice[],
@@ -2459,7 +2519,7 @@ export const navItems: Array<{
   {
     id: "monthClose",
     label: "بستن ماه",
-    caption: "تسویه و سود دیرکرد",
+    caption: "تسویه و هزینه دیرکرد",
     icon: "lock-keyhole",
   },
   {

@@ -64,6 +64,7 @@ import {
   transactionLabel,
   calculateLateProfit,
   calculateEffectiveProfitForAllocation,
+  buildCollectionProfitReport,
   settleChecksFIFO,
   getSettlementBalances,
   allocateCheckFIFO,
@@ -5634,8 +5635,8 @@ function PaymentRules({
     <div className="page-stack page-enter">
       <PageIntro
         kicker="سیاست تسویه"
-        title="شرایط پرداخت و پله‌های سود"
-        description="قواعد تسویه را یک‌بار تعریف کنید تا محاسبهٔ سود روزشمار شفاف و قابل تغییر بماند."
+        title="شرایط پرداخت و پله‌های هزینه دیرکرد"
+        description="قواعد تسویه را یک‌بار تعریف کنید تا محاسبهٔ هزینهٔ روزشمار شفاف و قابل تغییر بماند."
         actionLabel="ساخت شرایط پرداخت"
         onAction={() => setOpen(true)}
       />
@@ -7150,7 +7151,7 @@ function MonthClose({
   const totalCollected = months.reduce((sum, row) => sum + row.collected, 0);
   function downloadDetails() {
     const header =
-      "ماه,شماره فاکتور,تاریخ,مجموع فروش پایه,ارزش امروز,باقیمانده اصل امروز,مبلغ چک تخصیص‌یافته,سود دیرکرد";
+      "ماه,شماره فاکتور,تاریخ,مجموع فروش پایه,ارزش امروز,باقیمانده اصل امروز,مبلغ چک تخصیص‌یافته,هزینه دیرکرد";
     const csv = [
       header,
       ...details.map(row =>
@@ -7179,7 +7180,7 @@ function MonthClose({
       <PageIntro
         kicker="کنترل پایان دوره"
         title="بستن ماه"
-        description="مشتری را انتخاب کنید؛ هشت ماه اخیر بدون وابستگی به یک فاکتور یا چک، با تخصیص FIFO و سود روزشمار محاسبه می‌شود."
+        description="مشتری را انتخاب کنید؛ هشت ماه اخیر بدون وابستگی به یک فاکتور یا چک، با تخصیص FIFO و هزینهٔ روزشمار محاسبه می‌شود."
         actionLabel={closed ? "ثبت شده" : "ثبت بستن ماه"}
         onAction={() => {
           if (closed || !partyId) return;
@@ -7264,7 +7265,7 @@ function MonthClose({
         <MetricCard
           label="ارزش باقیمانده امروز"
           value={formatMoney(totalValue, state.settings.currency)}
-          helper="اصل با سود روزشمار"
+          helper="اصل با هزینهٔ روزشمار"
           icon={<Percent size={20} />}
           tone="violet"
         />
@@ -7307,7 +7308,7 @@ function MonthClose({
                 <th>مجموع فروش (پایه)</th>
                 <th>ارزش امروز</th>
                 <th>باقیمانده اصل امروز</th>
-                <th>سود دیرکرد</th>
+                <th>هزینهٔ دیرکرد</th>
                 <th>درصد وصول</th>
               </tr>
             </thead>
@@ -7356,7 +7357,7 @@ function MonthClose({
             <span className="section-kicker">جزئیات محاسبات</span>
             <h3>محاسبه هر فاکتور</h3>
           </div>
-          <span className="soft-tag">FIFO و سود روزشمار</span>
+          <span className="soft-tag">FIFO و هزینهٔ روزشمار</span>
         </div>
         <div className="table-wrap">
           <table>
@@ -7369,7 +7370,7 @@ function MonthClose({
                 <th>ارزش امروز</th>
                 <th>اصل باقیمانده</th>
                 <th>چک تخصیص‌یافته</th>
-                <th>سود دیرکرد</th>
+                <th>هزینهٔ دیرکرد</th>
               </tr>
             </thead>
             <tbody>
@@ -7628,6 +7629,41 @@ function Reports({
       receivables,
     };
   }, [state]);
+  const collectionProfitRows = useMemo(
+    () => buildCollectionProfitReport(state),
+    [state]
+  );
+  const collectionProfitSummary = useMemo(() => {
+    const aggregate = (key: "month" | "year") => {
+      const map = new Map<string, {
+        key: string;
+        collectedAmount: number;
+        lateCost: number;
+        apparentProfit: number;
+        effectiveProfit: number;
+        apparentCost: number;
+        currentCost: number;
+        count: number;
+      }>();
+      collectionProfitRows.forEach(row => {
+        const group = row[key];
+        const previous = map.get(group) || {
+          key: group, collectedAmount: 0, lateCost: 0, apparentProfit: 0,
+          effectiveProfit: 0, apparentCost: 0, currentCost: 0, count: 0,
+        };
+        previous.collectedAmount += row.collectedAmount;
+        previous.lateCost += row.lateCost;
+        previous.apparentProfit += row.apparentProfit;
+        previous.effectiveProfit += row.effectiveProfit;
+        previous.apparentCost += row.apparentCost;
+        previous.currentCost += row.currentCost;
+        previous.count += 1;
+        map.set(group, previous);
+      });
+      return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
+    };
+    return { months: aggregate("month"), years: aggregate("year") };
+  }, [collectionProfitRows]);
   const agingReport = useMemo(() => {
     const buckets = [
       { key: "0-30", label: "۰ تا ۳۰ روز" },
@@ -7987,6 +8023,69 @@ function Reports({
           tone="violet"
         />
       </section>
+      <section className="panel table-panel effective-profit-report">
+        <div className="panel-heading">
+          <div>
+            <span className="section-kicker">گزارش مستقل وصول</span>
+            <h3>سود ظاهری و سود مؤثر</h3>
+            <p className="muted-cell">
+              فقط چک‌های «وصول شده»؛ مبنا تاریخ واقعی وصول است، نه تاریخ سررسید.
+              هزینهٔ دیرکرد جدا از سود کالا نمایش داده می‌شود.
+            </p>
+          </div>
+          <span className="soft-tag">هر چک · هر فاکتور · ماه · سال</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>تاریخ وصول</th>
+                <th>چک</th>
+                <th>فاکتور</th>
+                <th>مبلغ وصول</th>
+                <th>هزینهٔ دیرکرد</th>
+                <th>سود ظاهری</th>
+                <th>درصد ظاهری</th>
+                <th>سود مؤثر</th>
+                <th>درصد مؤثر</th>
+              </tr>
+            </thead>
+            <tbody>
+              {collectionProfitRows.length ? collectionProfitRows.map(row => (
+                <tr key={row.id}>
+                  <td>{formatDate(row.collectionDate)}</td>
+                  <td><strong>{row.checkNumber}</strong></td>
+                  <td>{row.invoiceNumber}</td>
+                  <td>{formatMoney(row.collectedAmount, state.settings.currency)}</td>
+                  <td>{formatMoney(row.lateCost, state.settings.currency)}</td>
+                  <td>{formatMoney(row.apparentProfit, state.settings.currency)}</td>
+                  <td>{formatNumber(row.apparentRate * 100)}٪</td>
+                  <td className={row.effectiveProfit >= 0 ? "amount-positive" : "amount-negative"}>
+                    {formatMoney(row.effectiveProfit, state.settings.currency)}
+                  </td>
+                  <td>{formatNumber(row.effectiveRate * 100)}٪</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={9}>پس از ثبت تاریخ واقعی وصول چک، سود ظاهری و مؤثر اینجا نمایش داده می‌شود.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <div className="report-grid effective-profit-periods">
+        <div className="panel table-panel">
+          <div className="panel-heading"><div><span className="section-kicker">تجمیع زمانی</span><h3>سود ماهانه</h3></div><span className="soft-tag">بر اساس تاریخ وصول</span></div>
+          <div className="table-wrap"><table><thead><tr><th>ماه</th><th>تعداد تخصیص</th><th>وصول</th><th>هزینه دیرکرد</th><th>سود ظاهری</th><th>سود مؤثر</th></tr></thead><tbody>
+            {collectionProfitSummary.months.length ? collectionProfitSummary.months.map(row => <tr key={row.key}><td><strong>{row.key}</strong></td><td>{formatNumber(row.count)}</td><td>{formatMoney(row.collectedAmount, state.settings.currency)}</td><td>{formatMoney(row.lateCost, state.settings.currency)}</td><td>{formatMoney(row.apparentProfit, state.settings.currency)}</td><td className={row.effectiveProfit >= 0 ? "amount-positive" : "amount-negative"}>{formatMoney(row.effectiveProfit, state.settings.currency)}</td></tr>) : <tr><td colSpan={6}>داده‌ای برای تجمیع ماهانه وجود ندارد.</td></tr>}
+          </tbody></table></div>
+        </div>
+        <div className="panel table-panel">
+          <div className="panel-heading"><div><span className="section-kicker">تجمیع زمانی</span><h3>سود سالانه</h3></div><span className="soft-tag">بر اساس تاریخ وصول</span></div>
+          <div className="table-wrap"><table><thead><tr><th>سال</th><th>تعداد تخصیص</th><th>وصول</th><th>هزینه دیرکرد</th><th>سود ظاهری</th><th>سود مؤثر</th></tr></thead><tbody>
+            {collectionProfitSummary.years.length ? collectionProfitSummary.years.map(row => <tr key={row.key}><td><strong>{row.key}</strong></td><td>{formatNumber(row.count)}</td><td>{formatMoney(row.collectedAmount, state.settings.currency)}</td><td>{formatMoney(row.lateCost, state.settings.currency)}</td><td>{formatMoney(row.apparentProfit, state.settings.currency)}</td><td className={row.effectiveProfit >= 0 ? "amount-positive" : "amount-negative"}>{formatMoney(row.effectiveProfit, state.settings.currency)}</td></tr>) : <tr><td colSpan={6}>داده‌ای برای تجمیع سالانه وجود ندارد.</td></tr>}
+          </tbody></table></div>
+        </div>
+      </div>
       <div className="panel table-panel">
         <div className="panel-heading">
           <div>
@@ -8331,7 +8430,7 @@ function Reports({
           <strong>گزارش‌های تفصیلی در حال آماده‌سازی هستند</strong>
           <p>
             ساختار گزارش‌ها از یک هستهٔ دادهٔ واحد تغذیه می‌شود تا ماندهٔ
-            تاریخی، سود روزشمار و موجودی با فرمول‌های پراکنده تکرار نشوند.
+            تاریخی، هزینهٔ روزشمار و موجودی با فرمول‌های پراکنده تکرار نشوند.
           </p>
         </div>
       </div>
