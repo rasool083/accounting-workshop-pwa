@@ -3199,6 +3199,7 @@ function Transactions({
   const [editForm, setEditForm] = useState({
     type: "دریافت" as TransactionType,
     amount: "",
+    feeAmount: "",
     partyId: "",
     note: "",
     date: todayJalali(),
@@ -3206,6 +3207,7 @@ function Transactions({
   const [accountOperation, setAccountOperation] = useState({
     type: "انتقال بین حساب‌ها" as TransactionType,
     amount: "",
+    feeAmount: "",
     fromAccountId: "",
     toAccountId: "",
     accountId: "",
@@ -3241,6 +3243,7 @@ function Transactions({
     setEditForm({
       type: item.type,
       amount: String(item.amount),
+      feeAmount: item.feeAmount ? String(item.feeAmount) : "",
       partyId: item.partyId || "",
       note: item.note || "",
       date: item.date,
@@ -3251,11 +3254,12 @@ function Transactions({
     transaction: AppState["transactions"][number],
     multiplier: 1 | -1
   ) {
+    const totalTransferOutflow = transaction.amount + (transaction.type === "انتقال بین حساب‌ها" ? Math.max(0, transaction.feeAmount || 0) : 0);
     return accounts.map(account => {
       if (transaction.fromAccountId === account.id)
         return {
           ...account,
-          balance: account.balance - transaction.amount * multiplier,
+          balance: account.balance - totalTransferOutflow * multiplier,
         };
       if (transaction.toAccountId === account.id)
         return {
@@ -3293,11 +3297,14 @@ function Transactions({
   function saveTransactionEdit(event: React.FormEvent) {
     event.preventDefault();
     const amount = Number(editForm.amount.replace(/[^0-9.-]/g, ""));
+    const feeAmount = Math.max(0, Number(editForm.feeAmount.replace(/[^0-9.-]/g, "")) || 0);
     if (!amount || !editingTransaction) return;
     const updatedTransaction = {
       ...editingTransaction,
       type: editForm.type,
       amount,
+      feeAmount: editForm.type === "انتقال بین حساب‌ها" ? feeAmount : undefined,
+      feeSource: editForm.type === "انتقال بین حساب‌ها" && feeAmount ? ("دستی" as const) : undefined,
       partyId: editForm.partyId || undefined,
       note: editForm.note,
       date: editForm.date,
@@ -3330,6 +3337,7 @@ function Transactions({
   function saveAccountOperation(event: React.FormEvent) {
     event.preventDefault();
     const amount = Number(accountOperation.amount.replace(/[^0-9.-]/g, ""));
+    const feeAmount = Math.max(0, Number(accountOperation.feeAmount.replace(/[^0-9.-]/g, "")) || 0);
     if (!amount || amount <= 0) return;
     const isTransfer = accountOperation.type === "انتقال بین حساب‌ها";
     const isStockOperation = ["خرید کالا", "فروش کالا"].includes(
@@ -3395,7 +3403,7 @@ function Transactions({
       if (isPartnerSettlement && account.id === accountOperation.toAccountId)
         return { ...account, balance: account.balance + amount };
       if (isTransfer && account.id === accountOperation.fromAccountId)
-        return { ...account, balance: account.balance - amount };
+        return { ...account, balance: account.balance - amount - feeAmount };
       if (isTransfer && account.id === accountOperation.toAccountId)
         return { ...account, balance: account.balance + amount };
       if (isStockOperation && account.id === accountOperation.accountId) {
@@ -3490,6 +3498,8 @@ function Transactions({
         : undefined,
       referenceLabel: isPartnerSettlement ? referenceLabel : undefined,
       amount,
+      feeAmount: isTransfer ? feeAmount : undefined,
+      feeSource: isTransfer && feeAmount ? ("دستی" as const) : undefined,
       status: "ثبت شده",
       note,
     };
@@ -3509,6 +3519,7 @@ function Transactions({
     setAccountOperation({
       type: "انتقال بین حساب‌ها",
       amount: "",
+      feeAmount: "",
       fromAccountId: "",
       toAccountId: "",
       accountId: "",
@@ -3621,6 +3632,23 @@ function Transactions({
             required
           />
         </label>
+        {accountOperation.type === "انتقال بین حساب‌ها" && (
+          <label>
+            کارمزد بانکی از مبدأ
+            <input
+              inputMode="numeric"
+              value={accountOperation.feeAmount}
+              onChange={event =>
+                setAccountOperation({
+                  ...accountOperation,
+                  feeAmount: event.target.value,
+                })
+              }
+              placeholder="اگر ندارد، صفر"
+            />
+            <small className="muted-cell">اصل مبلغ کامل به حساب مقصد می‌رسد.</small>
+          </label>
+        )}
         {accountOperation.type === "انتقال بین حساب‌ها" ? (
           <>
             <label>
@@ -4101,6 +4129,7 @@ function Transactions({
                     </td>
                     <td className="amount-cell">
                       {formatMoney(item.amount, state.settings.currency)}
+                      {!!item.feeAmount && <small className="table-subline">کارمزد: {formatMoney(item.feeAmount, state.settings.currency)} از مبدأ</small>}
                     </td>
                     <td>
                       <span
@@ -4184,6 +4213,7 @@ function Transactions({
               >
                 {(
                   [
+                    "انتقال بین حساب‌ها",
                     "دریافت",
                     "پرداخت",
                     "فروش",
@@ -4207,6 +4237,16 @@ function Transactions({
                 }
               />
             </label>
+            {editForm.type === "انتقال بین حساب‌ها" && (
+              <label>
+                کارمزد بانکی از مبدأ
+                <input
+                  inputMode="numeric"
+                  value={editForm.feeAmount}
+                  onChange={e => setEditForm({ ...editForm, feeAmount: e.target.value })}
+                />
+              </label>
+            )}
             <label>
               تاریخ
               <JalaliDatePicker

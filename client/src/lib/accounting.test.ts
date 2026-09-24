@@ -1092,3 +1092,58 @@ describe("payroll person links", () => {
     expect(auditDataIntegrity(state)).toContainEqual(expect.objectContaining({ id: "payroll-person-p-missing", severity: "خطا" }));
   });
 });
+
+
+describe("bank transfer fees", () => {
+  const opening = {
+    schemaVersion: 5,
+    revision: 1,
+    updatedAt: "1405/07/03",
+    settings: { businessName: "کارگاه", currency: "تومان", dayBasis: "شمسی" as const, units: [] },
+    accounts: [
+      { id: "from", name: "بانک مبدأ", type: "بانک" as const, balance: 1000 },
+      { id: "to", name: "بانک مقصد", type: "بانک" as const, balance: 0 },
+    ],
+    cashEvents: [
+      { id: "opening-from", at: "2026-09-24T00:00:00Z", date: "1405/07/03", kind: "opening_balance" as const, accountId: "from", amount: 1000, currency: "تومان", sourceType: "opening", note: "" },
+      { id: "opening-to", at: "2026-09-24T00:00:00Z", date: "1405/07/03", kind: "opening_balance" as const, accountId: "to", amount: 0, currency: "تومان", sourceType: "opening", note: "" },
+    ],
+    transactions: [],
+  };
+
+  it("delivers the full principal and deducts the fee only from the source", () => {
+    const previous = normalizeState(opening);
+    const next = normalizeState({
+      ...previous,
+      accounts: previous.accounts.map(account => account.id === "from" ? { ...account, balance: 895 } : account.id === "to" ? { ...account, balance: 100 } : account),
+      transactions: [{ id: "transfer-1", type: "انتقال بین حساب‌ها", date: "1405/07/03", fromAccountId: "from", toAccountId: "to", amount: 100, feeAmount: 5, feeSource: "دستی", status: "ثبت شده", note: "" }],
+    });
+    const reconciled = reconcileLedgerEvents(previous, next);
+    expect(reconciled.cashEvents.filter(event => event.sourceId === "transfer-1").map(event => event.amount)).toContain(-100);
+    expect(reconciled.cashEvents.find(event => event.sourceId === "transfer-1:fee")?.amount).toBe(-5);
+    expect(rebuildCashProjection(reconciled).accounts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "from", balance: 895 }),
+      expect.objectContaining({ id: "to", balance: 100 }),
+    ]));
+    expect(cashLedgerDiscrepancies(reconciled)).toEqual([]);
+  });
+
+  it("reverses the old fee event when an existing transfer fee is corrected", () => {
+    const previous = normalizeState(opening);
+    const first = normalizeState({
+      ...previous,
+      accounts: previous.accounts.map(account => account.id === "from" ? { ...account, balance: 895 } : account.id === "to" ? { ...account, balance: 100 } : account),
+      transactions: [{ id: "transfer-1", type: "انتقال بین حساب‌ها", date: "1405/07/03", fromAccountId: "from", toAccountId: "to", amount: 100, feeAmount: 5, feeSource: "دستی", status: "ثبت شده", note: "" }],
+    });
+    const ledger = reconcileLedgerEvents(previous, first);
+    const corrected = normalizeState({
+      ...ledger,
+      accounts: ledger.accounts.map(account => account.id === "from" ? { ...account, balance: 892 } : account),
+      transactions: ledger.transactions.map(transaction => ({ ...transaction, feeAmount: 8 })),
+    });
+    const reconciled = reconcileLedgerEvents(ledger, corrected);
+    expect(rebuildCashProjection(reconciled).accounts.find(account => account.id === "from")?.balance).toBe(892);
+    expect(reconciled.cashEvents.filter(event => event.sourceId === "transfer-1:fee").reduce((sum, event) => sum + event.amount, 0)).toBe(-8);
+    expect(cashLedgerDiscrepancies(reconciled)).toEqual([]);
+  });
+});

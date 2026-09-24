@@ -297,6 +297,9 @@ export interface Transaction {
   referenceId?: string;
   referenceLabel?: string;
   amount: number;
+  /** کارمزد بانکی جدا از مبلغ اصلی؛ برای انتقال از حساب مبدأ کسر می‌شود. */
+  feeAmount?: number;
+  feeSource?: "تعرفه" | "دستی" | "صورت‌حساب بانک";
   status: "ثبت شده" | "باطل";
   note: string;
 }
@@ -1423,6 +1426,12 @@ export function auditDataIntegrity(state: AppState): IntegrityFinding[] {
   const checks = new Map(state.checks.map(item => [item.id, item]));
   const invoices = new Map(state.invoices.map(item => [item.id, item]));
   const payments = new Map(state.purchasePayments.map(item => [item.id, item]));
+  state.transactions.forEach(transaction => {
+    const fee = Number(transaction.feeAmount) || 0;
+    if (fee < 0) add(`transaction-fee-negative-${transaction.id}`, "خطا", "کارمزد بانکی", "مبلغ کارمزد نمی‌تواند منفی باشد.", transaction.id);
+    if (fee > 0 && transaction.type !== "انتقال بین حساب‌ها") add(`transaction-fee-type-${transaction.id}`, "هشدار", "کارمزد بانکی", "کارمزد ثبت‌شده فقط برای انتقال بین حساب‌ها پشتیبانی می‌شود.", transaction.id);
+    if (fee > 0 && !transaction.fromAccountId) add(`transaction-fee-source-${transaction.id}`, "خطا", "کارمزد بانکی", "کارمزد انتقال حساب مبدأ ندارد.", transaction.id);
+  });
   state.payrollRecords.forEach(record => {
     if (record.personId && !people.has(record.personId)) {
       add(`payroll-person-${record.id}`, "خطا", "حقوق و دستمزد", `رکورد حقوق ${record.employeeName} به شخص حذف‌شده ارجاع می‌دهد.`, record.id);
@@ -1480,10 +1489,15 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
   const hasExplicitInventoryEvents = inventoryEvents.length > (previous.inventoryEvents || []).length;
   const hasExplicitCashEvents = cashEvents.length > (previous.cashEvents || []).length;
   const date = todayJalali();
-  const previousTransactionIds = new Set(previous.transactions.map(item => item.id));
-  const newTransactions = next.transactions.filter(
-    item => !previousTransactionIds.has(item.id) && item.status !== "باطل"
-  );
+  const previousTransactions = new Map(previous.transactions.map(item => [item.id, item]));
+  const transactionChanged = (before: Transaction, after: Transaction) =>
+    before.type !== after.type || before.amount !== after.amount || before.feeAmount !== after.feeAmount
+      || before.fromAccountId !== after.fromAccountId || before.toAccountId !== after.toAccountId
+      || before.accountId !== after.accountId || before.status !== after.status;
+  const newTransactions = next.transactions.filter(item => {
+    const before = previousTransactions.get(item.id);
+    return item.status !== "باطل" && (!before || transactionChanged(before, item));
+  });
   const inventorySources = new Set<string>();
   const cashSources = new Set<string>();
   const specializedCashAccounts = new Set<string>();
@@ -1511,12 +1525,39 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
     });
     cashSources.add(sourceKey);
   };
+  const addBankFee = (transaction: Transaction) => {
+    const fee = Math.max(0, Number(transaction.feeAmount) || 0);
+    if (transaction.type !== "انتقال بین حساب‌ها" || !transaction.fromAccountId || !fee) return;
+    const sourceKey = `${transaction.id}:fee`;
+    if (cashSources.has(sourceKey)) return;
+    cashEvents.push({
+      id: createId("cash-fee-event"), at: new Date().toISOString(), date: transaction.date,
+      kind: "expense", accountId: transaction.fromAccountId, amount: -fee,
+      currency: next.settings.currency, sourceType: "bank_fee", sourceId: `${transaction.id}:fee`,
+      note: `کارمزد بانکی انتقال ${transaction.id}`,
+    });
+    cashSources.add(sourceKey);
+  };
+  for (const transaction of newTransactions) {
+    const before = previousTransactions.get(transaction.id);
+    if (!before) continue;
+    for (const event of cashEvents.filter(item => item.sourceId === transaction.id || item.sourceId === `${transaction.id}:fee`)) {
+      if (event.kind === "reversal") continue;
+      cashEvents.push({
+        id: createId("cash-reversal"), at: new Date().toISOString(), date: event.date,
+        kind: "reversal", accountId: event.accountId, counterAccountId: event.counterAccountId,
+        amount: -event.amount, currency: next.settings.currency, sourceType: "transaction-reversal",
+        sourceId: event.sourceId || transaction.id, reversalOf: event.id, note: `معکوس‌سازی رویداد نقدی برای اصلاح ${transaction.id}`,
+      });
+    }
+  }
   for (const transaction of newTransactions) {
     if (transaction.type === "خرید کالا") addInventory(transaction, "purchase", Math.abs(transaction.quantity || 0));
     if (transaction.type === "فروش کالا") addInventory(transaction, "sale", -Math.abs(transaction.quantity || 0));
     if (transaction.type === "انتقال بین حساب‌ها") {
       addCash(transaction, transaction.fromAccountId, -transaction.amount, "transfer", transaction.toAccountId);
       addCash(transaction, transaction.toAccountId, transaction.amount, "transfer", transaction.fromAccountId);
+      addBankFee(transaction);
     } else if (["خرید کالا", "هزینه/خرید توسط شریک", "مساعده/پرداخت به شریک", "پرداخت حقوق", "پرداخت", "هزینه"].includes(transaction.type)) {
       addCash(transaction, transaction.accountId, -transaction.amount, "payment");
     } else if (["فروش کالا", "دریافت توسط شریک", "دریافت تسویه از شریک", "دریافت", "درآمد"].includes(transaction.type)) {
