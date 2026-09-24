@@ -6,6 +6,7 @@ export type PageId =
   | "vendorDirectory"
   | "invoices"
   | "transactions"
+  | "payroll"
   | "banks"
   | "people"
   | "inventory"
@@ -163,7 +164,8 @@ export type TransactionType =
   | "هزینه/خرید توسط شریک"
   | "دریافت توسط شریک"
   | "مساعده/پرداخت به شریک"
-  | "دریافت تسویه از شریک";
+  | "دریافت تسویه از شریک"
+  | "پرداخت حقوق";
 export type PartnerSettlementDirection =
   | "پرداخت بدهی کارگاه به شریک"
   | "دریافت طلب کارگاه از شریک";
@@ -320,6 +322,22 @@ export interface Check {
   note?: string;
 }
 
+export type PayrollStatus = "پرداخت‌شده" | "پرداختنی" | "باطل";
+
+export interface PayrollRecord {
+  id: string;
+  date: string;
+  period: string;
+  employeeName: string;
+  personId?: string;
+  amount: number;
+  status: PayrollStatus;
+  accountId?: string;
+  transactionId?: string;
+  paidAt?: string;
+  note: string;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -439,6 +457,7 @@ export interface AppState {
   partnerObligationEvents: PartnerObligationEvent[];
   productionFormulas: ProductionFormula[];
   productionRecords: ProductionRecord[];
+  payrollRecords: PayrollRecord[];
 }
 
 export interface ProductionExecutionResult {
@@ -792,6 +811,7 @@ const seedState: AppState = {
   partnerObligationEvents: [],
   productionFormulas: [],
   productionRecords: [],
+  payrollRecords: [],
 };
 
 export function createId(prefix: string) {
@@ -1074,6 +1094,18 @@ export function normalizeState(input: unknown): AppState {
       : [],
     productionRecords: Array.isArray(source.productionRecords)
       ? source.productionRecords
+      : [],
+    payrollRecords: Array.isArray(source.payrollRecords)
+      ? source.payrollRecords.map(record => ({
+          ...record,
+          amount: Number(record.amount) || 0,
+          period: typeof record.period === "string" ? record.period : record.date,
+          employeeName: typeof record.employeeName === "string" ? record.employeeName : "",
+          status: ["پرداخت‌شده", "پرداختنی", "باطل"].includes(record.status)
+            ? record.status
+            : "پرداختنی",
+          note: typeof record.note === "string" ? record.note : "",
+        }))
       : [],
   } as AppState;
 }
@@ -1473,7 +1505,7 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
     if (transaction.type === "انتقال بین حساب‌ها") {
       addCash(transaction, transaction.fromAccountId, -transaction.amount, "transfer", transaction.toAccountId);
       addCash(transaction, transaction.toAccountId, transaction.amount, "transfer", transaction.fromAccountId);
-    } else if (["خرید کالا", "هزینه/خرید توسط شریک", "مساعده/پرداخت به شریک", "پرداخت", "هزینه"].includes(transaction.type)) {
+    } else if (["خرید کالا", "هزینه/خرید توسط شریک", "مساعده/پرداخت به شریک", "پرداخت حقوق", "پرداخت", "هزینه"].includes(transaction.type)) {
       addCash(transaction, transaction.accountId, -transaction.amount, "payment");
     } else if (["فروش کالا", "دریافت توسط شریک", "دریافت تسویه از شریک", "دریافت", "درآمد"].includes(transaction.type)) {
       addCash(transaction, transaction.accountId, transaction.amount, "receipt");
@@ -1593,6 +1625,7 @@ export function transactionLabel(type: TransactionType) {
     "دریافت توسط شریک": "دریافت توسط شریک",
     "مساعده/پرداخت به شریک": "مساعده/پرداخت به شریک",
     "دریافت تسویه از شریک": "دریافت تسویه از شریک",
+    "پرداخت حقوق": "پرداخت حقوق",
   }[type];
 }
 
@@ -1620,6 +1653,7 @@ export function exportPayload(state: AppState) {
         cashEvents: data.cashEvents.length,
         productionFormulas: data.productionFormulas.length,
         productionRecords: data.productionRecords.length,
+        payrollRecords: data.payrollRecords.length,
       },
       data,
     },
@@ -2576,6 +2610,12 @@ export const navItems: Array<{
     label: "عملیات مالی",
     caption: "فروش و دریافت",
     icon: "arrow-left-right",
+  },
+  {
+    id: "payroll",
+    label: "حقوق و دستمزد",
+    caption: "پرداخت و حقوق پرداختنی",
+    icon: "wallet-cards",
   },
   {
     id: "banks",

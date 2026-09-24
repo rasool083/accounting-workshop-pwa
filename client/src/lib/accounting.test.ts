@@ -1038,3 +1038,30 @@ describe("late-cost allocation integrity", () => {
     expect(findings.some(item => item.id === "invoice-allocation-invoice-1010")).toBe(false);
   });
 });
+
+
+describe("payroll accounting", () => {
+  it("records a direct payroll payment as cash outflow without a party balance", () => {
+    const previous = normalizeState({
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 1000 }],
+      transactions: [],
+      payrollRecords: [],
+    });
+    const next = {
+      ...previous,
+      accounts: previous.accounts.map(account => account.id === "bank" ? { ...account, balance: 950 } : account),
+      payrollRecords: [{
+        id: "payroll-1", date: "1405/07/03", period: "1405/06", employeeName: "علی رضایی",
+        amount: 50, status: "پرداخت‌شده" as const, accountId: "bank", transactionId: "payroll-payment-1", note: "",
+      }],
+      transactions: [{
+        id: "payroll-payment-1", type: "پرداخت حقوق" as const, date: "1405/07/03", accountId: "bank",
+        referenceType: "هزینه" as const, referenceId: "payroll-1", amount: 50, status: "ثبت شده" as const, note: "حقوق علی رضایی",
+      }],
+    };
+    const reconciled = reconcileLedgerEvents(previous, next);
+    expect(reconciled.transactions[0].partyId).toBeUndefined();
+    expect(reconciled.cashEvents.at(-1)).toEqual(expect.objectContaining({ accountId: "bank", amount: -50, kind: "payment", sourceId: "payroll-payment-1" }));
+    expect(rebuildCashProjection(reconciled).accounts.find(account => account.id === "bank")?.balance).toBe(950);
+  });
+});

@@ -10,6 +10,7 @@ import {
   Check,
   Calendar,
   ChevronDown,
+  Clock3,
   Cloud,
   CloudDownload,
   CloudUpload,
@@ -151,7 +152,7 @@ function Icon({
 }
 
 function statusClass(status: string) {
-  if (["وصول شده", "ثبت شده", "تودیع شده"].includes(status))
+  if (["وصول شده", "ثبت شده", "تودیع شده", "پرداخت‌شده"].includes(status))
     return "status-success";
   if (["برگشتی", "باطل"].includes(status)) return "status-danger";
   return "status-warning";
@@ -1002,6 +1003,12 @@ export default function Home() {
             <Transactions
               state={state}
               onQuick={() => setQuickOpen(true)}
+              onSave={(next, msg) => updateState(next, msg)}
+            />
+          )}
+          {activePage === "payroll" && (
+            <PayrollPage
+              state={state}
               onSave={(next, msg) => updateState(next, msg)}
             />
           )}
@@ -2997,6 +3004,160 @@ function BankAccounts({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function PayrollPage({
+  state,
+  onSave,
+}: {
+  state: AppState;
+  onSave: (next: AppState, message: string) => void;
+}) {
+  const [form, setForm] = useState({
+    employeeName: "",
+    personId: "",
+    amount: "",
+    period: todayJalali().slice(0, 7),
+    date: todayJalali(),
+    accountId: "",
+    status: "پرداخت‌شده" as "پرداخت‌شده" | "پرداختنی",
+    note: "",
+  });
+  const workers = state.people.filter(person => person.roles.includes("کارگر"));
+  const cashAccounts = state.accounts.filter(account => account.type === "بانک" || account.type === "صندوق");
+  const activeRecords = state.payrollRecords.filter(record => record.status !== "باطل");
+  const totals = activeRecords.reduce(
+    (result, record) => {
+      if (record.status !== "باطل") result[record.status] += record.amount;
+      return result;
+    },
+    { "پرداخت‌شده": 0, "پرداختنی": 0 } as Record<"پرداخت‌شده" | "پرداختنی", number>
+  );
+
+  function createPayroll(event: React.FormEvent) {
+    event.preventDefault();
+    const amount = Number(form.amount.replace(/[^0-9.-]/g, ""));
+    const account = cashAccounts.find(item => item.id === form.accountId);
+    const employeeName = form.employeeName.trim();
+    if (!employeeName || !Number.isFinite(amount) || amount <= 0) return;
+    if (form.status === "پرداخت‌شده" && !account) {
+      window.alert("برای حقوق پرداخت‌شده، بانک یا صندوق پرداخت‌کننده را انتخاب کنید.");
+      return;
+    }
+    const id = createId("payroll");
+    const transactionId = form.status === "پرداخت‌شده" ? createId("payroll-payment") : undefined;
+    const record = {
+      id,
+      date: form.date,
+      period: form.period,
+      employeeName,
+      personId: form.personId || undefined,
+      amount,
+      status: form.status,
+      accountId: account?.id,
+      transactionId,
+      paidAt: form.status === "پرداخت‌شده" ? form.date : undefined,
+      note: form.note.trim(),
+    } as const;
+    const transaction = transactionId
+      ? {
+          id: transactionId,
+          type: "پرداخت حقوق" as const,
+          date: form.date,
+          accountId: account!.id,
+          referenceType: "هزینه" as const,
+          referenceId: id,
+          referenceLabel: `حقوق ${employeeName}`,
+          amount,
+          status: "ثبت شده" as const,
+          note: `پرداخت حقوق ${employeeName} · دوره ${form.period}${form.note.trim() ? ` · ${form.note.trim()}` : ""}`,
+        }
+      : undefined;
+    onSave(
+      {
+        ...state,
+        payrollRecords: [record, ...state.payrollRecords],
+        transactions: transaction ? [transaction, ...state.transactions] : state.transactions,
+        accounts: transaction
+          ? state.accounts.map(item => item.id === account!.id ? { ...item, balance: item.balance - amount } : item)
+          : state.accounts,
+      },
+      form.status === "پرداخت‌شده" ? "پرداخت حقوق ثبت شد؛ حساب شخص تغییری نکرد" : "حقوق پرداختنی ثبت شد"
+    );
+    setForm(current => ({ ...current, employeeName: "", personId: "", amount: "", note: "" }));
+  }
+
+  function payRecord(record: AppState["payrollRecords"][number]) {
+    const account = cashAccounts.find(item => item.id === form.accountId);
+    if (!account) {
+      window.alert("برای پرداخت حقوق پرداختنی، بانک یا صندوق را انتخاب کنید.");
+      return;
+    }
+    const transactionId = createId("payroll-payment");
+    const transaction = {
+      id: transactionId,
+      type: "پرداخت حقوق" as const,
+      date: todayJalali(),
+      accountId: account.id,
+      referenceType: "هزینه" as const,
+      referenceId: record.id,
+      referenceLabel: `حقوق ${record.employeeName}`,
+      amount: record.amount,
+      status: "ثبت شده" as const,
+      note: `پرداخت حقوق پرداختنی ${record.employeeName} · دوره ${record.period}`,
+    };
+    onSave(
+      {
+        ...state,
+        payrollRecords: state.payrollRecords.map(item => item.id === record.id ? { ...item, status: "پرداخت‌شده", accountId: account.id, transactionId, paidAt: todayJalali() } : item),
+        transactions: [transaction, ...state.transactions],
+        accounts: state.accounts.map(item => item.id === account.id ? { ...item, balance: item.balance - record.amount } : item),
+      },
+      "حقوق پرداختنی پرداخت شد؛ حساب شخص تغییری نکرد"
+    );
+  }
+
+  function voidRecord(record: AppState["payrollRecords"][number]) {
+    if (!window.confirm(`رکورد حقوق ${record.employeeName} باطل شود؟`)) return;
+    const transaction = record.transactionId ? state.transactions.find(item => item.id === record.transactionId) : undefined;
+    onSave(
+      {
+        ...state,
+        payrollRecords: state.payrollRecords.map(item => item.id === record.id ? { ...item, status: "باطل" } : item),
+        transactions: transaction
+          ? state.transactions.map(item => item.id === transaction.id ? { ...item, status: "باطل" } : item)
+          : state.transactions,
+        accounts: record.status === "پرداخت‌شده" && record.accountId
+          ? state.accounts.map(item => item.id === record.accountId ? { ...item, balance: item.balance + record.amount } : item)
+          : state.accounts,
+      },
+      "رکورد حقوق باطل و اثر حساب آن معکوس شد"
+    );
+  }
+
+  return (
+    <div className="page-stack page-enter">
+      <PageIntro kicker="دفتر پرسنل" title="حقوق و دستمزد" description="پرداخت مستقیم حقوق، ثبت حقوق پرداختنی و ابطال برگشت‌پذیر؛ بدون اثر بر ماندهٔ طرف‌حساب." />
+      <div className="metrics-grid">
+        <div className="metric-card"><div className="metric-icon indigo"><WalletCards size={19} /></div><div className="metric-copy"><span>پرداخت‌شده</span><strong>{formatMoney(totals["پرداخت‌شده"], state.settings.currency)}</strong><small>کاهش بانک یا صندوق</small></div></div>
+        <div className="metric-card"><div className="metric-icon amber"><Clock3 size={19} /></div><div className="metric-copy"><span>حقوق پرداختنی</span><strong>{formatMoney(totals["پرداختنی"], state.settings.currency)}</strong><small>بدون تغییر حساب شخص</small></div></div>
+      </div>
+      <form className="panel form-grid" onSubmit={createPayroll}>
+        <div className="panel-heading full-field"><div><span className="section-kicker">ثبت جدید</span><h3>پرداخت یا شناسایی حقوق</h3></div><span className="soft-tag">اثر طرف‌حساب: صفر</span></div>
+        <label>نام کارگر / دریافت‌کننده<input value={form.employeeName} onChange={event => setForm({ ...form, employeeName: event.target.value })} placeholder="مثلاً علی رضایی" required /></label>
+        <label>اتصال اختیاری به فهرست کارگران<select value={form.personId} onChange={event => { const person = workers.find(item => item.id === event.target.value); setForm({ ...form, personId: event.target.value, employeeName: person?.name || form.employeeName }); }}><option value="">بدون اتصال حسابی</option>{workers.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+        <label>مبلغ حقوق<input inputMode="decimal" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value })} placeholder="مبلغ به تومان" required /></label>
+        <label>دوره حقوق<input value={form.period} onChange={event => setForm({ ...form, period: event.target.value })} placeholder="۱۴۰۵/۰۶" required /></label>
+        <label>تاریخ ثبت<input value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} required /></label>
+        <label>نوع ثبت<select value={form.status} onChange={event => setForm({ ...form, status: event.target.value as "پرداخت‌شده" | "پرداختنی" })}><option value="پرداخت‌شده">همین حالا پرداخت می‌شود</option><option value="پرداختنی">حقوق پرداختنی؛ پرداخت در آینده</option></select></label>
+        <label>بانک / صندوق پرداخت‌کننده<select value={form.accountId} onChange={event => setForm({ ...form, accountId: event.target.value })} disabled={form.status === "پرداختنی"}><option value="">انتخاب حساب</option>{cashAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · موجودی {formatMoney(account.balance, state.settings.currency)}</option>)}</select></label>
+        <label className="full-field">توضیحات<textarea value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} placeholder="مثلاً حقوق ماهانه، اضافه‌کاری یا پاداش" /></label>
+        <div className="full-field form-actions"><button className="button button-primary" type="submit"><WalletCards size={16} /> ثبت حقوق</button></div>
+      </form>
+      <div className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">دفتر حقوق</span><h3>سوابق پرداخت و حقوق پرداختنی</h3></div><span className="soft-tag">حساب شخص درگیر نمی‌شود</span></div><div className="table-wrap"><table><thead><tr><th>دوره</th><th>دریافت‌کننده</th><th>مبلغ</th><th>وضعیت</th><th>حساب پرداخت</th><th>عملیات</th></tr></thead><tbody>{state.payrollRecords.length ? state.payrollRecords.map(record => <tr key={record.id}><td>{record.period}</td><td><strong>{record.employeeName}</strong><small className="table-subline">{record.note || "بدون توضیح"}</small></td><td>{formatMoney(record.amount, state.settings.currency)}</td><td><span className={`status-pill ${statusClass(record.status)}`}>{record.status}</span></td><td>{record.accountId ? state.accounts.find(item => item.id === record.accountId)?.name || "حذف‌شده" : "—"}</td><td className="table-actions">{record.status === "پرداختنی" && <button className="text-button" type="button" onClick={() => payRecord(record)}>پرداخت</button>}{record.status !== "باطل" && <button className="text-button danger" type="button" onClick={() => voidRecord(record)}>ابطال</button>}</td></tr>) : <tr><td colSpan={6}>هنوز رکورد حقوقی ثبت نشده است.</td></tr>}</tbody></table></div></div>
+      <div className="panel soft-panel"><strong>منطق حسابداری این صفحه</strong><p>در پرداخت مستقیم، حساب بانک یا صندوق کاهش می‌یابد و هزینهٔ حقوق ثبت می‌شود؛ نام کارگر فقط برای گزارش است و به‌عنوان طرف‌حساب مالی به تراکنش وصل نمی‌شود. در ثبت حقوق پرداختنی، تا زمان پرداخت هیچ حساب بانکی و هیچ ماندهٔ شخصی تغییر نمی‌کند.</p></div>
     </div>
   );
 }
@@ -7504,7 +7665,7 @@ function Reports({
       rows.push({
         id: item.id,
         date: item.date,
-        title: transactionLabel(item.type),
+        title: transactionLabel(item.type) || item.type,
         increase: increase ? item.amount : 0,
         decrease: increase ? 0 : item.amount,
         note: [
