@@ -1065,3 +1065,30 @@ describe("payroll accounting", () => {
     expect(rebuildCashProjection(reconciled).accounts.find(account => account.id === "bank")?.balance).toBe(950);
   });
 });
+
+
+describe("payroll person links", () => {
+  it("keeps linked worker, employee, and partner references non-financial", () => {
+    const state = normalizeState({
+      people: [
+        { id: "worker", name: "کارگر", roles: ["کارگر"] },
+        { id: "employee", name: "کارمند", roles: ["کارمند"] },
+        { id: "partner", name: "شریک", roles: ["شریک"] },
+      ],
+      payrollRecords: [
+        { id: "p1", date: "1405/07/03", period: "1405/06", employeeName: "کارگر", personId: "worker", amount: 10, status: "پرداختنی", note: "" },
+        { id: "p2", date: "1405/07/03", period: "1405/06", employeeName: "کارمند", personId: "employee", amount: 20, status: "پرداختنی", note: "" },
+        { id: "p3", date: "1405/07/03", period: "1405/06", employeeName: "شریک", personId: "partner", amount: 30, status: "پرداختنی", note: "" },
+      ],
+    });
+    expect(state.payrollRecords.map(record => record.personId)).toEqual(["worker", "employee", "partner"]);
+    expect(auditDataIntegrity(state).some(finding => finding.area === "حقوق و دستمزد" && finding.severity === "خطا")).toBe(false);
+  });
+
+  it("detects a payroll record linked to a deleted person", () => {
+    const state = normalizeState({
+      payrollRecords: [{ id: "p-missing", date: "1405/07/03", period: "1405/06", employeeName: "حذف‌شده", personId: "missing", amount: 10, status: "پرداختنی", note: "" }],
+    });
+    expect(auditDataIntegrity(state)).toContainEqual(expect.objectContaining({ id: "payroll-person-p-missing", severity: "خطا" }));
+  });
+});

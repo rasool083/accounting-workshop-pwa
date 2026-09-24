@@ -19,12 +19,13 @@ export type PageId =
   | "backup"
   | "settings";
 
-export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "سایر";
+export type PersonType = "مشتری" | "تأمین‌کننده" | "شریک" | "کارگر" | "کارمند" | "سایر";
 export const PERSON_TYPES: PersonType[] = [
   "مشتری",
   "تأمین‌کننده",
   "شریک",
   "کارگر",
+  "کارمند",
   "سایر",
 ];
 export const UNIT_OPTIONS = [
@@ -1422,6 +1423,17 @@ export function auditDataIntegrity(state: AppState): IntegrityFinding[] {
   const checks = new Map(state.checks.map(item => [item.id, item]));
   const invoices = new Map(state.invoices.map(item => [item.id, item]));
   const payments = new Map(state.purchasePayments.map(item => [item.id, item]));
+  state.payrollRecords.forEach(record => {
+    if (record.personId && !people.has(record.personId)) {
+      add(`payroll-person-${record.id}`, "خطا", "حقوق و دستمزد", `رکورد حقوق ${record.employeeName} به شخص حذف‌شده ارجاع می‌دهد.`, record.id);
+    }
+    if (record.accountId && !accounts.has(record.accountId)) {
+      add(`payroll-account-${record.id}`, "خطا", "حقوق و دستمزد", `حساب پرداخت حقوق ${record.employeeName} پیدا نشد.`, record.id);
+    }
+    if (record.transactionId && !state.transactions.some(transaction => transaction.id === record.transactionId)) {
+      add(`payroll-transaction-${record.id}`, "هشدار", "حقوق و دستمزد", `تراکنش پرداخت حقوق ${record.employeeName} پیدا نشد.`, record.id);
+    }
+  });
   state.invoices.forEach(invoice => {
     if (invoice.partyId && !people.has(invoice.partyId)) add(`invoice-party-${invoice.id}`, "خطا", "فاکتور", `طرف حساب فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
     if (invoice.paymentRuleId && !state.paymentRules.some(rule => rule.id === invoice.paymentRuleId)) add(`invoice-rule-${invoice.id}`, "هشدار", "فاکتور", `شرایط پرداخت فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
