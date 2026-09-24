@@ -40,6 +40,7 @@ import {
 import {
   AppState,
   CheckStatus,
+  PERSON_TYPES,
   ProductionCost,
   ProductionMaterial,
   ProductionFormula,
@@ -72,7 +73,6 @@ import {
   rebuildCheckAllocations,
   rebuildPurchasePayables,
   createEmptyState,
-  PERSON_TYPES,
   suggestNextNumber,
   suggestNextPartyNumber,
   quantityInBase,
@@ -3030,6 +3030,24 @@ function PayrollPage({
   );
   const cashAccounts = state.accounts.filter(account => account.type === "بانک" || account.type === "صندوق");
   const activeRecords = state.payrollRecords.filter(record => record.status !== "باطل");
+  const [filters, setFilters] = useState({ personId: "", role: "", status: "همه", period: "" });
+  const filteredRecords = activeRecords.filter(record => {
+    const person = record.personId ? state.people.find(item => item.id === record.personId) : undefined;
+    const roles = person?.roles || [];
+    return (!filters.personId || record.personId === filters.personId)
+      && (!filters.role || roles.includes(filters.role as typeof PERSON_TYPES[number]))
+      && (filters.status === "همه" || record.status === filters.status)
+      && (!filters.period || record.period.includes(filters.period.trim()));
+  });
+  const monthlySummary = activeRecords.reduce((result, record) => {
+    const row = result[record.period] || { paid: 0, payable: 0, count: 0 };
+    row.count += 1;
+    if (record.status === "پرداخت‌شده") row.paid += record.amount;
+    if (record.status === "پرداختنی") row.payable += record.amount;
+    result[record.period] = row;
+    return result;
+  }, {} as Record<string, { paid: number; payable: number; count: number }>);
+  const summaryRows = Object.entries(monthlySummary).sort(([a], [b]) => b.localeCompare(a)).slice(0, 6);
   const totals = activeRecords.reduce(
     (result, record) => {
       if (record.status !== "باطل") result[record.status] += record.amount;
@@ -3145,6 +3163,7 @@ function PayrollPage({
       <div className="metrics-grid">
         <div className="metric-card"><div className="metric-icon indigo"><WalletCards size={19} /></div><div className="metric-copy"><span>پرداخت‌شده</span><strong>{formatMoney(totals["پرداخت‌شده"], state.settings.currency)}</strong><small>کاهش بانک یا صندوق</small></div></div>
         <div className="metric-card"><div className="metric-icon amber"><Clock3 size={19} /></div><div className="metric-copy"><span>حقوق پرداختنی</span><strong>{formatMoney(totals["پرداختنی"], state.settings.currency)}</strong><small>بدون تغییر حساب شخص</small></div></div>
+        <div className="metric-card"><div className="metric-icon mint"><Users size={19} /></div><div className="metric-copy"><span>رکوردهای فعال</span><strong>{filteredRecords.length}</strong><small>مطابق فیلتر فعلی</small></div></div>
       </div>
       <form className="panel form-grid" onSubmit={createPayroll}>
         <div className="panel-heading full-field"><div><span className="section-kicker">ثبت جدید</span><h3>پرداخت یا شناسایی حقوق</h3></div><span className="soft-tag">اثر طرف‌حساب: صفر</span></div>
@@ -3158,7 +3177,8 @@ function PayrollPage({
         <label className="full-field">توضیحات<textarea value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} placeholder="مثلاً حقوق ماهانه، اضافه‌کاری یا پاداش" /></label>
         <div className="full-field form-actions"><button className="button button-primary" type="submit"><WalletCards size={16} /> ثبت حقوق</button></div>
       </form>
-      <div className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">دفتر حقوق</span><h3>سوابق پرداخت و حقوق پرداختنی</h3></div><span className="soft-tag">حساب شخص درگیر نمی‌شود</span></div><div className="table-wrap"><table><thead><tr><th>دوره</th><th>دریافت‌کننده</th><th>مبلغ</th><th>وضعیت</th><th>حساب پرداخت</th><th>عملیات</th></tr></thead><tbody>{state.payrollRecords.length ? state.payrollRecords.map(record => { const linkedPerson = record.personId ? state.people.find(item => item.id === record.personId) : undefined; return <tr key={record.id}><td>{record.period}</td><td><strong>{linkedPerson?.name || record.employeeName}</strong><small className="table-subline">{linkedPerson ? `اتصال: ${linkedPerson.roles.join("، ")}` : "بدون اتصال به دفتر اشخاص"}{record.note ? ` · ${record.note}` : ""}</small></td><td>{formatMoney(record.amount, state.settings.currency)}</td><td><span className={`status-pill ${statusClass(record.status)}`}>{record.status}</span></td><td>{record.accountId ? state.accounts.find(item => item.id === record.accountId)?.name || "حذف‌شده" : "—"}</td><td className="table-actions">{record.status === "پرداختنی" && <button className="text-button" type="button" onClick={() => payRecord(record)}>پرداخت</button>}{record.status !== "باطل" && <button className="text-button danger" type="button" onClick={() => voidRecord(record)}>ابطال</button>}</td></tr>; }) : <tr><td colSpan={6}>هنوز رکورد حقوقی ثبت نشده است.</td></tr>}</tbody></table></div></div>
+      <div className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">گزارش حقوق</span><h3>خلاصهٔ دوره‌ای</h3></div><span className="soft-tag">رکورد باطل‌شده محاسبه نمی‌شود</span></div><div className="table-wrap"><table><thead><tr><th>دوره</th><th>تعداد</th><th>پرداخت‌شده</th><th>پرداختنی</th><th>جمع تعهد دوره</th></tr></thead><tbody>{summaryRows.length ? summaryRows.map(([period, row]) => <tr key={period}><td><strong>{period}</strong></td><td>{row.count}</td><td>{formatMoney(row.paid, state.settings.currency)}</td><td>{formatMoney(row.payable, state.settings.currency)}</td><td>{formatMoney(row.paid + row.payable, state.settings.currency)}</td></tr>) : <tr><td colSpan={5}>هنوز رکورد فعال حقوقی ثبت نشده است.</td></tr>}</tbody></table></div></div>
+      <div className="panel table-panel"><div className="panel-heading"><div><span className="section-kicker">دفتر حقوق</span><h3>سوابق پرداخت و حقوق پرداختنی</h3></div><span className="soft-tag">حساب شخص درگیر نمی‌شود</span></div><div className="filter-grid"><label>شخص<select value={filters.personId} onChange={event => setFilters({ ...filters, personId: event.target.value })}><option value="">همهٔ اشخاص</option>{payrollPeople.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><label>نقش<select value={filters.role} onChange={event => setFilters({ ...filters, role: event.target.value })}><option value="">همهٔ نقش‌ها</option><option value="کارگر">کارگر</option><option value="کارمند">کارمند</option><option value="شریک">شریک</option></select></label><label>وضعیت<select value={filters.status} onChange={event => setFilters({ ...filters, status: event.target.value })}><option value="همه">همهٔ وضعیت‌ها</option><option value="پرداخت‌شده">پرداخت‌شده</option><option value="پرداختنی">پرداختنی</option></select></label><label>دوره<input value={filters.period} onChange={event => setFilters({ ...filters, period: event.target.value })} placeholder="مثلاً ۱۴۰۵/۰۶" /></label></div><div className="table-wrap"><table><thead><tr><th>دوره</th><th>دریافت‌کننده</th><th>مبلغ</th><th>وضعیت</th><th>حساب پرداخت</th><th>عملیات</th></tr></thead><tbody>{filteredRecords.length ? filteredRecords.map(record => { const linkedPerson = record.personId ? state.people.find(item => item.id === record.personId) : undefined; return <tr key={record.id}><td>{record.period}</td><td><strong>{linkedPerson?.name || record.employeeName}</strong><small className="table-subline">{linkedPerson ? `اتصال: ${linkedPerson.roles.join("، ")}` : "بدون اتصال به دفتر اشخاص"}{record.note ? ` · ${record.note}` : ""}</small></td><td>{formatMoney(record.amount, state.settings.currency)}</td><td><span className={`status-pill ${statusClass(record.status)}`}>{record.status}</span></td><td>{record.accountId ? state.accounts.find(item => item.id === record.accountId)?.name || "حذف‌شده" : "—"}</td><td className="table-actions">{record.status === "پرداختنی" && <button className="text-button" type="button" onClick={() => payRecord(record)}>پرداخت</button>}{record.status !== "باطل" && <button className="text-button danger" type="button" onClick={() => voidRecord(record)}>ابطال</button>}</td></tr>; }) : <tr><td colSpan={6}>رکوردی با فیلتر فعلی پیدا نشد.</td></tr>}</tbody></table></div></div>
       <div className="panel soft-panel"><strong>منطق حسابداری این صفحه</strong><p>نام کارگر، کارمند یا شریک به رکورد حقوق متصل می‌شود تا تغییر نام، گزارش و فیلترها یکپارچه باشند؛ اما تراکنش حقوق عمداً طرف‌حساب مالی ندارد. در پرداخت مستقیم، حساب بانک یا صندوق کاهش می‌یابد و هزینهٔ حقوق ثبت می‌شود. در ثبت حقوق پرداختنی، تا زمان پرداخت هیچ حساب بانکی و هیچ ماندهٔ شخصی تغییر نمی‌کند.</p></div>
     </div>
   );

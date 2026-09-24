@@ -1256,6 +1256,38 @@ tr:last-child td {
   border-color: #9bc4b7;
   background: #fff;
 }
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #eef1f3;
+  border-radius: 12px;
+  background: #fbfcfc;
+}
+.filter-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #718095;
+  font-size: 10px;
+}
+.filter-grid input,
+.filter-grid select {
+  width: 100%;
+  background: #fff;
+  border: 1px solid #e8ebef;
+  border-radius: 9px;
+  padding: 9px;
+  color: #2d3d52;
+  outline: 0;
+  font-size: 11px;
+}
+.filter-grid input:focus,
+.filter-grid select:focus {
+  border-color: #9bc4b7;
+}
 .form-actions {
   grid-column: 1 / -1;
   display: flex;
@@ -1416,6 +1448,9 @@ tr:last-child td {
   }
   .metric-card {
     min-height: 115px;
+  }
+  .filter-grid {
+    grid-template-columns: 1fr 1fr;
   }
   .toolbar {
     flex-wrap: wrap;
