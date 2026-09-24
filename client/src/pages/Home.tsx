@@ -73,6 +73,7 @@ import {
   allocateCheckFIFO,
   rebuildCheckAllocations,
   rebuildPurchasePayables,
+  rebuildCashProjection,
   createEmptyState,
   suggestNextNumber,
   suggestNextPartyNumber,
@@ -554,7 +555,7 @@ export default function Home() {
       state,
       refreshIssuedCheckStatuses(rebuildPurchasePayables(next))
     );
-    setState(saveState(appendAudit(reconciled, action, message)));
+    setState(saveState(appendAudit(rebuildCashProjection(reconciled), action, message)));
     setNotice(message);
   }
 
@@ -1420,6 +1421,7 @@ function Invoices({
   const blankPayment = {
     method: "نقدی" as "نقدی" | "چک مشتری" | "چک شریک" | "حساب داخلی",
     amount: "",
+    feeAmount: "",
     accountId: "",
     customerCheckId: "",
     issuerPartyId: "",
@@ -1618,6 +1620,7 @@ function Invoices({
                 ...blankPayment,
                 method: payment.method,
                 amount: String(payment.amount),
+                feeAmount: String(payment.feeAmount || ""),
                 accountId: payment.accountId || "",
                 customerCheckId: payment.customerCheckId || "",
                 note: payment.note,
@@ -1747,6 +1750,7 @@ function Invoices({
           .map(payment => ({
             ...payment,
             amount: Number(payment.amount.replace(/[^0-9.-]/g, "")) || 0,
+            feeAmount: Math.max(0, Number(payment.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
           }))
           .filter(payment => payment.amount > 0)
       : [];
@@ -1754,6 +1758,7 @@ function Invoices({
       id: createId("purchase-payment"),
       supplierId: form.partyId,
       amount: payment.amount,
+      feeAmount: payment.feeAmount,
       date: form.date,
       method: payment.method,
       accountId: payment.accountId || undefined,
@@ -2499,12 +2504,22 @@ function Invoices({
                           setForm({
                             ...form,
                             payments: form.payments.map((item, rowIndex) =>
-                              rowIndex === index ? { ...item, amount: event.target.value } : item
+                              rowIndex === index
+                                ? { ...item, amount: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, item.accountId, Number(event.target.value.replace(/[^0-9.-]/g, ""))).fee || "") }
+                                : item
                             ),
                           })
                         }
                         placeholder="مبلغ پرداخت"
                       />
+                      {(payment.method === "نقدی" || payment.method === "حساب داخلی") && (
+                        <input
+                          inputMode="numeric"
+                          value={payment.feeAmount}
+                          onChange={event => setForm({ ...form, payments: form.payments.map((item, rowIndex) => rowIndex === index ? { ...item, feeAmount: event.target.value } : item) })}
+                          placeholder="کارمزد بانکی"
+                        />
+                      )}
                       {payment.method === "چک مشتری" ? (
                         <select
                           value={payment.customerCheckId}
@@ -2573,7 +2588,9 @@ function Invoices({
                             setForm({
                               ...form,
                               payments: form.payments.map((item, rowIndex) =>
-                                rowIndex === index ? { ...item, accountId: event.target.value } : item
+                              rowIndex === index
+                                ? { ...item, accountId: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, event.target.value, Number(item.amount.replace(/[^0-9.-]/g, ""))).fee || "") }
+                                : item
                               ),
                             })
                           }
@@ -2786,6 +2803,8 @@ function BankAccounts({
     const name = form.name.trim();
     if (!name) return;
     const balance = Number(form.balance.replace(/,/g, "")) || 0;
+    const existing = editingId ? state.accounts.find(account => account.id === editingId) : undefined;
+    const balanceDelta = existing ? balance - existing.balance : balance;
     const nextAccounts = editingId
       ? state.accounts.map(account =>
           account.id === editingId
@@ -2796,8 +2815,21 @@ function BankAccounts({
           ...state.accounts,
           { id: createId("account"), name, type: form.type, balance },
         ];
+    const cashEvent = (existing || balanceDelta !== 0) && (form.type === "بانک" || form.type === "صندوق")
+      ? {
+          id: createId("cash-account-adjustment"),
+          at: new Date().toISOString(),
+          date: todayJalali(),
+          kind: "adjustment" as const,
+          accountId: editingId || nextAccounts[nextAccounts.length - 1].id,
+          amount: balanceDelta,
+          currency: state.settings.currency,
+          sourceType: "account_balance_adjustment",
+          note: existing ? `اصلاح ماندهٔ ${name} از طریق صفحهٔ حساب‌ها` : `موجودی افتتاحیهٔ ${name}`,
+        }
+      : undefined;
     onSave(
-      { ...state, accounts: nextAccounts },
+      { ...state, accounts: nextAccounts, cashEvents: cashEvent ? [...state.cashEvents, cashEvent] : state.cashEvents },
       editingId ? "حساب بانکی اصلاح شد" : "حساب جدید اضافه شد"
     );
     reset();
@@ -3021,6 +3053,7 @@ function PayrollPage({
     employeeName: "",
     personId: "",
     amount: "",
+    feeAmount: "",
     period: todayJalali().slice(0, 7),
     date: todayJalali(),
     accountId: "",
@@ -3077,6 +3110,7 @@ function PayrollPage({
       employeeName,
       personId: form.personId || undefined,
       amount,
+      feeAmount: form.status === "پرداخت‌شده" ? Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0) : 0,
       status: form.status,
       accountId: account?.id,
       transactionId,
@@ -3093,6 +3127,7 @@ function PayrollPage({
           referenceId: id,
           referenceLabel: `حقوق ${employeeName}`,
           amount,
+          feeAmount: Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
           status: "ثبت شده" as const,
           note: `پرداخت حقوق ${employeeName} · دوره ${form.period}${form.note.trim() ? ` · ${form.note.trim()}` : ""}`,
         }
@@ -3103,7 +3138,7 @@ function PayrollPage({
         payrollRecords: [record, ...state.payrollRecords],
         transactions: transaction ? [transaction, ...state.transactions] : state.transactions,
         accounts: transaction
-          ? state.accounts.map(item => item.id === account!.id ? { ...item, balance: item.balance - amount } : item)
+          ? state.accounts.map(item => item.id === account!.id ? { ...item, balance: item.balance - amount - Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0) } : item)
           : state.accounts,
       },
       form.status === "پرداخت‌شده" ? "پرداخت حقوق ثبت شد؛ حساب شخص تغییری نکرد" : "حقوق پرداختنی ثبت شد"
@@ -3127,6 +3162,7 @@ function PayrollPage({
       referenceId: record.id,
       referenceLabel: `حقوق ${record.employeeName}`,
       amount: record.amount,
+      feeAmount: Math.max(0, Number(record.feeAmount) || 0),
       status: "ثبت شده" as const,
       note: `پرداخت حقوق پرداختنی ${record.employeeName} · دوره ${record.period}`,
     };
@@ -3135,7 +3171,7 @@ function PayrollPage({
         ...state,
         payrollRecords: state.payrollRecords.map(item => item.id === record.id ? { ...item, status: "پرداخت‌شده", accountId: account.id, transactionId, paidAt: todayJalali() } : item),
         transactions: [transaction, ...state.transactions],
-        accounts: state.accounts.map(item => item.id === account.id ? { ...item, balance: item.balance - record.amount } : item),
+        accounts: state.accounts.map(item => item.id === account.id ? { ...item, balance: item.balance - record.amount - (Number(record.feeAmount) || 0) } : item),
       },
       "حقوق پرداختنی پرداخت شد؛ حساب شخص تغییری نکرد"
     );
@@ -3152,7 +3188,7 @@ function PayrollPage({
           ? state.transactions.map(item => item.id === transaction.id ? { ...item, status: "باطل" } : item)
           : state.transactions,
         accounts: record.status === "پرداخت‌شده" && record.accountId
-          ? state.accounts.map(item => item.id === record.accountId ? { ...item, balance: item.balance + record.amount } : item)
+          ? state.accounts.map(item => item.id === record.accountId ? { ...item, balance: item.balance + record.amount + (Number(record.feeAmount) || 0) } : item)
           : state.accounts,
       },
       "رکورد حقوق باطل و اثر حساب آن معکوس شد"
@@ -3171,11 +3207,12 @@ function PayrollPage({
         <div className="panel-heading full-field"><div><span className="section-kicker">ثبت جدید</span><h3>پرداخت یا شناسایی حقوق</h3></div><span className="soft-tag">اثر طرف‌حساب: صفر</span></div>
         <label>نام کارگر / دریافت‌کننده<input value={form.employeeName} onChange={event => setForm({ ...form, employeeName: event.target.value })} placeholder="مثلاً علی رضایی" required /></label>
         <label>اتصال به کارگر، کارمند یا شریک<select value={form.personId} onChange={event => { const person = payrollPeople.find(item => item.id === event.target.value); setForm({ ...form, personId: event.target.value, employeeName: person?.name || form.employeeName }); }}><option value="">بدون اتصال به دفتر اشخاص</option>{payrollPeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.roles.filter(role => ["کارگر", "کارمند", "شریک"].includes(role)).join("، ")}</option>)}</select></label>
-        <label>مبلغ حقوق<input inputMode="decimal" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value })} placeholder="مبلغ به تومان" required /></label>
+        <label>مبلغ حقوق<input inputMode="decimal" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, form.accountId, Number(event.target.value.replace(/[^0-9.-]/g, ""))).fee || "") })} placeholder="مبلغ به تومان" required /></label>
+        <label>کارمزد بانکی پرداخت حقوق<input inputMode="numeric" value={form.feeAmount} onChange={event => setForm({ ...form, feeAmount: event.target.value })} placeholder="در صورت کسر بانک" disabled={form.status === "پرداختنی"} /></label>
         <label>دوره حقوق<input value={form.period} onChange={event => setForm({ ...form, period: event.target.value })} placeholder="۱۴۰۵/۰۶" required /></label>
         <label>تاریخ ثبت<input value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} required /></label>
         <label>نوع ثبت<select value={form.status} onChange={event => setForm({ ...form, status: event.target.value as "پرداخت‌شده" | "پرداختنی" })}><option value="پرداخت‌شده">همین حالا پرداخت می‌شود</option><option value="پرداختنی">حقوق پرداختنی؛ پرداخت در آینده</option></select></label>
-        <label>بانک / صندوق پرداخت‌کننده<select value={form.accountId} onChange={event => setForm({ ...form, accountId: event.target.value })} disabled={form.status === "پرداختنی"}><option value="">انتخاب حساب</option>{cashAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · موجودی {formatMoney(account.balance, state.settings.currency)}</option>)}</select></label>
+        <label>بانک / صندوق پرداخت‌کننده<select value={form.accountId} onChange={event => setForm({ ...form, accountId: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, event.target.value, Number(form.amount.replace(/[^0-9.-]/g, ""))).fee || "") })} disabled={form.status === "پرداختنی"}><option value="">انتخاب حساب</option>{cashAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · موجودی {formatMoney(account.balance, state.settings.currency)}</option>)}</select></label>
         <label className="full-field">توضیحات<textarea value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} placeholder="مثلاً حقوق ماهانه، اضافه‌کاری یا پاداش" /></label>
         <div className="full-field form-actions"><button className="button button-primary" type="submit"><WalletCards size={16} /> ثبت حقوق</button></div>
       </form>
@@ -6139,6 +6176,7 @@ function Checks({
     receivedDate: todayJalali(),
     dueDate: todayJalali(),
     amount: "",
+    feeAmount: "",
     paymentRuleId: "",
     note: "",
   };
@@ -6238,6 +6276,7 @@ function Checks({
       receivedDate: check.receivedDate,
       dueDate: check.dueDate,
       amount: String(check.amount),
+      feeAmount: String(check.feeAmount || ""),
       paymentRuleId: check.paymentRuleId || "",
       note: check.note || "",
     });
@@ -6340,6 +6379,7 @@ function Checks({
         receivedDate: form.receivedDate,
         dueDate: form.dueDate,
         amount,
+        feeAmount: Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
         paymentRuleId: form.paymentRuleId || undefined,
         replacementIds: [],
         note: form.note || "",
@@ -6392,6 +6432,7 @@ function Checks({
       receivedDate: form.receivedDate,
       dueDate: form.dueDate,
       amount,
+      feeAmount: Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
       paymentRuleId: form.paymentRuleId || undefined,
       replacementIds: editingCheck?.replacementIds || [],
       note: editingCheck?.note || "",
@@ -6722,6 +6763,7 @@ function Checks({
                                   receivedDate: check.receivedDate,
                                   dueDate: check.dueDate,
                                   amount: String(check.amount),
+                                  feeAmount: String(check.feeAmount || ""),
                                   paymentRuleId: check.paymentRuleId || "",
                                   note: check.note || "",
                                 });
@@ -7083,8 +7125,12 @@ function Checks({
               <input
                 inputMode="numeric"
                 value={form.amount}
-                onChange={e => setForm({ ...form, amount: e.target.value })}
+                onChange={e => setForm({ ...form, amount: e.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, form.bankAccountId, Number(e.target.value.replace(/[^0-9.-]/g, ""))).fee || "") })}
               />
+            </label>
+            <label>
+              کارمزد وصول بانکی
+              <input inputMode="numeric" value={form.feeAmount} onChange={e => setForm({ ...form, feeAmount: e.target.value })} placeholder="در صورت کسر بانک" />
             </label>
             <label>
               وضعیت چک
@@ -7110,6 +7156,7 @@ function Checks({
                     setForm({
                       ...form,
                       bankAccountId: e.target.value,
+                      feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, e.target.value, Number(form.amount.replace(/[^0-9.-]/g, ""))).fee || ""),
                       bank:
                         state.accounts.find(
                           account => account.id === e.target.value

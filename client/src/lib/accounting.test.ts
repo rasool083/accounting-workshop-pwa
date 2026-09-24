@@ -1164,3 +1164,29 @@ describe("bank transfer fees", () => {
     expect(cashLedgerDiscrepancies(reconciled)).toEqual([]);
   });
 });
+
+describe("fees across cash workflows", () => {
+  it("records and reverses a purchase-payment fee without changing supplier principal", () => {
+    const state = normalizeState({
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 1000 }],
+      cashEvents: [{ id: "opening", at: "now", date: "1405/07/03", kind: "opening_balance", accountId: "bank", amount: 1000, currency: "تومان", sourceType: "opening", note: "" }],
+      purchasePayments: [{ id: "p", supplierId: "s", amount: 100, feeAmount: 7, date: "1405/07/03", method: "نقدی", accountId: "bank", note: "" }],
+    });
+    const withEvents = appendPurchasePaymentCashEvents(state);
+    expect(withEvents.cashEvents.find(event => event.sourceType === "purchase_payment_fee")?.amount).toBe(-7);
+    expect(withEvents.accounts[0].balance).toBe(893);
+    const released = releasePurchasePayment(withEvents, "p");
+    expect(rebuildCashProjection(released).accounts[0].balance).toBe(1000);
+  });
+
+  it("records a check collection fee as a separate bank expense", () => {
+    const previous = normalizeState({
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 0 }],
+      checks: [{ id: "c", number: "C1", receivedDate: "1405/07/03", dueDate: "1405/07/30", amount: 100, feeAmount: 3, status: "نزد ما", bank: "" }],
+    });
+    const next = { ...previous, accounts: previous.accounts.map(account => ({ ...account, balance: 97 })), checks: previous.checks.map(check => ({ ...check, status: "وصول شده" as const, bankAccountId: "bank" })) };
+    const reconciled = reconcileLedgerEvents(previous, next);
+    expect(reconciled.cashEvents.find(event => event.sourceType === "check_fee")?.amount).toBe(-3);
+    expect(rebuildCashProjection(reconciled).accounts[0].balance).toBe(97);
+  });
+});

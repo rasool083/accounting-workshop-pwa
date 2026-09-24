@@ -105,6 +105,7 @@ export interface PurchasePayment {
   id: string;
   supplierId: string;
   amount: number;
+  feeAmount?: number;
   date: string;
   method: PurchasePaymentMethod;
   accountId?: string;
@@ -315,6 +316,7 @@ export interface Check {
   invoiceDate?: string;
   paymentRuleId?: string;
   amount: number;
+  feeAmount?: number;
   status: CheckStatus;
   bank: string;
   bankAccountId?: string;
@@ -335,6 +337,7 @@ export interface PayrollRecord {
   employeeName: string;
   personId?: string;
   amount: number;
+  feeAmount?: number;
   status: PayrollStatus;
   accountId?: string;
   transactionId?: string;
@@ -436,6 +439,7 @@ export interface InventoryEvent {
 
 export type CashEventKind =
   | "opening_balance"
+  | "adjustment"
   | "receipt"
   | "payment"
   | "expense"
@@ -1471,10 +1475,10 @@ export function auditDataIntegrity(state: AppState): IntegrityFinding[] {
   state.transactions.forEach(transaction => {
     const fee = Number(transaction.feeAmount) || 0;
     if (fee < 0) add(`transaction-fee-negative-${transaction.id}`, "خطا", "کارمزد بانکی", "مبلغ کارمزد نمی‌تواند منفی باشد.", transaction.id);
-    if (fee > 0 && transaction.type !== "انتقال بین حساب‌ها") add(`transaction-fee-type-${transaction.id}`, "هشدار", "کارمزد بانکی", "کارمزد ثبت‌شده فقط برای انتقال بین حساب‌ها پشتیبانی می‌شود.", transaction.id);
-    if (fee > 0 && !transaction.fromAccountId) add(`transaction-fee-source-${transaction.id}`, "خطا", "کارمزد بانکی", "کارمزد انتقال حساب مبدأ ندارد.", transaction.id);
+    if (fee > 0 && !transaction.fromAccountId && !transaction.accountId) add(`transaction-fee-source-${transaction.id}`, "خطا", "کارمزد بانکی", "کارمزد ثبت‌شده حساب کسرکننده ندارد.", transaction.id);
   });
   state.payrollRecords.forEach(record => {
+    if ((Number(record.feeAmount) || 0) < 0) add(`payroll-fee-negative-${record.id}`, "خطا", "کارمزد بانکی", "کارمزد پرداخت حقوق نمی‌تواند منفی باشد.", record.id);
     if (record.personId && !people.has(record.personId)) {
       add(`payroll-person-${record.id}`, "خطا", "حقوق و دستمزد", `رکورد حقوق ${record.employeeName} به شخص حذف‌شده ارجاع می‌دهد.`, record.id);
     }
@@ -1498,9 +1502,14 @@ export function auditDataIntegrity(state: AppState): IntegrityFinding[] {
       if (!checks.has(allocation.checkId)) add(`allocation-check-${invoice.id}-${allocation.checkId}`, "خطا", "تخصیص چک", `چک تخصیص‌یافته به فاکتور ${invoice.number} پیدا نشد.`, invoice.id);
     });
   });
+  state.purchasePayments.forEach(payment => {
+    if ((Number(payment.feeAmount) || 0) < 0) add(`purchase-fee-negative-${payment.id}`, "خطا", "کارمزد بانکی", "کارمزد پرداخت خرید نمی‌تواند منفی باشد.", payment.id);
+    if ((Number(payment.feeAmount) || 0) > 0 && !payment.accountId) add(`purchase-fee-account-${payment.id}`, "خطا", "کارمزد بانکی", "کارمزد پرداخت خرید حساب کسرکننده ندارد.", payment.id);
+  });
   const allocatedByCheck = new Map<string, number>();
   state.invoices.forEach(invoice => invoice.allocations.forEach(allocation => allocatedByCheck.set(allocation.checkId, (allocatedByCheck.get(allocation.checkId) || 0) + Math.max(0, allocation.amount))));
   checks.forEach((check, checkId) => {
+    if ((Number(check.feeAmount) || 0) < 0) add(`check-fee-negative-${checkId}`, "خطا", "کارمزد بانکی", "کارمزد وصول چک نمی‌تواند منفی باشد.", checkId);
     if (check.partyId && !people.has(check.partyId)) add(`check-party-${checkId}`, "خطا", "چک", `طرف حساب چک ${check.number} پیدا نشد.`, checkId);
     if (check.bankAccountId && !accounts.has(check.bankAccountId)) add(`check-account-${checkId}`, "خطا", "چک", `حساب بانکی چک ${check.number} پیدا نشد.`, checkId);
     if ((allocatedByCheck.get(checkId) || 0) > check.amount + 0.01) add(`check-allocation-${checkId}`, "خطا", "تخصیص چک", `مجموع تخصیص‌های چک ${check.number} از مبلغ چک بیشتر است.`, checkId);
@@ -1569,14 +1578,15 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
   };
   const addBankFee = (transaction: Transaction) => {
     const fee = Math.max(0, Number(transaction.feeAmount) || 0);
-    if (transaction.type !== "انتقال بین حساب‌ها" || !transaction.fromAccountId || !fee) return;
+    const feeAccountId = transaction.fromAccountId || transaction.accountId;
+    if (!feeAccountId || !fee) return;
     const sourceKey = `${transaction.id}:fee`;
     if (cashSources.has(sourceKey)) return;
     cashEvents.push({
       id: createId("cash-fee-event"), at: new Date().toISOString(), date: transaction.date,
-      kind: "expense", accountId: transaction.fromAccountId, amount: -fee,
+      kind: "expense", accountId: feeAccountId, amount: -fee,
       currency: next.settings.currency, sourceType: "bank_fee", sourceId: `${transaction.id}:fee`,
-      note: `کارمزد بانکی انتقال ${transaction.id}`,
+      note: `کارمزد بانکی ${transaction.type} ${transaction.id}`,
     });
     cashSources.add(sourceKey);
   };
@@ -1605,11 +1615,12 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
     } else if (["فروش کالا", "دریافت توسط شریک", "دریافت تسویه از شریک", "دریافت", "درآمد"].includes(transaction.type)) {
       addCash(transaction, transaction.accountId, transaction.amount, "receipt");
     }
+    addBankFee(transaction);
   }
   const previousChecks = new Map(previous.checks.map(check => [check.id, check]));
   for (const check of next.checks) {
     const before = previousChecks.get(check.id);
-    if (!before || (before.status === check.status && before.amount === check.amount && before.bankAccountId === check.bankAccountId)) continue;
+    if (!before || (before.status === check.status && before.amount === check.amount && before.feeAmount === check.feeAmount && before.bankAccountId === check.bankAccountId)) continue;
     if (before.status === "وصول شده" && before.bankAccountId) {
       cashEvents.push({
         id: createId("cash-event"), at: new Date().toISOString(), date: check.receivedDate,
@@ -1618,6 +1629,14 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
         reversalOf: check.id, note: `معکوس‌سازی وصول قبلی چک ${check.number}`,
       });
       specializedCashAccounts.add(before.bankAccountId);
+      if ((Number(before.feeAmount) || 0) > 0) {
+        cashEvents.push({
+          id: createId("cash-event"), at: new Date().toISOString(), date: check.receivedDate,
+          kind: "reversal", accountId: before.bankAccountId, amount: Number(before.feeAmount) || 0,
+          currency: next.settings.currency, sourceType: "check_fee_reversal", sourceId: check.id,
+          reversalOf: check.id, note: `معکوس‌سازی کارمزد وصول چک ${check.number}`,
+        });
+      }
     }
     if (check.status === "وصول شده" && check.bankAccountId) {
       cashEvents.push({
@@ -1627,6 +1646,14 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
         note: `وصول چک ${check.number}`,
       });
       specializedCashAccounts.add(check.bankAccountId);
+      if ((Number(check.feeAmount) || 0) > 0) {
+        cashEvents.push({
+          id: createId("cash-event"), at: new Date().toISOString(), date: check.receivedDate,
+          kind: "expense", accountId: check.bankAccountId, amount: -(Number(check.feeAmount) || 0),
+          currency: next.settings.currency, sourceType: "check_fee", sourceId: check.id,
+          note: `کارمزد بانکی وصول چک ${check.number}`,
+        });
+      }
     } else if (check.status === "برگشتی") {
       const accountId = check.bankAccountId || before.bankAccountId;
       if (accountId) {
@@ -2467,7 +2494,7 @@ export function releasePurchasePayment(state: AppState, paymentId: string) {
   const cashReversals = state.cashEvents
     .filter(
       event =>
-        event.sourceType === "purchase_payment" &&
+        ["purchase_payment", "purchase_payment_fee"].includes(event.sourceType) &&
         event.sourceId === paymentId &&
         !state.cashEvents.some(
           reversal => reversal.reversalOf === event.id
@@ -2481,7 +2508,7 @@ export function releasePurchasePayment(state: AppState, paymentId: string) {
       accountId: event.accountId,
       amount: -event.amount,
       currency: event.currency,
-      sourceType: "purchase_payment_reversal",
+      sourceType: event.sourceType === "purchase_payment_fee" ? "purchase_payment_fee_reversal" : "purchase_payment_reversal",
       sourceId: paymentId,
       reversalOf: event.id,
       note: `معکوس‌سازی پرداخت خرید ${paymentId}`,
@@ -2599,7 +2626,28 @@ export function appendPurchasePaymentCashEvents(state: AppState): AppState {
       sourceId: payment.id,
       note: `پرداخت خرید به تأمین‌کننده ${payment.supplierId}`,
     }));
-  return events.length ? { ...state, cashEvents: [...state.cashEvents, ...events] } : state;
+  const feeEvents = state.purchasePayments
+    .filter(payment =>
+      (payment.method === "نقدی" || payment.method === "حساب داخلی") &&
+      payment.accountId &&
+      (Number(payment.feeAmount) || 0) > 0 &&
+      !state.cashEvents.some(event => event.sourceType === "purchase_payment_fee" && event.sourceId === payment.id)
+    )
+    .map(payment => ({
+      id: createId("cash-payment-fee"),
+      at: new Date().toISOString(),
+      date: payment.date,
+      kind: "expense" as const,
+      accountId: payment.accountId!,
+      amount: -Math.abs(Number(payment.feeAmount) || 0),
+      currency: state.settings.currency,
+      sourceType: "purchase_payment_fee",
+      sourceId: payment.id,
+      note: `کارمزد بانکی پرداخت خرید ${payment.id}`,
+    }));
+  return events.length || feeEvents.length
+    ? rebuildCashProjection({ ...state, cashEvents: [...state.cashEvents, ...events, ...feeEvents] })
+    : state;
 }
 
 export function calculateLateProfit(
