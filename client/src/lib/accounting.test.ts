@@ -30,7 +30,24 @@ import {
   calculateInvoiceAmount,
   calculateEffectiveProfitForAllocation,
   auditDataIntegrity,
+  calculateBankTransferFee,
 } from "./accounting";
+
+describe("bank fee rules", () => {
+  it("calculates fixed plus percentage and applies bounds", () => {
+    const rules = [{ id: "r", name: "بانکی", active: true, percent: 0.05, fixedAmount: 500, minAmount: 5000, maxAmount: 20000 }];
+    expect(calculateBankTransferFee(rules, "bank", 1_000_000).fee).toBe(5000);
+    expect(calculateBankTransferFee(rules, "bank", 50_000_000).fee).toBe(20000);
+  });
+
+  it("prefers a matching account rule over a general rule", () => {
+    const rules = [
+      { id: "general", name: "عمومی", active: true, percent: 0, fixedAmount: 1000 },
+      { id: "bank", name: "بانک خاص", accountId: "bank", active: true, percent: 0, fixedAmount: 3000 },
+    ];
+    expect(calculateBankTransferFee(rules, "bank", 100_000).fee).toBe(3000);
+  });
+});
 
 describe("invoice totals", () => {
   it("allows a full discount without rejecting the invoice", () => {

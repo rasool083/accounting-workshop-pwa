@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import {
   AppState,
+  BankFeeRule,
   CheckStatus,
   PERSON_TYPES,
   ProductionCost,
@@ -85,6 +86,7 @@ import {
   cashLedgerDiscrepancies,
   auditDataIntegrity,
   cashAccountReconciliation,
+  calculateBankTransferFee,
   refreshIssuedCheckStatuses,
   settleIssuedCheck,
   appendPurchasePaymentCashEvents,
@@ -3229,6 +3231,7 @@ function Transactions({
       | "افزایش طلب کارگاه از شریک"
       | "کاهش طلب کارگاه از شریک",
   });
+  const [feeManuallyEdited, setFeeManuallyEdited] = useState(false);
   const accounts = state.accounts;
   const partners = state.people.filter(person => person.roles.includes("شریک"));
   const operationProducts = state.products;
@@ -3238,6 +3241,19 @@ function Transactions({
     "مساعده/پرداخت به شریک",
     "دریافت تسویه از شریک",
   ].includes(accountOperation.type);
+  const parsedTransferAmount = Number(accountOperation.amount.replace(/[^0-9.-]/g, "")) || 0;
+  const suggestedTransferFee = calculateBankTransferFee(
+    state.settings.bankFeeRules,
+    accountOperation.fromAccountId,
+    parsedTransferAmount
+  );
+  useEffect(() => {
+    if (accountOperation.type !== "انتقال بین حساب‌ها" || feeManuallyEdited) return;
+    setAccountOperation(current => ({
+      ...current,
+      feeAmount: suggestedTransferFee.fee ? String(suggestedTransferFee.fee) : "",
+    }));
+  }, [accountOperation.type, accountOperation.amount, accountOperation.fromAccountId, feeManuallyEdited, suggestedTransferFee.fee]);
   function beginTransactionEdit(item: AppState["transactions"][number]) {
     setEditingTransaction(item);
     setEditForm({
@@ -3499,7 +3515,9 @@ function Transactions({
       referenceLabel: isPartnerSettlement ? referenceLabel : undefined,
       amount,
       feeAmount: isTransfer ? feeAmount : undefined,
-      feeSource: isTransfer && feeAmount ? ("دستی" as const) : undefined,
+      feeSource: isTransfer && feeAmount
+        ? (feeManuallyEdited ? ("دستی" as const) : ("تعرفه" as const))
+        : undefined,
       status: "ثبت شده",
       note,
     };
@@ -3536,6 +3554,7 @@ function Transactions({
       note: "",
       partnerEffect: "افزایش طلب شریک",
     });
+    setFeeManuallyEdited(false);
   }
   return (
     <div className="page-stack page-enter">
@@ -3639,14 +3658,19 @@ function Transactions({
               inputMode="numeric"
               value={accountOperation.feeAmount}
               onChange={event =>
-                setAccountOperation({
+                (setFeeManuallyEdited(true), setAccountOperation({
                   ...accountOperation,
                   feeAmount: event.target.value,
-                })
+                }))
               }
               placeholder="اگر ندارد، صفر"
             />
-            <small className="muted-cell">اصل مبلغ کامل به حساب مقصد می‌رسد.</small>
+            <small className="muted-cell">
+              {suggestedTransferFee.rule
+                ? `تعرفه «${suggestedTransferFee.rule.name}» · پیشنهاد: ${formatMoney(suggestedTransferFee.fee, state.settings.currency)}`
+                : "تعرفه‌ای برای این حساب ثبت نشده؛ مبلغ را در صورت نیاز دستی وارد کنید."}
+              <br />اصل مبلغ کامل به حساب مقصد می‌رسد؛ کارمزد از مبدأ کسر می‌شود.
+            </small>
           </label>
         )}
         {accountOperation.type === "انتقال بین حساب‌ها" ? (
@@ -3656,10 +3680,10 @@ function Transactions({
               <select
                 value={accountOperation.fromAccountId}
                 onChange={event =>
-                  setAccountOperation({
+                  (setFeeManuallyEdited(false), setAccountOperation({
                     ...accountOperation,
                     fromAccountId: event.target.value,
-                  })
+                  }))
                 }
               >
                 <option value="">انتخاب مبدأ</option>
@@ -9654,6 +9678,9 @@ function SettingsPage({
   const [unitDraft, setUnitDraft] = useState("");
   const [editingUnit, setEditingUnit] = useState<string | null>(null);
   const [unitsOpen, setUnitsOpen] = useState(false);
+  const [feeRules, setFeeRules] = useState<BankFeeRule[]>(state.settings.bankFeeRules || []);
+  const [editingFeeRule, setEditingFeeRule] = useState<string | null>(null);
+  const [feeRuleDraft, setFeeRuleDraft] = useState({ name: "", accountId: "", percent: "", fixedAmount: "", minAmount: "", maxAmount: "" });
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [pin, setPin] = useState("");
@@ -9733,6 +9760,23 @@ function SettingsPage({
     }
     setUnitDraft("");
     setEditingUnit(null);
+  }
+  function saveFeeRule() {
+    const name = feeRuleDraft.name.trim();
+    if (!name) return;
+    const rule: BankFeeRule = {
+      id: editingFeeRule || createId("bank-fee-rule"),
+      name,
+      accountId: feeRuleDraft.accountId || undefined,
+      active: true,
+      percent: Math.max(0, Number(feeRuleDraft.percent) || 0),
+      fixedAmount: Math.max(0, Number(feeRuleDraft.fixedAmount) || 0),
+      minAmount: feeRuleDraft.minAmount ? Math.max(0, Number(feeRuleDraft.minAmount) || 0) : undefined,
+      maxAmount: feeRuleDraft.maxAmount ? Math.max(0, Number(feeRuleDraft.maxAmount) || 0) : undefined,
+    };
+    setFeeRules(current => editingFeeRule ? current.map(item => item.id === editingFeeRule ? { ...rule, active: item.active } : item) : [...current, rule]);
+    setFeeRuleDraft({ name: "", accountId: "", percent: "", fixedAmount: "", minAmount: "", maxAmount: "" });
+    setEditingFeeRule(null);
   }
   return (
     <div className="page-stack page-enter">
@@ -9868,6 +9912,27 @@ function SettingsPage({
         </div>
         <div className="security-settings">
           <div className="security-settings-heading">
+            <div className="settings-folder-icon"><Percent size={20} /></div>
+            <div>
+              <span className="section-kicker">مغایرت‌گیری بانک</span>
+              <h3>تعرفهٔ خودکار کارمزد انتقال</h3>
+              <p>اصل مبلغ کامل به مقصد می‌رسد و کارمزد محاسبه‌شده فقط از حساب مبدأ کسر می‌شود.</p>
+            </div>
+          </div>
+          <div className="settings-form">
+            <label>نام تعرفه<input value={feeRuleDraft.name} onChange={event => setFeeRuleDraft({ ...feeRuleDraft, name: event.target.value })} placeholder="مثلاً انتقال بین‌بانکی" /></label>
+            <label>حساب مبدأ<select value={feeRuleDraft.accountId} onChange={event => setFeeRuleDraft({ ...feeRuleDraft, accountId: event.target.value })}><option value="">همه حساب‌ها</option>{state.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+            <label>درصد کارمزد<input inputMode="decimal" value={feeRuleDraft.percent} onChange={event => setFeeRuleDraft({ ...feeRuleDraft, percent: event.target.value })} placeholder="مثلاً ۰٫۰۵" /></label>
+            <label>مبلغ ثابت<input inputMode="numeric" value={feeRuleDraft.fixedAmount} onChange={event => setFeeRuleDraft({ ...feeRuleDraft, fixedAmount: event.target.value })} placeholder="تومان" /></label>
+            <label>حداقل کارمزد<input inputMode="numeric" value={feeRuleDraft.minAmount} onChange={event => setFeeRuleDraft({ ...feeRuleDraft, minAmount: event.target.value })} placeholder="اختیاری" /></label>
+            <label>حداکثر کارمزد<input inputMode="numeric" value={feeRuleDraft.maxAmount} onChange={event => setFeeRuleDraft({ ...feeRuleDraft, maxAmount: event.target.value })} placeholder="اختیاری" /></label>
+          </div>
+          <p className="muted-cell">فرمول: مبلغ ثابت + (مبلغ انتقال × درصد ÷ ۱۰۰)، سپس حداقل و حداکثر اعمال می‌شود.</p>
+          <div className="security-actions"><button className="button button-primary" type="button" onClick={saveFeeRule}>{editingFeeRule ? "ذخیره اصلاح تعرفه" : "افزودن تعرفه"}</button>{editingFeeRule && <button className="button button-ghost" type="button" onClick={() => { setEditingFeeRule(null); setFeeRuleDraft({ name: "", accountId: "", percent: "", fixedAmount: "", minAmount: "", maxAmount: "" }); }}>انصراف</button>}</div>
+          <div className="unit-list">{feeRules.length ? feeRules.map(rule => <div className="unit-row" key={rule.id}><span><strong>{rule.name}</strong><small className="table-subline">{rule.accountId ? state.accounts.find(account => account.id === rule.accountId)?.name || "حساب حذف‌شده" : "همه حساب‌ها"} · {rule.percent}% + {formatMoney(rule.fixedAmount, state.settings.currency)}{rule.active ? " · فعال" : " · غیرفعال"}</small></span><div><button className="icon-button row-action" type="button" title="ویرایش تعرفه" onClick={() => { setEditingFeeRule(rule.id); setFeeRuleDraft({ name: rule.name, accountId: rule.accountId || "", percent: String(rule.percent), fixedAmount: String(rule.fixedAmount), minAmount: rule.minAmount === undefined ? "" : String(rule.minAmount), maxAmount: rule.maxAmount === undefined ? "" : String(rule.maxAmount) }); }}><Pencil size={14} /></button><button className="icon-button row-action" type="button" title="فعال/غیرفعال کردن" onClick={() => setFeeRules(current => current.map(item => item.id === rule.id ? { ...item, active: !item.active } : item))}><Check size={14} /></button><button className="icon-button row-action" type="button" title="حذف تعرفه" onClick={() => { if (window.confirm(`تعرفه ${rule.name} حذف شود؟`)) setFeeRules(current => current.filter(item => item.id !== rule.id)); }}><Trash2 size={14} /></button></div></div>) : <p className="muted-cell">هنوز تعرفه‌ای ثبت نشده است؛ در این حالت کارمزد صفر یا دستی خواهد بود.</p>}</div>
+        </div>
+        <div className="security-settings">
+          <div className="security-settings-heading">
             <div className="settings-folder-icon"><LockKeyhole size={20} /></div>
             <div>
               <span className="section-kicker">حفاظت از دستگاه</span>
@@ -9923,6 +9988,7 @@ function SettingsPage({
                         ? "شمسی"
                         : Math.max(1, Number(dayBasis) || 30),
                     units,
+                    bankFeeRules: feeRules,
                   },
                 },
                 "تنظیمات برنامه ذخیره شد"

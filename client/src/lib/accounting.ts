@@ -349,6 +349,36 @@ export interface Account {
   balance: number;
 }
 
+export interface BankFeeRule {
+  id: string;
+  name: string;
+  accountId?: string;
+  active: boolean;
+  /** درصد به‌صورت ۰ تا ۱۰۰، مثلاً ۰٫۰۵ برای پنج صدم درصد. */
+  percent: number;
+  fixedAmount: number;
+  minAmount?: number;
+  maxAmount?: number;
+}
+
+export function calculateBankTransferFee(
+  rules: BankFeeRule[] | undefined,
+  accountId: string | undefined,
+  amount: number
+): { fee: number; rule?: BankFeeRule } {
+  const value = Math.max(0, Number(amount) || 0);
+  const activeRules = (rules || []).filter(item => item.active);
+  const rule = activeRules.find(item => item.accountId && item.accountId === accountId)
+    || activeRules.find(item => !item.accountId);
+  if (!rule || !value) return { fee: 0, rule };
+  const calculated = rule.fixedAmount + value * (rule.percent / 100);
+  const bounded = Math.max(
+    rule.minAmount ?? 0,
+    rule.maxAmount === undefined ? calculated : Math.min(rule.maxAmount, calculated)
+  );
+  return { fee: Math.round(Math.max(0, bounded)), rule };
+}
+
 export interface PriceHistory {
   id: string;
   productId?: string;
@@ -438,6 +468,7 @@ export interface AppState {
     currency: string;
     dayBasis: number | "شمسی";
     units: string[];
+    bankFeeRules?: BankFeeRule[];
     security?: {
       password?: { salt: string; hash: string; iterations: number };
       pin?: { salt: string; hash: string; iterations: number };
@@ -780,6 +811,7 @@ const seedState: AppState = {
     currency: "تومان",
     dayBasis: "شمسی",
     units: ["عدد", "کیلوگرم", "گرم", "متر", "لیتر", "کیسه", "بسته", "کارتن"],
+    bankFeeRules: [],
   },
   people: [],
   products: [],
@@ -968,6 +1000,16 @@ export function normalizeState(input: unknown): AppState {
           ? source.settings.dayBasis
           : seedState.settings.dayBasis,
       units: allUnits,
+      bankFeeRules: isRecord(source.settings) && Array.isArray(source.settings.bankFeeRules)
+        ? source.settings.bankFeeRules.map(rule => ({
+            ...rule,
+            active: rule.active !== false,
+            percent: Number(rule.percent) || 0,
+            fixedAmount: Number(rule.fixedAmount) || 0,
+            minAmount: rule.minAmount === undefined ? undefined : Number(rule.minAmount) || 0,
+            maxAmount: rule.maxAmount === undefined ? undefined : Number(rule.maxAmount) || 0,
+          }))
+        : seedState.settings.bankFeeRules,
     },
     people: Array.isArray(source.people)
       ? source.people.map(person => ({
