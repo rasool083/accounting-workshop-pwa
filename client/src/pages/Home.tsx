@@ -2770,6 +2770,7 @@ function BankAccounts({
     name: "",
     type: "بانک" as "بانک" | "صندوق" | "شریک",
     balance: "0",
+    adjustment: "",
   });
   const [sort, setSort] = useState<"asc" | "desc">("asc");
 
@@ -2795,15 +2796,21 @@ function BankAccounts({
 
   function reset() {
     setEditingId(null);
-    setForm({ name: "", type: "بانک", balance: "0" });
+    setForm({ name: "", type: "بانک", balance: "0", adjustment: "" });
   }
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const name = form.name.trim();
     if (!name) return;
-    const balance = Number(form.balance.replace(/,/g, "")) || 0;
+    const enteredBalance = Number(form.balance.replace(/,/g, "")) || 0;
     const existing = editingId ? state.accounts.find(account => account.id === editingId) : undefined;
+    const adjustment = existing && form.adjustment.trim() !== ""
+      ? Number(form.adjustment.replace(/,/g, "")) || 0
+      : 0;
+    const balance = existing && form.adjustment.trim() !== ""
+      ? existing.balance + adjustment
+      : enteredBalance;
     const balanceDelta = existing ? balance - existing.balance : balance;
     const nextAccounts = editingId
       ? state.accounts.map(account =>
@@ -2841,6 +2848,7 @@ function BankAccounts({
       name: account.name,
       type: account.type,
       balance: String(account.balance),
+      adjustment: "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -3015,7 +3023,7 @@ function BankAccounts({
             </select>
           </label>
           <label className="full-field">
-            موجودی اولیه / اصلاحی
+            موجودی اولیه / ماندهٔ ثبت‌شده
             <input
               inputMode="decimal"
               value={form.balance}
@@ -3024,6 +3032,13 @@ function BankAccounts({
               }
             />
           </label>
+          {editingId && (
+            <label className="full-field">
+              اصلاح موجودی (+/-)
+              <input inputMode="decimal" value={form.adjustment} onChange={event => setForm({ ...form, adjustment: event.target.value })} placeholder="مثلاً +1.5 یا -2500" />
+              <small className="muted-cell">این مقدار به ماندهٔ قبلی اضافه یا از آن کم می‌شود و در دفتر نقدی به‌صورت رویداد مستقل ثبت خواهد شد.</small>
+            </label>
+          )}
           <div className="form-actions">
             <button
               type="button"
