@@ -1080,6 +1080,7 @@ export default function Home() {
         <QuickAdd
           onClose={() => setQuickOpen(false)}
           people={state.people}
+          currency={state.settings.currency}
           onSave={addTransaction}
         />
       )}
@@ -10512,10 +10513,12 @@ function Dialog({
 function QuickAdd({
   onClose,
   people,
+  currency,
   onSave,
 }: {
   onClose: () => void;
   people: AppState["people"];
+  currency: string;
   onSave: (input: {
     type: TransactionType;
     amount: number;
@@ -10568,7 +10571,7 @@ function QuickAdd({
           ))}
         </div>
         <label>
-          مبلغ ({"ریال"})
+          مبلغ ({currency})
           <input
             autoFocus
             inputMode="numeric"

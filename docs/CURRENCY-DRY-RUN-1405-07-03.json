@@ -4,8 +4,8 @@
   "defaultCurrencyLabel": "تومان",
   "hypotheticalConversion": "IRT values unchanged; IRR↔IRT conversion not applied",
   "before": {
-    "checksum": "e97c9c24",
-    "backupChecksum": "9ca72ab5",
+    "checksum": "4359a60c",
+    "backupChecksum": "ebf75e46",
     "recordCounts": {
       "products": 3,
       "invoices": 2,
@@ -24,7 +24,7 @@
     "monetaryTotal": 419290000
   },
   "after": {
-    "checksum": "e97c9c24",
+    "checksum": "4359a60c",
     "recordCounts": {
       "products": 3,
       "invoices": 2,

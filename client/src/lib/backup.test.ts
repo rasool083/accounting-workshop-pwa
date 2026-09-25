@@ -33,10 +33,15 @@ describe("unified backup contract", () => {
   it("round-trips accounting and vendor directory sections", () => {
     const accounting = loadState();
     const payload = exportUnifiedPayload(accounting, vendorDirectory);
-    const parsed = JSON.parse(payload) as { format: string; sections: unknown };
+    const parsed = JSON.parse(payload) as {
+      format: string;
+      sections: unknown;
+      currency: { code: string; label: string };
+    };
 
     expect(parsed.format).toBe(UNIFIED_BACKUP_FORMAT);
     expect(parsed.sections).toBeTruthy();
+    expect(parsed.currency).toEqual({ code: "IRT", label: "تومان" });
 
     const restored = importUnifiedPayload(payload);
     expect(restored.unified).toBe(true);
