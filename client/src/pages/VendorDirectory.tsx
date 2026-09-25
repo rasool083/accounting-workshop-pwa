@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { BarChart3, Building2, ClipboardList, Download, Pencil, Plus, Search, Trash2, TrendingDown, TrendingUp, Upload, X } from "lucide-react";
-import { formatMoney, formatNumber, todayJalali } from "@/lib/accounting";
+import { formatMoney, formatNumber, parseLocalizedNumber, todayJalali } from "@/lib/accounting";
 import {
   createVendor,
   createVendorQuote,
@@ -106,9 +106,9 @@ export default function VendorDirectory({ onNotice }: Props) {
 
   function submitQuote(event: React.FormEvent) {
     event.preventDefault();
-    const price = Number(quoteForm.price.replace(/[^0-9.-]/g, ""));
+    const price = parseLocalizedNumber(quoteForm.price);
     if (!quoteForm.vendorId || !quoteForm.materialName.trim() || !Number.isFinite(price) || price < 0) return;
-    persist({ ...directory, quotes: [createVendorQuote({ ...quoteForm, materialName: quoteForm.materialName.trim(), price, leadTimeDays: quoteForm.leadTimeDays ? Number(quoteForm.leadTimeDays) : undefined }), ...directory.quotes] }, "استعلام قیمت ثبت شد");
+    persist({ ...directory, quotes: [createVendorQuote({ ...quoteForm, materialName: quoteForm.materialName.trim(), price, leadTimeDays: quoteForm.leadTimeDays ? parseLocalizedNumber(quoteForm.leadTimeDays) : undefined }), ...directory.quotes] }, "استعلام قیمت ثبت شد");
     setQuoteForm({ ...blankQuote, vendorId: quoteForm.vendorId, materialName: quoteForm.materialName });
     setShowQuoteForm(false);
   }

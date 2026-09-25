@@ -56,6 +56,7 @@ import {
   formatDate,
   formatMoney,
   formatNumber,
+  parseLocalizedNumber,
   calculateInvoiceAmount,
   loadState,
   navItems,
@@ -64,6 +65,8 @@ import {
   todayJalali,
   jalaliDayDifference,
   jalaliDateKey,
+  jalaliMonthDayBasis,
+  jalaliWeekday,
   transactionLabel,
   calculateLateProfit,
   calculateEffectiveProfitForAllocation,
@@ -264,38 +267,8 @@ function JalaliDatePicker({
     "اسفند",
   ];
   const weekdays = ["ش", "ی", "د", "س", "چ", "پ", "ج"];
-  const daysInMonth =
-    view.month <= 6
-      ? 31
-      : view.month <= 11
-        ? 30
-        : view.year % 4 === 3
-          ? 30
-          : 29;
-  const firstDay = (() => {
-    const jy = view.year + 1595;
-    let days =
-      -355668 +
-      365 * jy +
-      Math.floor(jy / 33) * 8 +
-      Math.floor(((jy % 33) + 3) / 4) +
-      1 +
-      (view.month < 7 ? (view.month - 1) * 31 : (view.month - 7) * 30 + 186);
-    let gy = 400 * Math.floor(days / 146097);
-    days %= 146097;
-    if (days > 36524) {
-      gy += 100 * Math.floor(--days / 36524);
-      days %= 36524;
-      if (days >= 365) days++;
-    }
-    gy += 4 * Math.floor(days / 1461);
-    days %= 1461;
-    if (days > 365) {
-      gy += Math.floor((days - 1) / 365);
-      days = (days - 1) % 365;
-    }
-    return (new Date(Date.UTC(gy, 0, days + 1)).getUTCDay() + 1) % 7;
-  })();
+  const daysInMonth = jalaliMonthDayBasis(`${view.year}/${view.month}/01`);
+  const firstDay = jalaliWeekday(view.year, view.month, 1);
   const cells = Array.from({ length: firstDay + daysInMonth }, (_, index) =>
     index < firstDay ? null : index - firstDay + 1
   );
@@ -1540,15 +1513,15 @@ function Invoices({
     return (
       sum +
       (Number(item.quantity) || 0) *
-        (Number(item.unitPrice.replace(/[^0-9.-]/g, "")) || 0) *
+        (parseLocalizedNumber(item.unitPrice) || 0) *
         conversionRate
     );
   }, 0);
-  const discountInput = Number(form.discount.replace(/[^0-9.-]/g, "")) || 0;
+  const discountInput = parseLocalizedNumber(form.discount) || 0;
   const discount = Math.min(subtotal, Math.max(0, discountInput));
   const calculatedAmount = calculateInvoiceAmount(subtotal, discount);
   const purchasePaymentTotal = form.payments.reduce(
-    (sum, payment) => sum + (Number(payment.amount.replace(/[^0-9.-]/g, "")) || 0),
+    (sum, payment) => sum + (parseLocalizedNumber(payment.amount) || 0),
     0
   );
   function voidInvoice(invoice: AppState["invoices"][number]) {
@@ -1670,7 +1643,7 @@ function Invoices({
     const items = form.items.map(row => {
       const product = state.products.find(item => item.id === row.productId);
       const quantity = Number(row.quantity) || 0;
-      const unitPrice = Number(row.unitPrice.replace(/[^0-9.-]/g, "")) || 0;
+      const unitPrice = parseLocalizedNumber(row.unitPrice) || 0;
       const unit = row.unit || product?.unit || "عدد";
       const conversionRate = product ? unitConversionToBase(product, unit) : 1;
       const existingItem = editingInvoice?.items.find(item => item.productId === row.productId);
@@ -1749,8 +1722,8 @@ function Invoices({
       ? form.payments
           .map(payment => ({
             ...payment,
-            amount: Number(payment.amount.replace(/[^0-9.-]/g, "")) || 0,
-            feeAmount: Math.max(0, Number(payment.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
+            amount: parseLocalizedNumber(payment.amount) || 0,
+            feeAmount: Math.max(0, parseLocalizedNumber(payment.feeAmount) || 0),
           }))
           .filter(payment => payment.amount > 0)
       : [];
@@ -2505,7 +2478,7 @@ function Invoices({
                             ...form,
                             payments: form.payments.map((item, rowIndex) =>
                               rowIndex === index
-                                ? { ...item, amount: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, item.accountId, Number(event.target.value.replace(/[^0-9.-]/g, ""))).fee || "") }
+                                ? { ...item, amount: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, item.accountId, parseLocalizedNumber(event.target.value)).fee || "") }
                                 : item
                             ),
                           })
@@ -2589,7 +2562,7 @@ function Invoices({
                               ...form,
                               payments: form.payments.map((item, rowIndex) =>
                               rowIndex === index
-                                ? { ...item, accountId: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, event.target.value, Number(item.amount.replace(/[^0-9.-]/g, ""))).fee || "") }
+                                ? { ...item, accountId: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, event.target.value, parseLocalizedNumber(item.amount)).fee || "") }
                                 : item
                               ),
                             })
@@ -2803,10 +2776,10 @@ function BankAccounts({
     event.preventDefault();
     const name = form.name.trim();
     if (!name) return;
-    const enteredBalance = Number(form.balance.replace(/,/g, "")) || 0;
+    const enteredBalance = parseLocalizedNumber(form.balance) || 0;
     const existing = editingId ? state.accounts.find(account => account.id === editingId) : undefined;
     const adjustment = existing && form.adjustment.trim() !== ""
-      ? Number(form.adjustment.replace(/,/g, "")) || 0
+      ? parseLocalizedNumber(form.adjustment) || 0
       : 0;
     const balance = existing && form.adjustment.trim() !== ""
       ? existing.balance + adjustment
@@ -3108,7 +3081,7 @@ function PayrollPage({
 
   function createPayroll(event: React.FormEvent) {
     event.preventDefault();
-    const amount = Number(form.amount.replace(/[^0-9.-]/g, ""));
+    const amount = parseLocalizedNumber(form.amount);
     const account = cashAccounts.find(item => item.id === form.accountId);
     const employeeName = form.employeeName.trim();
     if (!employeeName || !Number.isFinite(amount) || amount <= 0) return;
@@ -3125,7 +3098,7 @@ function PayrollPage({
       employeeName,
       personId: form.personId || undefined,
       amount,
-      feeAmount: form.status === "پرداخت‌شده" ? Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0) : 0,
+      feeAmount: form.status === "پرداخت‌شده" ? Math.max(0, parseLocalizedNumber(form.feeAmount) || 0) : 0,
       status: form.status,
       accountId: account?.id,
       transactionId,
@@ -3142,7 +3115,7 @@ function PayrollPage({
           referenceId: id,
           referenceLabel: `حقوق ${employeeName}`,
           amount,
-          feeAmount: Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
+          feeAmount: Math.max(0, parseLocalizedNumber(form.feeAmount) || 0),
           status: "ثبت شده" as const,
           note: `پرداخت حقوق ${employeeName} · دوره ${form.period}${form.note.trim() ? ` · ${form.note.trim()}` : ""}`,
         }
@@ -3153,7 +3126,7 @@ function PayrollPage({
         payrollRecords: [record, ...state.payrollRecords],
         transactions: transaction ? [transaction, ...state.transactions] : state.transactions,
         accounts: transaction
-          ? state.accounts.map(item => item.id === account!.id ? { ...item, balance: item.balance - amount - Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0) } : item)
+          ? state.accounts.map(item => item.id === account!.id ? { ...item, balance: item.balance - amount - Math.max(0, parseLocalizedNumber(form.feeAmount) || 0) } : item)
           : state.accounts,
       },
       form.status === "پرداخت‌شده" ? "پرداخت حقوق ثبت شد؛ حساب شخص تغییری نکرد" : "حقوق پرداختنی ثبت شد"
@@ -3222,12 +3195,12 @@ function PayrollPage({
         <div className="panel-heading full-field"><div><span className="section-kicker">ثبت جدید</span><h3>پرداخت یا شناسایی حقوق</h3></div><span className="soft-tag">اثر طرف‌حساب: صفر</span></div>
         <label>نام کارگر / دریافت‌کننده<input value={form.employeeName} onChange={event => setForm({ ...form, employeeName: event.target.value })} placeholder="مثلاً علی رضایی" required /></label>
         <label>اتصال به کارگر، کارمند یا شریک<select value={form.personId} onChange={event => { const person = payrollPeople.find(item => item.id === event.target.value); setForm({ ...form, personId: event.target.value, employeeName: person?.name || form.employeeName }); }}><option value="">بدون اتصال به دفتر اشخاص</option>{payrollPeople.map(person => <option key={person.id} value={person.id}>{person.name} · {person.roles.filter(role => ["کارگر", "کارمند", "شریک"].includes(role)).join("، ")}</option>)}</select></label>
-        <label>مبلغ حقوق<input inputMode="decimal" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, form.accountId, Number(event.target.value.replace(/[^0-9.-]/g, ""))).fee || "") })} placeholder="مبلغ به تومان" required /></label>
+        <label>مبلغ حقوق<input inputMode="decimal" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, form.accountId, parseLocalizedNumber(event.target.value)).fee || "") })} placeholder="مبلغ به تومان" required /></label>
         <label>کارمزد بانکی پرداخت حقوق<input inputMode="numeric" value={form.feeAmount} onChange={event => setForm({ ...form, feeAmount: event.target.value })} placeholder="در صورت کسر بانک" disabled={form.status === "پرداختنی"} /></label>
         <label>دوره حقوق<input value={form.period} onChange={event => setForm({ ...form, period: event.target.value })} placeholder="۱۴۰۵/۰۶" required /></label>
         <label>تاریخ ثبت<input value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} required /></label>
         <label>نوع ثبت<select value={form.status} onChange={event => setForm({ ...form, status: event.target.value as "پرداخت‌شده" | "پرداختنی" })}><option value="پرداخت‌شده">همین حالا پرداخت می‌شود</option><option value="پرداختنی">حقوق پرداختنی؛ پرداخت در آینده</option></select></label>
-        <label>بانک / صندوق پرداخت‌کننده<select value={form.accountId} onChange={event => setForm({ ...form, accountId: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, event.target.value, Number(form.amount.replace(/[^0-9.-]/g, ""))).fee || "") })} disabled={form.status === "پرداختنی"}><option value="">انتخاب حساب</option>{cashAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · موجودی {formatMoney(account.balance, state.settings.currency)}</option>)}</select></label>
+        <label>بانک / صندوق پرداخت‌کننده<select value={form.accountId} onChange={event => setForm({ ...form, accountId: event.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, event.target.value, parseLocalizedNumber(form.amount)).fee || "") })} disabled={form.status === "پرداختنی"}><option value="">انتخاب حساب</option>{cashAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · موجودی {formatMoney(account.balance, state.settings.currency)}</option>)}</select></label>
         <label className="full-field">توضیحات<textarea value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} placeholder="مثلاً حقوق ماهانه، اضافه‌کاری یا پاداش" /></label>
         <div className="full-field form-actions"><button className="button button-primary" type="submit"><WalletCards size={16} /> ثبت حقوق</button></div>
       </form>
@@ -3293,7 +3266,7 @@ function Transactions({
     "مساعده/پرداخت به شریک",
     "دریافت تسویه از شریک",
   ].includes(accountOperation.type);
-  const parsedTransferAmount = Number(accountOperation.amount.replace(/[^0-9.-]/g, "")) || 0;
+  const parsedTransferAmount = parseLocalizedNumber(accountOperation.amount) || 0;
   const suggestedTransferFee = calculateBankTransferFee(
     state.settings.bankFeeRules,
     accountOperation.fromAccountId,
@@ -3364,8 +3337,8 @@ function Transactions({
   }
   function saveTransactionEdit(event: React.FormEvent) {
     event.preventDefault();
-    const amount = Number(editForm.amount.replace(/[^0-9.-]/g, ""));
-    const feeAmount = Math.max(0, Number(editForm.feeAmount.replace(/[^0-9.-]/g, "")) || 0);
+    const amount = parseLocalizedNumber(editForm.amount);
+    const feeAmount = Math.max(0, parseLocalizedNumber(editForm.feeAmount) || 0);
     if (!amount || !editingTransaction) return;
     const updatedTransaction = {
       ...editingTransaction,
@@ -3404,8 +3377,8 @@ function Transactions({
   }
   function saveAccountOperation(event: React.FormEvent) {
     event.preventDefault();
-    const amount = Number(accountOperation.amount.replace(/[^0-9.-]/g, ""));
-    const feeAmount = Math.max(0, Number(accountOperation.feeAmount.replace(/[^0-9.-]/g, "")) || 0);
+    const amount = parseLocalizedNumber(accountOperation.amount);
+    const feeAmount = Math.max(0, parseLocalizedNumber(accountOperation.feeAmount) || 0);
     if (!amount || amount <= 0) return;
     const isTransfer = accountOperation.type === "انتقال بین حساب‌ها";
     const isStockOperation = ["خرید کالا", "فروش کالا"].includes(
@@ -3418,7 +3391,7 @@ function Transactions({
     const selectedProduct = state.products.find(
       product => product.id === accountOperation.productId
     );
-    const quantity = Number(accountOperation.quantity.replace(/[^0-9.-]/g, ""));
+    const quantity = parseLocalizedNumber(accountOperation.quantity);
     const quantityBase = selectedProduct
       ? quantityInBase(
           selectedProduct,
@@ -4709,12 +4682,7 @@ function Inventory({
   );
   function adjustStock(event: React.FormEvent) {
     event.preventDefault();
-    const amount = Number(
-      adjustForm.amount
-        .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
-        .replace(/[٫٬,]/g, ".")
-        .replace(/[^0-9.-]/g, "")
-    ) || 0;
+    const amount = parseLocalizedNumber(adjustForm.amount);
     if (!adjustForm.productId || !amount) return;
     const product = state.products.find(
       item => item.id === adjustForm.productId
@@ -4887,7 +4855,7 @@ function Inventory({
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!form.name.trim()) return;
-    const enteredStock = Number(form.stock.replace(/[^0-9.-]/g, "")) || 0;
+    const enteredStock = parseLocalizedNumber(form.stock) || 0;
     const draftProduct = {
       id: "draft",
       code: form.code,
@@ -4915,8 +4883,8 @@ function Inventory({
             enteredStock,
             form.stockUnit || form.unit
           ),
-      minStock: Number(form.minStock.replace(/[^0-9.-]/g, "")) || 0,
-      price: Number(form.price.replace(/[^0-9.-]/g, "")) || 0,
+      minStock: parseLocalizedNumber(form.minStock) || 0,
+      price: parseLocalizedNumber(form.price) || 0,
     };
     const products = editingProduct
       ? state.products.map(row =>
@@ -5582,7 +5550,7 @@ function Prices({
   });
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    const price = Number(form.price.replace(/[^0-9.]/g, ""));
+    const price = parseLocalizedNumber(form.price);
     if (!form.productName.trim() || !price) return;
     const selectedProduct = state.products.find(
       item => item.name === form.productName
@@ -6379,7 +6347,7 @@ function Checks({
   }
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    const amount = Number(form.amount.replace(/[^0-9.-]/g, "")) || 0;
+    const amount = parseLocalizedNumber(form.amount) || 0;
     if (!form.number.trim() || !amount) return;
     if (replacementParent && !editingCheck) {
       const replacement = {
@@ -6394,7 +6362,7 @@ function Checks({
         receivedDate: form.receivedDate,
         dueDate: form.dueDate,
         amount,
-        feeAmount: Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
+        feeAmount: Math.max(0, parseLocalizedNumber(form.feeAmount) || 0),
         paymentRuleId: form.paymentRuleId || undefined,
         replacementIds: [],
         note: form.note || "",
@@ -6447,7 +6415,7 @@ function Checks({
       receivedDate: form.receivedDate,
       dueDate: form.dueDate,
       amount,
-      feeAmount: Math.max(0, Number(form.feeAmount.replace(/[^0-9.-]/g, "")) || 0),
+      feeAmount: Math.max(0, parseLocalizedNumber(form.feeAmount) || 0),
       paymentRuleId: form.paymentRuleId || undefined,
       replacementIds: editingCheck?.replacementIds || [],
       note: editingCheck?.note || "",
@@ -6483,7 +6451,7 @@ function Checks({
             status: "نزد ما" as CheckStatus,
             receivedDate: next.receivedDate,
             dueDate: next.dueDate,
-            amount: Number((rawAmount || "0").replace(/[^0-9.-]/g, "")) || 0,
+            amount: parseLocalizedNumber(rawAmount || "0") || 0,
             replacementOf: next.id,
             replacementIds: [],
             note: "",
@@ -7140,7 +7108,7 @@ function Checks({
               <input
                 inputMode="numeric"
                 value={form.amount}
-                onChange={e => setForm({ ...form, amount: e.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, form.bankAccountId, Number(e.target.value.replace(/[^0-9.-]/g, ""))).fee || "") })}
+                onChange={e => setForm({ ...form, amount: e.target.value, feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, form.bankAccountId, parseLocalizedNumber(e.target.value)).fee || "") })}
               />
             </label>
             <label>
@@ -7171,7 +7139,7 @@ function Checks({
                     setForm({
                       ...form,
                       bankAccountId: e.target.value,
-                      feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, e.target.value, Number(form.amount.replace(/[^0-9.-]/g, ""))).fee || ""),
+                      feeAmount: String(calculateBankTransferFee(state.settings.bankFeeRules, e.target.value, parseLocalizedNumber(form.amount)).fee || ""),
                       bank:
                         state.accounts.find(
                           account => account.id === e.target.value
@@ -8833,10 +8801,7 @@ function Production({
     product => product.id === form.outputProductId
   );
   const quantityValue = (value: string) => {
-    const latin = String(value || "")
-      .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
-      .replace(/[٫٬,]/g, ".");
-    return Number(latin) || 0;
+    return parseLocalizedNumber(value);
   };
   const unitPrice = (productId: string, unit: string) => {
     const product = state.products.find(item => item.id === productId);
@@ -10535,7 +10500,7 @@ function QuickAdd({
   });
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    const amount = Number(form.amount.replace(/[^0-9.]/g, ""));
+    const amount = parseLocalizedNumber(form.amount);
     if (!amount) return;
     onSave({
       type: form.type,

@@ -786,7 +786,24 @@ export function reverseProductionRun(state: AppState, productionRecordId: string
       material.stock += quantityInBase(material, usage.actualQuantity, usage.unit);
     }
   }
-  return { ...state, products };
+  const runIds = new Set(runRecords.map(record => record.id));
+  const inventoryEvents = [...(state.inventoryEvents || [])];
+  for (const event of state.inventoryEvents || []) {
+    if (event.sourceType !== "production" || !event.sourceId || !runIds.has(event.sourceId)) continue;
+    if (inventoryEvents.some(reversal => reversal.reversalOf === event.id)) continue;
+    inventoryEvents.push({
+      ...event,
+      id: createId("inventory-reversal"),
+      at: new Date().toISOString(),
+      kind: "reversal",
+      quantityEntered: -event.quantityEntered,
+      quantityBase: -event.quantityBase,
+      sourceType: "production-reversal",
+      reversalOf: event.id,
+      note: `معکوس‌سازی اثر تولید ${productionRecordId}`,
+    });
+  }
+  return { ...state, products, inventoryEvents };
 }
 
 export function removeProductionRun(state: AppState, productionRecordId: string): AppState {
@@ -1214,6 +1231,27 @@ export function formatNumber(value: number) {
 }
 
 /**
+ * Parses numbers entered with Persian/Arabic digits and separators.
+ * All financial forms must use this function instead of local regex variants.
+ */
+export function parseLocalizedNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const normalized = value
+    .trim()
+    .replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/[٫]/g, ".")
+    .replace(/[٬،,\s]/g, "")
+    .replace(/[−–—]/g, "-")
+    .replace(/[^0-9.-]/g, "")
+    .replace(/(?!^)-/g, "");
+  const [whole, ...fraction] = normalized.split(".");
+  const parsed = Number(fraction.length ? `${whole}.${fraction.join("")}` : whole);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
  * Calculates the invoice amount after discount. A fully discounted invoice is
  * valid and intentionally returns zero; callers should validate the subtotal,
  * not the final amount, when deciding whether the invoice has content.
@@ -1537,17 +1575,27 @@ export function auditDataIntegrity(state: AppState): IntegrityFinding[] {
 export function reconcileLedgerEvents(previous: AppState, next: AppState): AppState {
   const inventoryEvents = [...(next.inventoryEvents || [])];
   const cashEvents = [...(next.cashEvents || [])];
-  const hasExplicitInventoryEvents = inventoryEvents.length > (previous.inventoryEvents || []).length;
-  const hasExplicitCashEvents = cashEvents.length > (previous.cashEvents || []).length;
+  const previousInventoryEventIds = new Set((previous.inventoryEvents || []).map(event => event.id));
+  const previousCashEventIds = new Set((previous.cashEvents || []).map(event => event.id));
+  const explicitInventoryProducts = new Set(
+    inventoryEvents.filter(event => !previousInventoryEventIds.has(event.id)).map(event => event.productId)
+  );
+  const explicitCashAccounts = new Set(
+    cashEvents.filter(event => !previousCashEventIds.has(event.id)).map(event => event.accountId)
+  );
   const date = todayJalali();
   const previousTransactions = new Map(previous.transactions.map(item => [item.id, item]));
   const transactionChanged = (before: Transaction, after: Transaction) =>
     before.type !== after.type || before.amount !== after.amount || before.feeAmount !== after.feeAmount
       || before.fromAccountId !== after.fromAccountId || before.toAccountId !== after.toAccountId
       || before.accountId !== after.accountId || before.status !== after.status;
-  const newTransactions = next.transactions.filter(item => {
+  const changedTransactions = next.transactions.filter(item => {
     const before = previousTransactions.get(item.id);
     return item.status !== "باطل" && (!before || transactionChanged(before, item));
+  });
+  const removedOrVoidedTransactions = previous.transactions.filter(before => {
+    const after = next.transactions.find(item => item.id === before.id);
+    return !after || after.status === "باطل";
   });
   const inventorySources = new Set<string>();
   const cashSources = new Set<string>();
@@ -1590,11 +1638,16 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
     });
     cashSources.add(sourceKey);
   };
-  for (const transaction of newTransactions) {
-    const before = previousTransactions.get(transaction.id);
-    if (!before) continue;
+  const transactionsToReverse = [
+    ...previous.transactions.filter(before => {
+      const after = next.transactions.find(item => item.id === before.id);
+      return after && after.status !== "باطل" && transactionChanged(before, after);
+    }),
+    ...removedOrVoidedTransactions,
+  ];
+  for (const transaction of transactionsToReverse) {
     for (const event of cashEvents.filter(item => item.sourceId === transaction.id || item.sourceId === `${transaction.id}:fee`)) {
-      if (event.kind === "reversal") continue;
+      if (event.kind === "reversal" || cashEvents.some(reversal => reversal.reversalOf === event.id)) continue;
       cashEvents.push({
         id: createId("cash-reversal"), at: new Date().toISOString(), date: event.date,
         kind: "reversal", accountId: event.accountId, counterAccountId: event.counterAccountId,
@@ -1603,7 +1656,7 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
       });
     }
   }
-  for (const transaction of newTransactions) {
+  for (const transaction of changedTransactions) {
     if (transaction.type === "خرید کالا") addInventory(transaction, "purchase", Math.abs(transaction.quantity || 0));
     if (transaction.type === "فروش کالا") addInventory(transaction, "sale", -Math.abs(transaction.quantity || 0));
     if (transaction.type === "انتقال بین حساب‌ها") {
@@ -1667,44 +1720,40 @@ export function reconcileLedgerEvents(previous: AppState, next: AppState): AppSt
       }
     }
   }
-  if (!hasExplicitInventoryEvents) {
-    for (const product of next.products) {
-      const before = previous.products.find(item => item.id === product.id)?.stock || 0;
-      const delta = product.stock - before;
-      if (!delta || next.transactions.some(item => inventorySources.has(item.id) && item.productId === product.id)) continue;
-      inventoryEvents.push({
-        id: createId("inventory-event"),
-        at: new Date().toISOString(),
-        date,
-        kind: "adjustment",
-        productId: product.id,
-        warehouseId: product.warehouseId,
-        quantityEntered: delta,
-        unitEntered: product.unit,
-        quantityBase: delta,
-        baseUnit: product.unit,
-        sourceType: "projection_reconciliation",
-        note: "ثبت خودکار اختلاف مسیر قدیمی با دفتر رویداد",
-      });
-    }
+  for (const product of next.products) {
+    const before = previous.products.find(item => item.id === product.id)?.stock || 0;
+    const delta = product.stock - before;
+    if (!delta || explicitInventoryProducts.has(product.id) || next.transactions.some(item => inventorySources.has(item.id) && item.productId === product.id)) continue;
+    inventoryEvents.push({
+      id: createId("inventory-event"),
+      at: new Date().toISOString(),
+      date,
+      kind: "adjustment",
+      productId: product.id,
+      warehouseId: product.warehouseId,
+      quantityEntered: delta,
+      unitEntered: product.unit,
+      quantityBase: delta,
+      baseUnit: product.unit,
+      sourceType: "projection_reconciliation",
+      note: "ثبت خودکار اختلاف مسیر قدیمی با دفتر رویداد",
+    });
   }
-  if (!hasExplicitCashEvents) {
-    for (const account of next.accounts) {
-      const before = previous.accounts.find(item => item.id === account.id)?.balance || 0;
-      const delta = account.balance - before;
-      if (!delta || specializedCashAccounts.has(account.id) || next.transactions.some(item => cashSources.has(`${item.id}:${account.id}`))) continue;
-      cashEvents.push({
-        id: createId("cash-event"),
-        at: new Date().toISOString(),
-        date,
-        kind: "reversal",
-        accountId: account.id,
-        amount: delta,
-        currency: next.settings.currency,
-        sourceType: "projection_reconciliation",
-        note: "ثبت خودکار اختلاف مسیر قدیمی با دفتر نقدینگی",
-      });
-    }
+  for (const account of next.accounts) {
+    const before = previous.accounts.find(item => item.id === account.id)?.balance || 0;
+    const delta = account.balance - before;
+    if (!delta || explicitCashAccounts.has(account.id) || specializedCashAccounts.has(account.id) || next.transactions.some(item => cashSources.has(`${item.id}:${account.id}`))) continue;
+    cashEvents.push({
+      id: createId("cash-event"),
+      at: new Date().toISOString(),
+      date,
+      kind: "reversal",
+      accountId: account.id,
+      amount: delta,
+      currency: next.settings.currency,
+      sourceType: "projection_reconciliation",
+      note: "ثبت خودکار اختلاف مسیر قدیمی با دفتر نقدینگی",
+    });
   }
   return { ...next, inventoryEvents, cashEvents };
 }
@@ -1911,6 +1960,13 @@ export function isJalaliLeapYear(year: number) {
   const current = persianYearStartDayNumber(year);
   const next = persianYearStartDayNumber(year + 1);
   return current !== null && next !== null && next - current === 366;
+}
+
+/** Returns the Saturday-first weekday index used by the Persian date picker. */
+export function jalaliWeekday(year: number, month: number, day: number) {
+  const dayNumber = jalaliDayNumber(year, month, day);
+  if (dayNumber === null) return 0;
+  return (new Date(dayNumber * 86_400_000).getUTCDay() + 1) % 7;
 }
 
 export interface FIFOSettlement {

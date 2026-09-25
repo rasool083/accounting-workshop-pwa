@@ -31,6 +31,8 @@ import {
   calculateEffectiveProfitForAllocation,
   auditDataIntegrity,
   calculateBankTransferFee,
+  parseLocalizedNumber,
+  jalaliWeekday,
 } from "./accounting";
 
 describe("bank fee rules", () => {
@@ -1188,5 +1190,70 @@ describe("fees across cash workflows", () => {
     const reconciled = reconcileLedgerEvents(previous, next);
     expect(reconciled.cashEvents.find(event => event.sourceType === "check_fee")?.amount).toBe(-3);
     expect(rebuildCashProjection(reconciled).accounts[0].balance).toBe(97);
+  });
+});
+
+
+describe("localized inputs and shared Jalali calendar", () => {
+  it("parses Persian and Arabic digits with decimal and grouping separators", () => {
+    expect(parseLocalizedNumber("۱۲۳٬۴۵۶٫۷۸")).toBeCloseTo(123456.78);
+    expect(parseLocalizedNumber("-١٢٣٫٥")).toBeCloseTo(-123.5);
+    expect(parseLocalizedNumber("۱٬۲۳۴٬۵۶۷")).toBe(1234567);
+  });
+
+  it("uses the shared Jalali month basis for leap-day boundaries", () => {
+    expect(jalaliMonthDayBasis("1404/12/01")).toBe(29);
+    expect(jalaliMonthDayBasis("1403/12/01")).toBe(30);
+    expect(jalaliWeekday(1405, 1, 1)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("append-only reversal regressions", () => {
+  it("reverses a cash event when its transaction is deleted", () => {
+    const previous = normalizeState({
+      transactions: [{ id: "t1", type: "دریافت", date: "1405/07/01", accountId: "bank", amount: 1000, status: "ثبت شده", note: "" }],
+      accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 1000 }],
+      cashEvents: [{ id: "cash-t1", at: "2026-09-23T00:00:00Z", date: "1405/07/01", kind: "receipt", accountId: "bank", amount: 1000, currency: "تومان", sourceType: "transaction", sourceId: "t1", note: "" }],
+    });
+    const next = reconcileLedgerEvents(previous, { ...previous, transactions: [] });
+    expect(next.cashEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "reversal", reversalOf: "cash-t1", amount: -1000 }),
+    ]));
+  });
+
+  it("reverses production events when a production run is removed", () => {
+    const state = normalizeState({
+      products: [
+        { id: "output", code: "O", name: "محصول", unit: "عدد", stock: 0, minStock: 0, price: 10 },
+        { id: "material", code: "M", name: "ماده", unit: "کیلوگرم", stock: 10, minStock: 0, price: 2 },
+      ],
+      productionFormulas: [{ id: "formula", name: "فرمول", formulaType: "قطعه", outputProductId: "output", outputQuantity: 1, outputUnit: "عدد", materials: [{ id: "line", productId: "material", quantity: 1, unit: "کیلوگرم" }], costs: [], note: "" }],
+    });
+    const produced = executeProduction(state, "formula", 1).state;
+    const removed = removeProductionRun(produced, produced.productionRecords[0].id);
+    expect(inventoryLedgerDiscrepancies(removed)).toEqual([]);
+    expect(removed.inventoryEvents.filter(event => event.kind === "reversal")).toHaveLength(2);
+  });
+
+  it("reconciles legacy deltas for entities not covered by a simultaneous explicit event", () => {
+    const previous = normalizeState({
+      products: [
+        { id: "p1", code: "P1", name: "یک", unit: "عدد", stock: 0, minStock: 0, price: 1 },
+        { id: "p2", code: "P2", name: "دو", unit: "عدد", stock: 0, minStock: 0, price: 1 },
+      ],
+      accounts: [
+        { id: "a1", name: "یک", type: "بانک", balance: 0 },
+        { id: "a2", name: "دو", type: "بانک", balance: 0 },
+      ],
+    });
+    const next = reconcileLedgerEvents(previous, {
+      ...previous,
+      products: previous.products.map(product => ({ ...product, stock: product.id === "p1" ? 1 : 2 })),
+      accounts: previous.accounts.map(account => ({ ...account, balance: account.id === "a1" ? 10 : 20 })),
+      inventoryEvents: [...previous.inventoryEvents, { id: "explicit-p1", at: "2026-09-25T00:00:00Z", date: "1405/07/03", kind: "adjustment", productId: "p1", quantityEntered: 1, unitEntered: "عدد", quantityBase: 1, baseUnit: "عدد", sourceType: "manual", note: "" }],
+      cashEvents: [...previous.cashEvents, { id: "explicit-a1", at: "2026-09-25T00:00:00Z", date: "1405/07/03", kind: "adjustment", accountId: "a1", amount: 10, currency: "تومان", sourceType: "manual", note: "" }],
+    });
+    expect(next.inventoryEvents).toEqual(expect.arrayContaining([expect.objectContaining({ productId: "p2", quantityBase: 2, sourceType: "projection_reconciliation" })]));
+    expect(next.cashEvents).toEqual(expect.arrayContaining([expect.objectContaining({ accountId: "a2", amount: 20, sourceType: "projection_reconciliation" })]));
   });
 });
