@@ -50,7 +50,8 @@ export type VendorDirectoryExport = {
   data: VendorDirectoryState;
 };
 
-const STORAGE_KEY = "accounting-workshop-pwa:vendor-directory:v1";
+export const VENDOR_STORAGE_KEY = "accounting-workshop-pwa:vendor-directory:v1";
+export const VENDOR_CORRUPT_STORAGE_KEY = `${VENDOR_STORAGE_KEY}:corrupt-snapshot`;
 
 const emptyState: VendorDirectoryState = { version: 1, vendors: [], quotes: [] };
 
@@ -61,7 +62,7 @@ function makeId(prefix: string) {
 export function loadVendorDirectory(): VendorDirectoryState {
   if (typeof window === "undefined") return emptyState;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(VENDOR_STORAGE_KEY);
     if (!raw) return emptyState;
     const parsed = JSON.parse(raw) as Partial<VendorDirectoryState>;
     return {
@@ -69,13 +70,25 @@ export function loadVendorDirectory(): VendorDirectoryState {
       vendors: Array.isArray(parsed.vendors) ? parsed.vendors : [],
       quotes: Array.isArray(parsed.quotes) ? parsed.quotes : [],
     };
-  } catch {
+  } catch (error) {
+    try {
+      const raw = localStorage.getItem(VENDOR_STORAGE_KEY);
+      if (raw) {
+        localStorage.setItem(VENDOR_CORRUPT_STORAGE_KEY, JSON.stringify({
+          capturedAt: new Date().toISOString(),
+          raw,
+        }));
+      }
+    } catch {
+      // A storage quota/security failure must not hide the original recovery path.
+    }
+    console.error("Vendor directory state was quarantined after storage corruption.", error);
     return emptyState;
   }
 }
 
 export function saveVendorDirectory(state: VendorDirectoryState) {
-  if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (typeof window !== "undefined") localStorage.setItem(VENDOR_STORAGE_KEY, JSON.stringify(state));
   return state;
 }
 

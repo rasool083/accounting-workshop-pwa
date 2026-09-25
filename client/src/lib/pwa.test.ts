@@ -40,6 +40,8 @@ describe("PWA delivery contract", () => {
     expect(serviceWorker).toContain("event.request.method !== \"GET\"");
     expect(serviceWorker).toContain("event.request.mode === \"navigate\"");
     expect(serviceWorker).toContain("new URL(event.request.url).origin === self.location.origin");
+    expect(serviceWorker).toContain(".catch(() => Response.error())");
+    expect((serviceWorker.match(/caches\.match\(BASE\)/g) || []).length).toBe(1);
     expect(serviceWorker).not.toMatch(/localStorage|indexedDB|cashEvents|invoices|purchasePayments|checks/);
   });
 

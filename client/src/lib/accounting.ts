@@ -821,7 +821,8 @@ export function removeProductionRun(state: AppState, productionRecordId: string)
   };
 }
 
-const STORAGE_KEY = "accounting-workshop-pwa:v1";
+export const STORAGE_KEY = "accounting-workshop-pwa:v1";
+export const CORRUPT_STORAGE_KEY = `${STORAGE_KEY}:corrupt-snapshot`;
 
 const seedState: AppState = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -1181,7 +1182,19 @@ export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? normalizeState(JSON.parse(raw)) : normalizeState(seedState);
-  } catch {
+  } catch (error) {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        localStorage.setItem(CORRUPT_STORAGE_KEY, JSON.stringify({
+          capturedAt: new Date().toISOString(),
+          raw,
+        }));
+      }
+    } catch {
+      // A storage quota/security failure must not hide the original recovery path.
+    }
+    console.error("Accounting state was quarantined after storage corruption.", error);
     return normalizeState(seedState);
   }
 }

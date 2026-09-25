@@ -1,4 +1,4 @@
-const CACHE_NAME = "accounting-workshop-pwa-v3";
+const CACHE_NAME = "accounting-workshop-pwa-v4";
 const BASE = self.registration.scope;
 const APP_SHELL = [
   BASE,
@@ -50,7 +50,7 @@ self.addEventListener("fetch", (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(BASE)),
+        .catch(() => Response.error()),
     ),
   );
 });

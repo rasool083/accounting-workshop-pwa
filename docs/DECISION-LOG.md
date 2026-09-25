@@ -675,3 +675,20 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **وضعیت:** در حال اجرا؛ checkpoint ساخته شده و اصلاح کد هنوز آغاز نشده است.
 
 **گام بعدی:** پیاده‌سازی parser مرکزی و regression آن، سپس تقویم و reconciliation.
+
+
+## ۱۴۰۵/۰۷/۰۳ — اصلاح P1 سرویس‌ورکر و قرنطینهٔ localStorage
+
+**درخواست:** پس از P0، باگ fallback asset در PWA و بازگشت خاموش به seed هنگام خرابی localStorage اصلاح شود؛ علت، راه‌حل، اثر و نتیجه ثبت شود.
+
+**بررسی:** `client/public/sw.js`، تست PWA، `loadState` حسابداری، `loadVendorDirectory` و تست‌های جدید بررسی شدند. علت سرویس‌ورکر، استفاده از `caches.match(BASE)` در branch غیر-navigation بود. علت storage، catch بدون نگهداری raw payload بود.
+
+**تصمیم:** cache به v4 ارتقا یافت؛ فقط navigation به HTML fallback می‌شود و asset در صورت نبود cache `Response.error()` می‌گیرد. raw payload خراب حسابداری و vendor در کلیدهای قرنطینه با timestamp ذخیره می‌شود و seed فقط fallback کنترل‌شده باقی می‌ماند.
+
+**دلیل:** این روش کمترین تغییر رفتار آنلاین را دارد، cache قدیمی را invalid می‌کند، MIME اشتباه تولید نمی‌کند و دادهٔ خراب را برای restore/diagnosis نگه می‌دارد؛ overwrite یا حذف event/داده انجام نمی‌شود.
+
+**اثر:** offline navigation حفظ می‌شود؛ asset خراب دیگر HTML نامرتبط نمی‌گیرد؛ خرابی storage بدون ازبین‌رفتن raw قابل تشخیص است. credentialها در snapshot جدیدی به Git وارد نشده‌اند.
+
+**آزمون:** check موفق؛ تست PWA ۳ موفق؛ تست recovery حسابداری و vendor مجموعاً ۲ موفق؛ diff check موفق.
+
+**وضعیت:** انجام‌شده و آمادهٔ commit مستقل؛ full regression و build نهایی بعد از commit اجرا می‌شود.

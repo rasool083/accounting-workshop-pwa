@@ -133,3 +133,33 @@ git reset --hard checkpoint/pre-bugfix-1405-07-03
 ### وضعیت
 
 کد مرحلهٔ A آمادهٔ commit مستقل است. بسته‌های P1 شامل service worker و localStorage هنوز اجرا نشده‌اند.
+
+
+## مرحلهٔ B — اجرای P1 سرویس‌ورکر و localStorage
+
+### تغییرات اجراشده
+
+- cache version سرویس‌ورکر از `v3` به `v4` ارتقا یافت تا clients قدیمی پاک‌سازی شوند.
+- fallback HTML فقط برای navigation باقی ماند.
+- درخواست asset غیر-navigation در صورت نبود cache دیگر HTML دریافت نمی‌کند و `Response.error()` برمی‌گرداند.
+- تست PWA تعداد fallbackهای HTML را دقیقاً یک مورد (navigation) کنترل می‌کند و وجود `Response.error()` را الزام می‌کند.
+- خرابی JSON حسابداری در `loadState` پیش از برگشت seed در کلید `accounting-workshop-pwa:v1:corrupt-snapshot` قرنطینه می‌شود.
+- خرابی دفتر تأمین‌کنندگان نیز در کلید مستقل `vendor-directory:v1:corrupt-snapshot` قرنطینه می‌شود.
+- snapshot شامل `capturedAt` و raw payload است؛ credential یا دادهٔ جدیدی به Git اضافه نشده است.
+- خطای recovery با `console.error` ثبت می‌شود تا fallback seed بی‌صدا نباشد.
+- دو تست regression برای accounting و vendor storage اضافه شد.
+
+### علت انتخاب و اثر داده‌ای
+
+HTML fallback برای navigation رفتار offline را حفظ می‌کند، اما asset خراب را به پاسخ نامرتبط تبدیل نمی‌کند. نسخهٔ cache افزایش یافت تا service worker قبلی با رفتار معیوب باقی نماند. در storage، seed همچنان مانع crash می‌شود، اما raw دادهٔ خراب از بین نمی‌رود و امکان تشخیص و بازیابی دستی وجود دارد.
+
+### اعتبارسنجی مرحلهٔ B
+
+- `pnpm check`: موفق.
+- `pwa.test.ts`: ۳ تست موفق.
+- `storage-recovery.test.ts`: ۲ تست موفق.
+- `git diff --check`: موفق.
+
+### وضعیت
+
+مرحلهٔ B آمادهٔ commit مستقل است. پس از commit، full regression، harness، build، smoke HTTP و بررسی نهایی همهٔ تغییرات اجرا خواهد شد.
