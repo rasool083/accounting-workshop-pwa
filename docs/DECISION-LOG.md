@@ -705,3 +705,20 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **آزمون:** full Vitest، ۸ فایل و ۷۳ تست موفق؛ check موفق؛ PWA و storage recovery پنج تست موفق.
 
 **وضعیت:** انجام‌شده؛ آمادهٔ commit اصلاحی.
+
+
+## ۱۴۰۵/۰۷/۰۳ — بازبینی پس از وقفهٔ سیستم و تأیید handoff اصلاحات
+
+**درخواست:** بررسی فعالیت پس‌زمینهٔ در حال اجرا و ادامه‌دادن آن در صورت سالم‌بودن؛ سپس تأیید اصلاحات باگ‌ها و کامل‌بودن مستندات.
+
+**بررسی:** `job_k10VH4LE` در زمان بررسی فعال و سالم بود و dev server محلی/عمومی `200 OK` داد. سپس مشخص شد فعالیت پس‌زمینه قبل از بازبینی فعلی سه commit اصلاحی (`4774391`, `5deee2b`, `045c96d`) و یک commit handoff (`dcb0bfa`) ساخته است. working tree پاک بود و tag `checkpoint/pre-bugfix-1405-07-03` پابرجا ماند.
+
+**یافته:** اصلاح parser فارسی/عربی، تقویم مشترک Jalali، reconciliation per-entity، reversal تراکنش و تولید، service worker، قرنطینهٔ storage خراب و تفکیک SSR از corruption در source و regressionها وجود دارد. probe تقویم در ۳۰۱ سال mismatch صفر، parser مقدار `123456.78`، mixed ledger برای هر دفتر یک event و full suite شامل ۸ فایل و ۷۳ تست موفق شد.
+
+**اصلاح مستندات:** header `PROJECT-CONTINUITY.md` به HEAD واقعی `dcb0bfa` اصلاح شد؛ مقدار قدیمی `162c4cb` stale بود و به کد جاری اشاره نمی‌کرد.
+
+**تصمیم:** اصلاحات انجام‌شده پذیرفته می‌شوند؛ ادامهٔ بعدی باید روی clean install و انتقال تنظیمات pnpm، تست browser واقعی offline، baseline قالب‌بندی و سپس refactor/code splitting باشد. باگ مالی جدیدی در این بازبینی پیدا نشد، اما review integrity پیش از قابلیت مالی جدید همچنان الزامی است.
+
+**آزمون:** `pnpm check` موفق، ۸ فایل تست و ۷۳ تست موفق، harness ۶۰۶ حالته، FIFO، دو probe اصلاح‌شده، build تولیدی و HTTP smoke موفق شدند. هشدار pnpm و warning bundle بزرگ باقی است؛ Prettier baseline نیز بدهی فنی ثبت‌شده است.
+
+**وضعیت:** انجام‌شده؛ مستندات handoff با commit اصلاحی بعدی تکمیل می‌شود.

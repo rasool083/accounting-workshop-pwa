@@ -629,3 +629,8 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 مرحلهٔ دوم در commit `5deee2b` fallback اشتباه service worker را برای assetها حذف کرد، cache را به v4 رساند و raw storage خراب حسابداری و دفتر تأمین‌کنندگان را قرنطینه کرد. commit `045c96d` نیز محیط SSR بدون localStorage را از خرابی واقعی storage تفکیک کرد.
 
 در پایان، ۸ فایل تست و ۷۳ تست موفق، check موفق، harness با ۶۰۶ حالت موفق، FIFO موفق، دو probe اصلاح‌شده با mismatch صفر، build موفق و HTTP محلی/عمومی `200 OK` ثبت شد. هشدارهای باقی‌ماندهٔ pnpm و Prettier بدهی‌های فنی مستقل هستند و در برنامهٔ بعدی باقی می‌مانند.
+
+
+## ۱۴۰۵/۰۷/۰۳ — تأیید پس از وقفهٔ سیستم
+
+فعالیت پس‌زمینهٔ اصلاح باگ‌ها پیش از بازبینی فعلی کامل شده بود و به‌اشتباه متوقف یا گیرکرده تلقی نشد. سه commit اصلاحی و یک handoff ساخته شده‌اند. بازبینی مستقل source، regressionها و build تأیید کرد که parser فارسی/عربی، تقویم Jalali، reconciliation، reversal تراکنش/تولید، service worker و storage recovery در وضعیت اصلاح‌شده هستند. header دفتر تداوم از commit stale `162c4cb` به HEAD واقعی `dcb0bfa` اصلاح شد.
