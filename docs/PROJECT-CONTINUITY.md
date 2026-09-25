@@ -3,7 +3,7 @@
 **نام پروژه:** Accounting Workshop PWA  
 **مخزن اصلی:** `rasool083/accounting-workshop-pwa`  
 **شاخهٔ مرجع:** `main`  
-**آخرین commit ثبت‌شده:** `c85866a` — ثبت ممیزی دوم عمیق باگ‌ها و ریسک‌های داده
+**آخرین commit ثبت‌شده:** `162c4cb` — ثبت handoff نهایی بستهٔ اصلاح باگ‌ها
 **تاریخ ایجاد:** ۱۴۰۵/۰۶/۲۹ برابر با ۲۰ سپتامبر ۲۰۲۶
 
 ## هدف این دفتر
@@ -435,3 +435,20 @@ Regression مخصوص فاکتور ۱۰۱۰ اضافه شد؛ مجموع تست�
 اعتبارسنجی این checkpoint: `pnpm check` موفق، ۷ فایل تست و ۶۶ تست موفق، `audit-harness` با ۶۰۶ حالت موفق، FIFO موفق، build موفق، `git diff --check` موفق و HTTP محلی/عمومی `200 OK`. Prettier در ۲۴ فایل مشکل قالب‌بندی دارد و pnpm هشدار محل قدیمی overrides را می‌دهد؛ این دو بدهی فنی جداگانه‌اند.
 
 **گام بعدی مصوب:** قبل از توسعهٔ مالی جدید، بستهٔ P0 شامل `parseLocalizedNumber`، یکسان‌سازی تقویم UI و اصلاح per-entity reconciliation با تست regression اجرا شود. پس از آن service worker و تست offline اصلاح شوند. تا بسته‌شدن این موارد، ادعای «بدون باگ» یا آماده‌بودن APK مجاز نیست.
+
+
+## ۱۴۰۵/۰۷/۰۳ — تکمیل بستهٔ اصلاح باگ‌ها
+
+اصلاحات با checkpoint `checkpoint/pre-bugfix-1405-07-03` آغاز شد و سه commit مستقل ساخته شد:
+
+- `4774391` — parser عدد محلی، تقویم Jalali مشترک، reconciliation per-entity و reversal تراکنش/تولید؛
+- `5deee2b` — service worker v4، fallback کنترل‌شدهٔ asset و قرنطینهٔ storage خراب؛
+- `045c96d` — تفکیک SSR بدون localStorage از خرابی واقعی storage.
+
+اعتبارسنجی نهایی: ۸ فایل تست و ۷۳ تست موفق، `pnpm check` موفق، harness با ۶۰۶ حالت موفق، FIFO موفق، probe تقویم در ۳۰۱ سال با mismatch صفر، probe parser و mixed reconciliation موفق، build موفق، و HTTP محلی/عمومی `200 OK`.
+
+دو باگ مالی قبلی اکنون با event reversal پوشش داده شده‌اند؛ event تاریخی حذف نمی‌شود. parserها و DatePicker از منبع حقیقت مشترک استفاده می‌کنند. raw storage خراب برای accounting و vendor در snapshot محلی قرنطینه می‌شود. سرویس‌ورکر فقط navigation را به HTML fallback می‌کند.
+
+**وضعیت باز:** هشدار محل قدیمی `pnpm.overrides/patchedDependencies`، ناسازگاری Prettier در baseline پروژه، bundle بزرگ و نیاز به تست browser واقعی offline همچنان باقی است. این موارد مانع بسته‌شدن اصلاحات فعلی نیستند، اما پیش از اعلام APK پایدار باید پیگیری شوند.
+
+**گام بعدی:** بررسی clean install و انتقال تنظیمات pnpm، format baseline تدریجی، تست واقعی install/update/offline در browser، سپس refactor و code splitting. برای قابلیت مالی جدید ابتدا integrity audit و review commitهای اصلاحی انجام شود.

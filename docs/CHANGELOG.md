@@ -620,3 +620,12 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 ممیزی دوم روی commit `fcdcdba` انجام شد. بررسی شامل مدل حسابداری، ledgerهای موجودی و نقدینگی، mutationهای رابط، backup، security، vendor directory، PWA، ۲۵ commit اخیر و تست‌های موجود بود. اعتبارسنجی با type-check موفق، ۶۶ تست موفق، harness ششصدوشش‌حالته، سناریوی FIFO، build موفق و پاسخ HTTP محلی/عمومی انجام شد.
 
 چهار یافتهٔ قابل‌تکرار ثبت شدند: اختلاف الگوریتم کبیسهٔ تقویم UI و هسته با ۱۱۶ mismatch در ۳۰۱ سال؛ تبدیل‌شدن اعداد فارسی به صفر در چند فرم؛ fallback service worker برای assetهای غیر HTML که ممکن است HTML را به‌جای JS/CSS برگرداند؛ و از دست رفتن reconciliation در update مختلط explicit/legacy ledger. هیچ اصلاح رفتاری در این ممیزی اعمال نشد. اولویت بعدی P0 اصلاح parser عدد، تقویم و reconciliation با regression مستقل است؛ سپس service worker و تست offline اصلاح می‌شوند.
+
+
+## ۱۴۰۵/۰۷/۰۳ — اجرای بستهٔ اصلاح با checkpoint و regression کامل
+
+اصلاحات پس از ساخت tag بازگشت `checkpoint/pre-bugfix-1405-07-03` انجام شد. مرحلهٔ اول در commit `4774391` parser عدد محلی برای ارقام فارسی/عربی، تقویم مشترک Jalali، reconciliation per-entity، reversal حذف/ابطال تراکنش و reversal حذف تولید را پیاده کرد. نتیجهٔ probeها: mismatch تقویم از ۱۱۶ به صفر، parse عدد فارسی از صفر به مقدار درست، mixed inventory/cash هرکدام یک event و discrepancy حذف تولید صفر شد.
+
+مرحلهٔ دوم در commit `5deee2b` fallback اشتباه service worker را برای assetها حذف کرد، cache را به v4 رساند و raw storage خراب حسابداری و دفتر تأمین‌کنندگان را قرنطینه کرد. commit `045c96d` نیز محیط SSR بدون localStorage را از خرابی واقعی storage تفکیک کرد.
+
+در پایان، ۸ فایل تست و ۷۳ تست موفق، check موفق، harness با ۶۰۶ حالت موفق، FIFO موفق، دو probe اصلاح‌شده با mismatch صفر، build موفق و HTTP محلی/عمومی `200 OK` ثبت شد. هشدارهای باقی‌ماندهٔ pnpm و Prettier بدهی‌های فنی مستقل هستند و در برنامهٔ بعدی باقی می‌مانند.
