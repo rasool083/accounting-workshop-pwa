@@ -692,3 +692,16 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **آزمون:** check موفق؛ تست PWA ۳ موفق؛ تست recovery حسابداری و vendor مجموعاً ۲ موفق؛ diff check موفق.
 
 **وضعیت:** انجام‌شده و آمادهٔ commit مستقل؛ full regression و build نهایی بعد از commit اجرا می‌شود.
+
+
+## ۱۴۰۵/۰۷/۰۳ — اصلاح تشخیص SSR در storage recovery
+
+**یافته:** full regression نشان داد محیط Node/SSR که `localStorage` ندارد وارد catch عمومی `loadState` می‌شود و پیام corruption تولید می‌کند.
+
+**تصمیم:** پیش از try/catch، نبود browser storage با `typeof localStorage === "undefined"` جدا شود؛ فقط خطای واقعی read/parse در storage قرنطینه و log شود.
+
+**دلیل:** نبود storage در SSR خرابی دادهٔ کاربر نیست و نباید با آن یکسان رفتار شود. این تغییر قرارداد seed امن SSR را حفظ و هشدارهای recovery را معنادار می‌کند.
+
+**آزمون:** full Vitest، ۸ فایل و ۷۳ تست موفق؛ check موفق؛ PWA و storage recovery پنج تست موفق.
+
+**وضعیت:** انجام‌شده؛ آمادهٔ commit اصلاحی.

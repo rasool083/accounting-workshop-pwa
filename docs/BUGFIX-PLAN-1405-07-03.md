@@ -163,3 +163,10 @@ HTML fallback برای navigation رفتار offline را حفظ می‌کند،
 ### وضعیت
 
 مرحلهٔ B آمادهٔ commit مستقل است. پس از commit، full regression، harness، build، smoke HTTP و بررسی نهایی همهٔ تغییرات اجرا خواهد شد.
+
+
+## مرحلهٔ B.۱ — تفکیک SSR از خرابی storage
+
+در full regression مشخص شد که نبود `localStorage` در محیط Node/SSR وارد catch عمومی می‌شد و به‌اشتباه با پیام «storage corruption» گزارش می‌گردید. این رفتار مالی را خراب نمی‌کرد، اما تشخیص خرابی واقعی را آلوده می‌کرد و log غیرضروری می‌ساخت.
+
+با guard صریح `typeof localStorage === "undefined"`، محیط SSR مستقیماً seed امن می‌گیرد و فقط خطاهای واقعی خواندن/parse storage قرنطینه و log می‌شوند. پس از این اصلاح، full Vitest بدون stderr اضافی ۸ فایل و ۷۳ تست موفق داشت؛ `pnpm check` و تست‌های PWA/storage نیز موفق ماندند.

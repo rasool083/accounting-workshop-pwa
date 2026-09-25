@@ -1179,6 +1179,7 @@ export function normalizeState(input: unknown): AppState {
 }
 
 export function loadState(): AppState {
+  if (typeof localStorage === "undefined") return normalizeState(seedState);
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? normalizeState(JSON.parse(raw)) : normalizeState(seedState);
