@@ -608,3 +608,28 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **وضعیت:** انجام‌شده؛ همگام‌سازی changelog و release trace هنوز باید در بستهٔ مستندسازی بعدی تکمیل شود.
 
 **گام بعدی:** از کار بعدی، ابتدا همین قالب تکمیل شود، سپس تغییر کد انجام گیرد؛ در پایان گزارش، تست‌ها، وضعیت Git و گام بعدی در repository ثبت شوند.
+
+
+## ۱۴۰۵/۰۷/۰۳ — ممیزی دوم باگ‌ها و خطاهای احتمالی
+
+**درخواست:** پروژه یک‌بار دیگر از نظر باگ، خطا، ریسک داده، فرمول، ledger، backup، صفحات و مسیرهای کاربری بررسی شود تا برای ادامهٔ توسعه تسلط کامل و گزارش قابل handoff وجود داشته باشد.
+
+**بررسی:** هستهٔ `client/src/lib/accounting.ts`، مسیرهای mutation در `client/src/pages/Home.tsx`، backup/security، service worker، manifest، workflow انتشار، تست‌ها و اسناد roadmap بررسی شدند. `pnpm check`، ۶۶ تست Vitest، harness با ۶۰۶ حالت، سناریوی FIFO، تست متمرکز accounting/backup/security، build و نصب frozen اجرا شدند.
+
+**یافته‌های قطعی:**
+
+۱. در `reconcileLedgerEvents` تراکنش با وضعیت `باطل` یا تراکنش حذف‌شده در `next` وارد مسیر `newTransactions` نمی‌شود؛ بنابراین event نقدی قبلی reversal نمی‌شود. بازتولید با دریافت ۱۰۰۰ نشان داد پس از ابطال یا حذف، event دریافت و ماندهٔ ۱۰۰۰ باقی می‌مانند.
+
+۲. `removeProductionRun` فقط stock را برمی‌گرداند و `productionRecords` را حذف می‌کند، اما eventهای `production_input` و `production_output` را معکوس نمی‌کند. بازتولید نشان داد پس از حذف محصول recorded=0 و projected=1 و ماده recorded=10 و projected=9 می‌شود. مسیر حذف از UI در `Home.tsx:9029` مستقیماً قابل دسترسی است.
+
+**ریسک‌های مهم:** fallback سرویس‌ورکر برای asset غیر-navigation در خطا به HTML پایه برمی‌گردد؛ `loadState` در خرابی localStorage بی‌صدا به seed برمی‌گردد؛ پرچم global تشخیص event صریح ممکن است تغییر هم‌زمان entity دیگر را نادیده بگیرد؛ و Prettier در ۲۴ فایل ناموفق است.
+
+**تصمیم:** قبل از افزودن قابلیت مالی جدید، اصلاح reversal تراکنش/کارمزد و reversal تولید با regression test اجباری است. سپس fallback سرویس‌ورکر و قرنطینهٔ localStorage باید اصلاح و آزموده شوند.
+
+**اثر:** تا اصلاح دو باگ قطعی، گزارش ماندهٔ نقدی و موجودی ممکن است پس از حذف/ابطال با واقعیت عملیاتی اختلاف داشته باشد. این وضعیت مانع اتکا به projection برای audit نهایی است، اما check، تست‌های موجود و build فعلی سالم هستند.
+
+**آزمون‌ها:** `pnpm check` موفق؛ ۷ فایل و ۶۶ تست موفق؛ harness با ۶۰۶ حالت موفق؛ FIFO موفق؛ تست متمرکز ۵۶ تست موفق؛ build موفق؛ frozen install موفق؛ `git diff --check` موفق؛ Prettier ناموفق با ۲۴ فایل.
+
+**وضعیت:** ممیزی انجام‌شده؛ دو باگ مالی با شدت بالا باز هستند و هنوز کد اصلاح نشده است.
+
+**گام بعدی:** اصلاح append-only reversal برای تراکنش حذف/باطل و تولید حذف/ویرایش، سپس افزودن regression test و اجرای ممیزی integrity.

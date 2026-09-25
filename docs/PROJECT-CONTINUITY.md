@@ -3,7 +3,7 @@
 **نام پروژه:** Accounting Workshop PWA  
 **مخزن اصلی:** `rasool083/accounting-workshop-pwa`  
 **شاخهٔ مرجع:** `main`  
-**آخرین commit ثبت‌شده:** `972aa77` — افزودن اصلاح صریح ماندهٔ بانک به‌صورت رویداد مستقل
+**آخرین commit ثبت‌شده:** `c85866a` — ثبت ممیزی دوم عمیق باگ‌ها و ریسک‌های داده
 **تاریخ ایجاد:** ۱۴۰۵/۰۶/۲۹ برابر با ۲۰ سپتامبر ۲۰۲۶
 
 ## هدف این دفتر
@@ -411,3 +411,18 @@ Regression مخصوص فاکتور ۱۰۱۰ اضافه شد؛ مجموع تست�
 در این جلسه گزارش تفصیلی `docs/DEEP-AUDIT-1405-07-02.md` و harness آزمون `scripts/audit-harness.ts` نیز به‌عنوان artifacts قابل بازبینی ثبت شده‌اند. هر ادامه‌دهنده باید این اسناد را همراه با `CHAT-CONTINUITY-PROTOCOL.md` و آخرین تصمیم‌ها مطالعه کند.
 
 **گام بعدی:** همگام‌سازی کامل `RELEASE-TRACE.md` با تفاوت نسخهٔ عمومی و HEAD فعلی، سپس اجرای check/test/build و ساخت commit مستندسازی.
+
+
+## ۱۴۰۵/۰۷/۰۳ — checkpoint ممیزی دوم باگ‌ها
+
+ممیزی دوم انجام شد و گزارش کامل در `docs/SECOND-DEEP-AUDIT-1405-07-03.md` ثبت شد. check، ۶۶ تست، harness با ۶۰۶ حالت، FIFO، تست متمرکز و build موفق هستند.
+
+دو باگ مالی تأییدشده برای ادامه باز هستند:
+
+۱. ابطال/حذف تراکنش در `reconcileLedgerEvents` event نقدی قبلی را reversal نمی‌کند.
+
+۲. `removeProductionRun` stock را برمی‌گرداند، اما eventهای تولید را reversal نمی‌کند؛ در نتیجه projection با ماندهٔ ثبت‌شده اختلاف پیدا می‌کند.
+
+ریسک‌های بعدی: fallback service worker برای assetها، بازگشت خاموش `loadState` به seed در خرابی localStorage، پرچم global eventهای صریح و baseline قالب‌بندی.
+
+**اولویت ادامه:** ابتدا اصلاح reversal تراکنش/کارمزد و تولید، افزودن regression test و اجرای integrity audit؛ سپس اصلاح offline asset fallback و مسیر خرابی localStorage. تا بستن دو باگ مالی، قابلیت مالی جدید اضافه نشود.
