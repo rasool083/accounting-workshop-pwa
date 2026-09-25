@@ -613,3 +613,10 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 دو باگ مالی تأیید شد: ابطال یا حذف تراکنش event نقدی قبلی را معکوس نمی‌کند؛ حذف یا ویرایش بچ تولید stock را برمی‌گرداند اما eventهای `production_input` و `production_output` را معکوس نمی‌کند. هر دو در `docs/SECOND-DEEP-AUDIT-1405-07-03.md` با روش بازتولید، علت ریشه‌ای و راه‌حل پیشنهادی ثبت شده‌اند. اصلاح این دو مورد و regression test آن‌ها اولویت بعدی پیش از توسعهٔ قابلیت مالی جدید است.
 
 ریسک‌های باز دیگر شامل fallback نادرست service worker برای assetها، بازگشت خاموش به seed در خرابی localStorage، تشخیص global eventهای صریح و عدم هماهنگی Prettier در ۲۴ فایل هستند.
+
+
+## ۱۴۰۵/۰۷/۰۳ — ممیزی دوم باگ‌ها و ریسک‌های پروژه
+
+ممیزی دوم روی commit `fcdcdba` انجام شد. بررسی شامل مدل حسابداری، ledgerهای موجودی و نقدینگی، mutationهای رابط، backup، security، vendor directory، PWA، ۲۵ commit اخیر و تست‌های موجود بود. اعتبارسنجی با type-check موفق، ۶۶ تست موفق، harness ششصدوشش‌حالته، سناریوی FIFO، build موفق و پاسخ HTTP محلی/عمومی انجام شد.
+
+چهار یافتهٔ قابل‌تکرار ثبت شدند: اختلاف الگوریتم کبیسهٔ تقویم UI و هسته با ۱۱۶ mismatch در ۳۰۱ سال؛ تبدیل‌شدن اعداد فارسی به صفر در چند فرم؛ fallback service worker برای assetهای غیر HTML که ممکن است HTML را به‌جای JS/CSS برگرداند؛ و از دست رفتن reconciliation در update مختلط explicit/legacy ledger. هیچ اصلاح رفتاری در این ممیزی اعمال نشد. اولویت بعدی P0 اصلاح parser عدد، تقویم و reconciliation با regression مستقل است؛ سپس service worker و تست offline اصلاح می‌شوند.

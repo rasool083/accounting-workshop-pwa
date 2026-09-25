@@ -426,3 +426,12 @@ Regression مخصوص فاکتور ۱۰۱۰ اضافه شد؛ مجموع تست�
 ریسک‌های بعدی: fallback service worker برای assetها، بازگشت خاموش `loadState` به seed در خرابی localStorage، پرچم global eventهای صریح و baseline قالب‌بندی.
 
 **اولویت ادامه:** ابتدا اصلاح reversal تراکنش/کارمزد و تولید، افزودن regression test و اجرای integrity audit؛ سپس اصلاح offline asset fallback و مسیر خرابی localStorage. تا بستن دو باگ مالی، قابلیت مالی جدید اضافه نشود.
+
+
+## ۱۴۰۵/۰۷/۰۳ — checkpoint ممیزی دوم باگ‌ها
+
+ممیزی دوم روی commit `fcdcdba` تکمیل شد. چهار مورد باز و قابل‌تکرار هستند: ناهماهنگی کبیسهٔ `JalaliDatePicker` با هسته، parser ناقص اعداد فارسی در چند فرم، fallback نادرست service worker برای assetهای غیر HTML، و global بودن تشخیص event در reconciliation هنگام update مختلط explicit/legacy. جزئیات، خطوط، خروجی probe و راه‌حل پیشنهادی در `docs/DEEP-AUDIT-SECOND-1405-07-03.md` ثبت شده است.
+
+اعتبارسنجی این checkpoint: `pnpm check` موفق، ۷ فایل تست و ۶۶ تست موفق، `audit-harness` با ۶۰۶ حالت موفق، FIFO موفق، build موفق، `git diff --check` موفق و HTTP محلی/عمومی `200 OK`. Prettier در ۲۴ فایل مشکل قالب‌بندی دارد و pnpm هشدار محل قدیمی overrides را می‌دهد؛ این دو بدهی فنی جداگانه‌اند.
+
+**گام بعدی مصوب:** قبل از توسعهٔ مالی جدید، بستهٔ P0 شامل `parseLocalizedNumber`، یکسان‌سازی تقویم UI و اصلاح per-entity reconciliation با تست regression اجرا شود. پس از آن service worker و تست offline اصلاح شوند. تا بسته‌شدن این موارد، ادعای «بدون باگ» یا آماده‌بودن APK مجاز نیست.

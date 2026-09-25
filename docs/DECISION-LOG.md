@@ -633,3 +633,28 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **وضعیت:** ممیزی انجام‌شده؛ دو باگ مالی با شدت بالا باز هستند و هنوز کد اصلاح نشده است.
 
 **گام بعدی:** اصلاح append-only reversal برای تراکنش حذف/باطل و تولید حذف/ویرایش، سپس افزودن regression test و اجرای ممیزی integrity.
+
+
+## ۱۴۰۵/۰۷/۰۳ — ممیزی دوم باگ‌ها و ریسک‌های احتمالی
+
+**درخواست:** پروژه یک‌بار دیگر از نظر باگ، عیب، خطا، ناسازگاری داده، فرمول و رفتار اجرایی بررسی شود و پس از تسلط کامل برای ادامهٔ توسعه اعلام آمادگی شود.
+
+**بررسی:** commit `fcdcdba`، مدل مرکزی حسابداری، mutationهای `Home.tsx`، backup/security/vendor، PWA، مستندات، ۲۵ commit اخیر، ۷ فایل تست و ۶۶ تست موجود بررسی شد. `pnpm check`، Vitest، harness ۶۰۶ حالته، FIFO، build، `git diff --check` و runtime HTTP اجرا شدند. دو probe اختصاصی نیز برای تقویم، اعداد فارسی و ledger ساخته شد.
+
+**یافته‌های قطعی:**
+
+۱. `JalaliDatePicker` در `Home.tsx:267-274` از `year % 4 === 3` استفاده می‌کند، درحالی‌که هسته در `accounting.ts:1880-1913` از محاسبهٔ `Intl` استفاده می‌کند. در ۳۰۱ سال، ۱۱۶ mismatch مشاهده شد.
+
+۲. چند فرم مبلغ/قیمت/موجودی/چک در `Home.tsx` و `VendorDirectory.tsx` فقط ASCII را parse می‌کنند؛ ورودی فارسی `۱۲۳۴۵۶٫۷۸` به صفر تبدیل شد.
+
+۳. service worker در fallback asset غیر navigation در `client/public/sw.js:42-53` به‌جای خطای asset، HTML پایه را برمی‌گرداند و می‌تواند خطای MIME/parse ایجاد کند.
+
+۴. `reconcileLedgerEvents` در `accounting.ts:1540-1541` وجود event صریح را به‌صورت global و بر اساس طول آرایه تشخیص می‌دهد. در update مختلط، mutation قدیمی برای موجودی و نقدینگی event reconciliation تولید نکرد؛ probe خروجی `mixedInventoryDeltaEvents: 0` و `mixedCashDeltaEvents: 0` داد.
+
+**آزمون‌ها:** `pnpm check` موفق، ۶۶ تست موفق، harness با ۶۰۶ حالت موفق، FIFO موفق، build موفق و HTTP محلی/عمومی `200 OK` بودند. Prettier در ۲۴ فایل هشدار داد و pnpm دربارهٔ محل قدیمی overrides هشدار داد.
+
+**تصمیم:** هیچ‌یک از این موارد بدون ثبت قرارداد و تست پذیرش اصلاح نشود. اولویت P0: parser عدد محلی، یکسان‌سازی تقویم UI و اصلاح per-entity ledger reconciliation. سپس P1: service worker و offline asset tests. گزارش کامل در `docs/DEEP-AUDIT-SECOND-1405-07-03.md` ثبت شد.
+
+**وضعیت:** ممیزی انجام‌شده؛ چهار باگ/ریسک قابل‌تکرار باز هستند؛ اصلاح کد در این مرحله انجام نشده است.
+
+**گام بعدی:** اجرای بستهٔ اصلاح P0 با commit جدا، regression قبل/بعد، ثبت اثر داده‌ای و سپس اعتبارسنجی مجدد full suite.
