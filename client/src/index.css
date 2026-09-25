@@ -927,6 +927,20 @@ tr:last-child td {
   font-weight: 700;
   color: #324258;
 }
+.table-subline {
+  display: block;
+  margin-top: 3px;
+  color: #8f9bab;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.amount-positive .table-subline,
+.amount-negative .table-subline {
+  color: inherit;
+  opacity: 0.82;
+}
 .muted-cell {
   color: #a5afbb;
 }

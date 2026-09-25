@@ -167,6 +167,45 @@ function statusClass(status: string) {
   return "status-warning";
 }
 
+function invoiceDirectionLabel(type: "فروش" | "خرید") {
+  return type === "فروش" ? "فروش · طلب از مشتری" : "خرید · بدهی به تأمین‌کننده";
+}
+
+function invoiceBalanceLabel(type: "فروش" | "خرید") {
+  return type === "فروش" ? "مانده طلب" : "مانده بدهی";
+}
+
+function cashDirectionLabel(type: string) {
+  return ["دریافت", "درآمد", "فروش کالا"].includes(type)
+    ? "ورود وجه / افزایش موجودی حساب"
+    : "خروج وجه / کاهش موجودی حساب";
+}
+
+function partyBalanceDescriptor(state: AppState, personId: string) {
+  const invoices = state.invoices.filter(
+    invoice => invoice.partyId === personId && invoice.status !== "باطل"
+  );
+  const salesOutstanding = invoices
+    .filter(invoice => invoice.type === "فروش")
+    .reduce(
+      (sum, invoice) =>
+        sum + Math.max(0, invoice.amount - (invoice.paidAmount || 0)),
+      0
+    );
+  const purchaseTotal = invoices
+    .filter(invoice => invoice.type === "خرید")
+    .reduce((sum, invoice) => sum + invoice.amount, 0);
+  const purchasePaid = state.purchasePayments
+    .filter(payment => payment.supplierId === personId)
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  const net = salesOutstanding - Math.max(0, purchaseTotal - purchasePaid);
+  if (Math.abs(net) < 0.01)
+    return { amount: 0, label: "تسویه / بدون مانده", tone: "muted-cell" };
+  return net > 0
+    ? { amount: net, label: "طلب از طرف حساب", tone: "amount-negative" }
+    : { amount: Math.abs(net), label: "بدهی به طرف حساب", tone: "amount-positive" };
+}
+
 function printWithTarget(target: string) {
   const className = `print-${target}`;
   document.body.classList.add(className);
@@ -1366,6 +1405,7 @@ function ActivityRow({
       <strong className={incoming ? "amount-positive" : "amount-negative"}>
         {incoming ? "+" : "−"}
         {formatMoney(item.amount, state.settings.currency)}
+        <small className="table-subline">{cashDirectionLabel(item.type)}</small>
       </strong>
       <span className={`status-pill ${statusClass(item.status)}`}>
         {item.status}
@@ -1937,7 +1977,7 @@ function Invoices({
               ascLabel="قدیمی‌تر"
               descLabel="جدیدتر"
             />
-            <span className="soft-tag">FIFO چک‌ها و ماندهٔ واقعی</span>
+            <span className="soft-tag">نوع سند و جهت مانده در هر ردیف مشخص است</span>
           </div>
         </div>
         <div className="table-wrap">
@@ -1946,6 +1986,7 @@ function Invoices({
               <tr>
                 <th>شماره</th>
                 <th>تاریخ</th>
+                <th>نوع و جهت</th>
                 <th>طرف حساب</th>
                 <th>نام کالا</th>
                 <th>تعداد</th>
@@ -1994,6 +2035,11 @@ function Invoices({
                             </button>
                           </td>
                           <td>{formatDate(invoice.date)}</td>
+                          <td>
+                            <span className={`status-pill ${invoice.type === "فروش" ? "status-success" : "status-warning"}`}>
+                              {invoiceDirectionLabel(invoice.type)}
+                            </span>
+                          </td>
                           <td>{personName(state, invoice.partyId)}</td>
                           <td>
                             <div className="invoice-cell-list">
@@ -2031,22 +2077,16 @@ function Invoices({
                             </div>
                           </td>
                           <td className="amount-cell">
-                            {formatMoney(
-                              invoice.amount,
-                              state.settings.currency
-                            )}
+                            <strong>{formatMoney(invoice.amount, state.settings.currency)}</strong>
+                            <small className="table-subline">{invoice.type === "فروش" ? "طلب ایجادشده" : "بدهی ایجادشده"}</small>
                           </td>
                           <td>
-                            {formatMoney(
-                              invoice.paidAmount,
-                              state.settings.currency
-                            )}
+                            <strong>{formatMoney(invoice.paidAmount, state.settings.currency)}</strong>
+                            <small className="table-subline">{invoice.type === "فروش" ? "وصول" : "پرداخت"}</small>
                           </td>
                           <td className="amount-cell">
-                            {formatMoney(
-                              Math.max(0, invoice.amount - invoice.paidAmount),
-                              state.settings.currency
-                            )}
+                            <strong>{formatMoney(Math.max(0, invoice.amount - invoice.paidAmount), state.settings.currency)}</strong>
+                            <small className="table-subline">{invoiceBalanceLabel(invoice.type)}</small>
                           </td>
                           <td>
                             <button
@@ -2080,7 +2120,7 @@ function Invoices({
                         </tr>
                         {expanded && (
                           <tr className="allocation-detail-row">
-                            <td colSpan={10}>
+                            <td colSpan={11}>
                               {allocations.length ? (
                                 <div className="invoice-check-allocation-list">
                                   {allocations.map(item => {
@@ -2212,7 +2252,7 @@ function Invoices({
                   })
               ) : (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     <EmptyState
                       title="فاکتوری ثبت نشده"
                       description="اولین فاکتور را با چند ردیف کالا ثبت کنید."
@@ -2660,7 +2700,9 @@ function Invoices({
             <div className="detail-meta">
               <span>تاریخ {formatDate(selectedInvoice.date)}</span>
               <span>{personName(state, selectedInvoice.partyId)}</span>
-              <span>{selectedInvoice.type}</span>
+            <span className={`status-pill ${selectedInvoice.type === "فروش" ? "status-success" : "status-warning"}`}>
+              {invoiceDirectionLabel(selectedInvoice.type)}
+            </span>
             </div>
             <div className="table-wrap">
               <table>
@@ -2705,7 +2747,7 @@ function Invoices({
                   : ""}
               </span>
               <strong>
-                مبلغ نهایی:{" "}
+                {selectedInvoice.type === "فروش" ? "طلب این فاکتور:" : "بدهی این فاکتور:"}{" "}
                 {formatMoney(selectedInvoice.amount, state.settings.currency)}
               </strong>
             </div>
@@ -4200,6 +4242,7 @@ function Transactions({
                     </td>
                     <td className="amount-cell">
                       {formatMoney(item.amount, state.settings.currency)}
+                      <small className="table-subline">{cashDirectionLabel(item.type)}</small>
                       {!!item.feeAmount && <small className="table-subline">کارمزد: {formatMoney(item.feeAmount, state.settings.currency)} از مبدأ</small>}
                     </td>
                     <td>
@@ -4496,8 +4539,9 @@ function People({
                       (peopleSortDirection === "asc" ? 1 : -1) *
                       a.name.localeCompare(b.name, "fa")
                   )
-                  .map(person => (
-                    <tr key={person.id}>
+                  .map(person => {
+                    const balance = partyBalanceDescriptor(state, person.id);
+                    return <tr key={person.id}>
                       <td className="muted-cell">{person.code}</td>
                       <td>
                         <strong>{person.name}</strong>
@@ -4515,14 +4559,9 @@ function People({
                         </div>
                       </td>
                       <td>{person.phone || "—"}</td>
-                      <td
-                        className={
-                          person.balance > 0 ? "amount-negative" : "muted-cell"
-                        }
-                      >
-                        {person.balance
-                          ? formatMoney(person.balance, state.settings.currency)
-                          : "بدون مانده"}
+                      <td className={balance.tone}>
+                        <strong>{balance.amount ? formatMoney(balance.amount, state.settings.currency) : "—"}</strong>
+                        <small className="table-subline">{balance.label}</small>
                       </td>
                       <td>
                         <button
@@ -4551,8 +4590,8 @@ function People({
                           <Trash2 size={14} />
                         </button>
                       </td>
-                    </tr>
-                  ))
+                    </tr>;
+                  })
               ) : (
                 <tr>
                   <td colSpan={6}>
@@ -8253,10 +8292,12 @@ function Reports({
                   </td>
                   <td>{formatNumber(row.count)}</td>
                   <td className="amount-negative">
-                    {formatMoney(row.receivable, state.settings.currency)}
+                    <strong>{formatMoney(row.receivable, state.settings.currency)}</strong>
+                    <small className="table-subline">طلب از مشتریان</small>
                   </td>
                   <td className="amount-positive">
-                    {formatMoney(row.payable, state.settings.currency)}
+                    <strong>{formatMoney(row.payable, state.settings.currency)}</strong>
+                    <small className="table-subline">بدهی به تأمین‌کنندگان</small>
                   </td>
                   <td>
                     {formatMoney(
@@ -8280,10 +8321,10 @@ function Reports({
             <thead><tr><th>تأمین‌کننده</th><th>فاکتور خرید</th><th>پرداخت‌ها</th><th>مانده بدهی</th><th>پیش‌پرداخت</th></tr></thead>
             <tbody>{supplierReport.length ? supplierReport.map(row => <tr key={row.supplier.id}>
               <td><strong>{row.supplier.name}</strong><small className="muted-cell">{row.invoiceCount} فاکتور · {row.paymentCount} پرداخت</small></td>
-              <td>{formatMoney(row.invoiceTotal, state.settings.currency)}</td>
-              <td>{formatMoney(row.paymentTotal, state.settings.currency)}</td>
-              <td className="amount-negative">{formatMoney(row.payable, state.settings.currency)}</td>
-              <td className="amount-positive">{formatMoney(row.credit, state.settings.currency)}</td>
+              <td><strong>{formatMoney(row.invoiceTotal, state.settings.currency)}</strong><small className="table-subline">خرید / بدهی ایجادشده</small></td>
+              <td><strong>{formatMoney(row.paymentTotal, state.settings.currency)}</strong><small className="table-subline">پرداخت به تأمین‌کننده</small></td>
+              <td className="amount-negative"><strong>{formatMoney(row.payable, state.settings.currency)}</strong><small className="table-subline">بدهی باقی‌مانده</small></td>
+              <td className="amount-positive"><strong>{formatMoney(row.credit, state.settings.currency)}</strong><small className="table-subline">پیش‌پرداخت / طلب کارگاه</small></td>
             </tr>) : <tr><td colSpan={5}>برای تأمین‌کنندگان فاکتور یا پرداختی ثبت نشده است.</td></tr>}</tbody>
           </table></div>
         </div>
@@ -8296,10 +8337,10 @@ function Reports({
             <thead><tr><th>شریک</th><th>کل چک‌ها</th><th>سررسید ثبت‌شده</th><th>پرداخت</th><th>تعهد باز</th></tr></thead>
             <tbody>{partnerObligationReport.length ? partnerObligationReport.map(row => <tr key={row.partner.id}>
               <td><strong>{row.partner.name}</strong><small className="muted-cell">{row.checks.length} چک</small></td>
-              <td>{formatMoney(row.issuedTotal, state.settings.currency)}</td>
-              <td>{formatMoney(row.dueTotal, state.settings.currency)}</td>
-              <td>{formatMoney(row.paidTotal, state.settings.currency)}</td>
-              <td className={row.outstanding ? "amount-negative" : "amount-positive"}>{formatMoney(row.outstanding, state.settings.currency)}</td>
+              <td><strong>{formatMoney(row.issuedTotal, state.settings.currency)}</strong><small className="table-subline">چک صادرشده</small></td>
+              <td><strong>{formatMoney(row.dueTotal, state.settings.currency)}</strong><small className="table-subline">تعهد / بدهی</small></td>
+              <td><strong>{formatMoney(row.paidTotal, state.settings.currency)}</strong><small className="table-subline">پرداخت‌شده</small></td>
+              <td className={row.outstanding ? "amount-negative" : "amount-positive"}><strong>{formatMoney(row.outstanding, state.settings.currency)}</strong><small className="table-subline">تعهد باقی‌مانده</small></td>
             </tr>) : <tr><td colSpan={5}>برای شرکا چک صادرشده‌ای ثبت نشده است.</td></tr>}</tbody>
           </table></div>
         </div>
@@ -8532,10 +8573,8 @@ function Reports({
                         row.balance >= 0 ? "amount-negative" : "amount-positive"
                       }
                     >
-                      {formatMoney(
-                        Math.abs(row.balance),
-                        state.settings.currency
-                      )}
+                      <strong>{formatMoney(Math.abs(row.balance), state.settings.currency)}</strong>
+                      <small className="table-subline">{row.balance >= 0 ? "طلب از مشتری" : "بستانکاری مشتری / بدهی کمتر"}</small>
                     </td>
                     <td>{row.note || "—"}</td>
                   </tr>
@@ -8605,13 +8644,18 @@ function Reports({
               ))}
             </select>
           )}
-          <strong
-            className={
-              ledgerBalance >= 0 ? "amount-positive" : "amount-negative"
-            }
-          >
-            مانده:{" "}
-            {formatMoney(Math.abs(ledgerBalance), state.settings.currency)}
+            <strong
+              className={
+                ledgerBalance >= 0 ? "amount-positive" : "amount-negative"
+              }
+            >
+              {ledgerMode === "party" ? "مانده طرف حساب:" : "مانده حساب:"}{" "}
+              {formatMoney(Math.abs(ledgerBalance), state.settings.currency)}
+              <small className="table-subline">
+                {ledgerMode === "party"
+                  ? ledgerBalance >= 0 ? "طلب / افزایش حق دریافت" : "بدهی / بستانکاری طرف حساب"
+                  : ledgerBalance >= 0 ? "افزایش خالص حساب" : "کاهش خالص حساب"}
+              </small>
           </strong>
         </div>
         <div className="table-wrap">
@@ -8620,8 +8664,8 @@ function Reports({
               <tr>
                 <th>تاریخ</th>
                 <th>شرح</th>
-                <th>افزایش</th>
-                <th>کاهش</th>
+                <th>{ledgerMode === "party" ? "افزایش طلب / مانده" : "ورود به حساب"}</th>
+                <th>{ledgerMode === "party" ? "کاهش طلب / تسویه" : "خروج از حساب"}</th>
                 <th>مانده</th>
               </tr>
             </thead>
@@ -8639,21 +8683,14 @@ function Reports({
                           <small className="muted-cell">{row.note}</small>
                         </td>
                         <td className="amount-positive">
-                          {row.increase
-                            ? formatMoney(row.increase, state.settings.currency)
-                            : "—"}
+                          {row.increase ? <><strong>{formatMoney(row.increase, state.settings.currency)}</strong><small className="table-subline">{ledgerMode === "party" ? "افزایش طلب" : "ورود وجه"}</small></> : "—"}
                         </td>
                         <td className="amount-negative">
-                          {row.decrease
-                            ? formatMoney(row.decrease, state.settings.currency)
-                            : "—"}
+                          {row.decrease ? <><strong>{formatMoney(row.decrease, state.settings.currency)}</strong><small className="table-subline">{ledgerMode === "party" ? "تسویه / کاهش طلب" : "خروج وجه"}</small></> : "—"}
                         </td>
                         <td>
-                          {formatMoney(
-                            Math.abs(running),
-                            state.settings.currency
-                          )}{" "}
-                          {running < 0 ? "(کاهش)" : "(افزایش)"}
+                          <strong>{formatMoney(Math.abs(running), state.settings.currency)}</strong>
+                          <small className="table-subline">{running < 0 ? "کاهش خالص" : "افزایش خالص"}</small>
                         </td>
                       </tr>
                     );
