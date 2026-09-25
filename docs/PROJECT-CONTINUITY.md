@@ -3,7 +3,7 @@
 **نام پروژه:** Accounting Workshop PWA  
 **مخزن اصلی:** `rasool083/accounting-workshop-pwa`  
 **شاخهٔ مرجع:** `main`  
-**آخرین commit ثبت‌شدهٔ handoff:** `c7a548f` — تکمیل قرارداد تومان، dry-run تشخیصی و مستندسازی
+**آخرین commit ثبت‌شدهٔ handoff:** `650d2c8` — تأیید تومان‌بودن تمام backupهای Google Drive
 **تاریخ ایجاد:** ۱۴۰۵/۰۶/۲۹ برابر با ۲۰ سپتامبر ۲۰۲۶
 
 ## هدف این دفتر
