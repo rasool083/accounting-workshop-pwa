@@ -483,3 +483,12 @@ fixture غیرحساس در `client/src/lib/fixtures/price-unit.fixture.ts` و c
 **وضعیت:** برنامه تدوین و مستند شد؛ اجرای کد هنوز آغاز نشده است.
 
 **شرط آغاز اجرا:** بررسی `git status`، ساخت checkpoint مخصوص، ساخت fixture بدون دادهٔ خصوصی و ثبت قرارداد قیمت پایه در `DECISION-LOG.md`.
+
+
+## ۱۴۰۵/۰۷/۰۳ — handoff قرارداد تومان و dry-run واحد پول
+
+Checkpoint این مرحله `checkpoint/pre-toman-currency-1405-07-03` است. قرارداد `IRT`/`IRR` اجرا شد و `IRT`/تومان پیش‌فرض هسته و UI شد. Settings دیگر مقدار خالی را ریال نمی‌کند. backup معمولی و unified backup metadata کد و متن واحد پول را نگه می‌دارند. دادهٔ صریح ریالی فقط برچسب `IRR` می‌گیرد و عددش تبدیل نمی‌شود.
+
+Dry-run روی fixture فقط تشخیصی و بدون تغییر مقدار بود. ۲۲ فیلد پولی با مجموع ۴۱۹٬۲۹۰٬۰۰۰، checksum قبل و بعد `e97c9c24` و همهٔ invariants برابر بودند. ۱۰ فایل تست و ۸۵ تست، check، build، harness ۶۰۶حالته، FIFO و smoke محلی/عمومی موفق شدند.
+
+**مرحلهٔ بعد:** بازبینی backup واقعی و تشخیص تومان/ریال بدون mutation؛ فقط پس از تأیید صریح ریالی‌بودن یک backup، migration اختیاری با ضریب ۱۰، preview، backup قبل، rollback و audit مجاز است. تا آن زمان هیچ تقسیم یا ضرب خودکار روی دادهٔ واقعی انجام نشود.

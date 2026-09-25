@@ -5,6 +5,7 @@ export const priceUnitFixture = {
   settings: {
     businessName: "کارگاه آزمایشی",
     currency: "تومان",
+    currencyCode: "IRT",
     dayBasis: "شمسی",
     units: ["عدد", "کارتن", "کیلوگرم", "گرم"],
   },

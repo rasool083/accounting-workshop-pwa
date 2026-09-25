@@ -1,5 +1,16 @@
 export const CURRENT_SCHEMA_VERSION = 5;
 export const BACKUP_FORMAT_VERSION = 5;
+export const DEFAULT_CURRENCY_CODE = "IRT" as const;
+export type CurrencyCode = "IRT" | "IRR";
+
+export function normalizeCurrencyCode(value: unknown): CurrencyCode {
+  if (value === "IRR" || value === "ریال") return "IRR";
+  return DEFAULT_CURRENCY_CODE;
+}
+
+export function currencyLabel(code: CurrencyCode | string | undefined) {
+  return normalizeCurrencyCode(code) === "IRR" ? "ریال" : "تومان";
+}
 
 export type PageId =
   | "dashboard"
@@ -476,6 +487,7 @@ export interface AppState {
   settings: {
     businessName: string;
     currency: string;
+    currencyCode?: CurrencyCode;
     dayBasis: number | "شمسی";
     units: string[];
     bankFeeRules?: BankFeeRule[];
@@ -837,6 +849,7 @@ const seedState: AppState = {
   settings: {
     businessName: "کارگاه من",
     currency: "تومان",
+    currencyCode: DEFAULT_CURRENCY_CODE,
     dayBasis: "شمسی",
     units: ["عدد", "کیلوگرم", "گرم", "متر", "لیتر", "کیسه", "بسته", "کارتن"],
     bankFeeRules: [],
@@ -1021,6 +1034,20 @@ export function normalizeState(input: unknown): AppState {
     settings: {
       ...seedState.settings,
       ...(isRecord(source.settings) ? source.settings : {}),
+      currencyCode: normalizeCurrencyCode(
+        isRecord(source.settings) && source.settings.currencyCode !== undefined
+          ? source.settings.currencyCode
+          : isRecord(source.settings)
+            ? source.settings.currency
+            : DEFAULT_CURRENCY_CODE
+      ),
+      currency: currencyLabel(
+        isRecord(source.settings) && source.settings.currencyCode !== undefined
+          ? normalizeCurrencyCode(source.settings.currencyCode)
+          : isRecord(source.settings)
+            ? normalizeCurrencyCode(source.settings.currency)
+            : DEFAULT_CURRENCY_CODE
+      ),
       dayBasis:
         isRecord(source.settings) &&
         (source.settings.dayBasis === "شمسی" ||
@@ -1242,7 +1269,7 @@ export function createEmptyState(previous: AppState): AppState {
   });
 }
 
-export function formatMoney(value: number, currency = "ریال") {
+export function formatMoney(value: number, currency = "تومان") {
   return `${new Intl.NumberFormat("fa-IR").format(Math.round(value || 0))} ${currency}`;
 }
 
@@ -1886,6 +1913,10 @@ export function exportPayload(state: AppState) {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       application: "حسابداری کارگاه",
+      currency: {
+        code: data.settings.currencyCode || DEFAULT_CURRENCY_CODE,
+        label: currencyLabel(data.settings.currencyCode),
+      },
       collections: {
         people: data.people.length,
         products: data.products.length,

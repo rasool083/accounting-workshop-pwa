@@ -16,6 +16,7 @@ export type UnifiedBackupEnvelope = {
   backupId: string;
   createdAt: string;
   application: "حسابداری کارگاه";
+  currency: { code: string; label: string };
   sections: {
     accounting: Record<string, unknown>;
     vendorDirectory: Record<string, unknown>;
@@ -200,6 +201,12 @@ export function exportUnifiedPayload(
     backupId: createBackupId(),
     createdAt: new Date().toISOString(),
     application: "حسابداری کارگاه",
+    currency: {
+      code:
+        accounting.settings.currencyCode ||
+        (accounting.settings.currency === "ریال" ? "IRR" : "IRT"),
+      label: accounting.settings.currency,
+    },
     sections: {
       accounting: accountingSection,
       vendorDirectory: vendorSection,

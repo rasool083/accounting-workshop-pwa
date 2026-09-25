@@ -56,6 +56,8 @@ import {
   formatDate,
   formatMoney,
   formatNumber,
+  currencyLabel,
+  normalizeCurrencyCode,
   parseLocalizedNumber,
   calculateInvoiceAmount,
   loadState,
@@ -9722,7 +9724,9 @@ function SettingsPage({
   onSave: (next: AppState, message: string) => void;
 }) {
   const [businessName, setBusinessName] = useState(state.settings.businessName);
-  const [currency, setCurrency] = useState(state.settings.currency);
+  const [currencyCode, setCurrencyCode] = useState(
+    state.settings.currencyCode || normalizeCurrencyCode(state.settings.currency)
+  );
   const [dayBasis, setDayBasis] = useState(String(state.settings.dayBasis));
   const [units, setUnits] = useState(state.settings.units);
   const [unitDraft, setUnitDraft] = useState("");
@@ -9859,10 +9863,15 @@ function SettingsPage({
           </label>
           <label>
             واحد پول
-            <input
-              value={currency}
-              onChange={event => setCurrency(event.target.value)}
-            />
+            <select
+              value={currencyCode}
+              onChange={event =>
+                setCurrencyCode(normalizeCurrencyCode(event.target.value))
+              }
+            >
+              <option value="IRT">تومان (IRT)</option>
+              <option value="IRR">ریال (IRR)</option>
+            </select>
           </label>
           <label>
             مبنای روزشمار هزینه دیرکرد
@@ -10032,7 +10041,8 @@ function SettingsPage({
                   settings: {
                     ...state.settings,
                     businessName: businessName.trim() || "کارگاه من",
-                    currency: currency.trim() || "ریال",
+                    currency: currencyLabel(currencyCode),
+                    currencyCode,
                     dayBasis:
                       dayBasis === "شمسی"
                         ? "شمسی"
