@@ -3,7 +3,7 @@
 **نام پروژه:** Accounting Workshop PWA  
 **مخزن اصلی:** `rasool083/accounting-workshop-pwa`  
 **شاخهٔ مرجع:** `main`  
-**آخرین commit ثبت‌شده:** `dcb0bfa` — ثبت handoff نهایی بستهٔ اصلاح باگ‌ها
+**آخرین commit ثبت‌شده:** `4693f9a` — اصلاح نهایی checkpoint handoff بستهٔ اصلاح باگ‌ها
 **تاریخ ایجاد:** ۱۴۰۵/۰۶/۲۹ برابر با ۲۰ سپتامبر ۲۰۲۶
 
 ## هدف این دفتر
