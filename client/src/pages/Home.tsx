@@ -276,6 +276,43 @@ function SortControl({
   );
 }
 
+function Pagination({
+  page,
+  pageCount,
+  onChange,
+}: {
+  page: number;
+  pageCount: number;
+  onChange: (page: number) => void;
+}) {
+  if (pageCount <= 1) return null;
+  const pages = Array.from({ length: pageCount }, (_, index) => index + 1);
+  const visiblePages = pageCount <= 7
+    ? pages
+    : Array.from(new Set([1, page - 1, page, page + 1, pageCount]))
+        .filter(value => value >= 1 && value <= pageCount)
+        .sort((a, b) => a - b);
+  return (
+    <nav className="pagination" aria-label="صفحه‌بندی فهرست">
+      <button type="button" disabled={page === 1} onClick={() => onChange(page - 1)}>قبلی</button>
+      {visiblePages.map((value, index) => (
+        <Fragment key={value}>
+          {index > 0 && value - visiblePages[index - 1] > 1 && <span>…</span>}
+          <button
+            type="button"
+            className={value === page ? "active" : ""}
+            onClick={() => onChange(value)}
+            aria-current={value === page ? "page" : undefined}
+          >
+            {formatNumber(value)}
+          </button>
+        </Fragment>
+      ))}
+      <button type="button" disabled={page === pageCount} onClick={() => onChange(page + 1)}>بعدی</button>
+    </nav>
+  );
+}
+
 function JalaliDatePicker({
   value,
   onChange,
@@ -1433,7 +1470,9 @@ function Invoices({
   );
   const [invoiceSortDirection, setInvoiceSortDirection] = useState<
     "asc" | "desc"
-  >("asc");
+  >("desc");
+  const [invoicePage, setInvoicePage] = useState(1);
+  const invoicePageSize = 25;
   const blankItem = { productId: "", quantity: "1", unit: "", unitPrice: "" };
   const blankPayment = {
     method: "نقدی" as "نقدی" | "چک مشتری" | "چک شریک" | "حساب داخلی",
@@ -1530,6 +1569,25 @@ function Invoices({
       ),
     [state.invoices, form.partyId, party?.code]
   );
+  const sortedInvoices = useMemo(
+    () =>
+      [...state.invoices].sort(
+        (a, b) =>
+          (invoiceSortDirection === "asc" ? 1 : -1) *
+          (jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)) ||
+            a.id.localeCompare(b.id))
+      ),
+    [invoiceSortDirection, state.invoices]
+  );
+  const invoicePageCount = Math.max(1, Math.ceil(sortedInvoices.length / invoicePageSize));
+  const safeInvoicePage = Math.min(invoicePage, invoicePageCount);
+  const paginatedInvoices = sortedInvoices.slice(
+    (safeInvoicePage - 1) * invoicePageSize,
+    safeInvoicePage * invoicePageSize
+  );
+  useEffect(() => {
+    setInvoicePage(1);
+  }, [invoiceSortDirection]);
   function suggestedPrice(
     productId: string,
     unit: string,
@@ -1998,16 +2056,8 @@ function Invoices({
               </tr>
             </thead>
             <tbody>
-              {state.invoices.length ? (
-                [...state.invoices]
-                  .sort(
-                    (a, b) =>
-                      (invoiceSortDirection === "asc" ? 1 : -1) *
-                      (jalaliDateKey(a.date).localeCompare(
-                        jalaliDateKey(b.date)
-                      ) || a.id.localeCompare(b.id))
-                  )
-                  .map(invoice => {
+              {sortedInvoices.length ? (
+                paginatedInvoices.map(invoice => {
                     const expanded = expandedInvoiceIds.has(invoice.id);
                     const allocations = invoiceAllocations.filter(
                       item => item.invoiceId === invoice.id
@@ -2265,6 +2315,11 @@ function Invoices({
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={safeInvoicePage}
+          pageCount={invoicePageCount}
+          onChange={setInvoicePage}
+        />
       </div>
       {open && (
         <Dialog
@@ -6211,8 +6266,10 @@ function Checks({
     new Set()
   );
   const [checkSortDirection, setCheckSortDirection] = useState<"asc" | "desc">(
-    "asc"
+    "desc"
   );
+  const [checkPage, setCheckPage] = useState(1);
+  const checkPageSize = 25;
   const blank = {
     number: "",
     partyId: "",
@@ -6251,12 +6308,27 @@ function Checks({
     .sort(
       (a, b) =>
         (checkSortDirection === "asc" ? 1 : -1) *
-        (jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)) ||
-          jalaliDateKey(a.receivedDate).localeCompare(
-            jalaliDateKey(b.receivedDate)
-          ) ||
+        (jalaliDateKey(a.receivedDate).localeCompare(jalaliDateKey(b.receivedDate)) ||
+          jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)) ||
           a.id.localeCompare(b.id))
     );
+  const checkPageCount = Math.max(1, Math.ceil(visibleChecks.length / checkPageSize));
+  const safeCheckPage = Math.min(checkPage, checkPageCount);
+  const paginatedChecks = visibleChecks.slice(
+    (safeCheckPage - 1) * checkPageSize,
+    safeCheckPage * checkPageSize
+  );
+  useEffect(() => {
+    setCheckPage(1);
+  }, [
+    checkSortDirection,
+    statusFilter,
+    bankFilter,
+    receivedFrom,
+    receivedTo,
+    dueFrom,
+    dueTo,
+  ]);
   const allocationDetails = settleChecksFIFO(
     state.checks,
     state.invoices,
@@ -6724,8 +6796,8 @@ function Checks({
             <SortControl
               direction={checkSortDirection}
               onChange={setCheckSortDirection}
-              ascLabel="سررسید نزدیک‌تر"
-              descLabel="سررسید دورتر"
+              ascLabel="قدیمی‌تر"
+              descLabel="جدیدتر"
             />
             <span className="soft-tag">مرجع وابسته به وضعیت</span>
           </div>
@@ -6745,8 +6817,8 @@ function Checks({
               </tr>
             </thead>
             <tbody>
-              {visibleChecks.length ? (
-                visibleChecks.map(check => {
+              {paginatedChecks.length ? (
+                paginatedChecks.map(check => {
                   const checkAllocations = allocationDetails.filter(
                     item => item.checkId === check.id
                   );
@@ -7101,6 +7173,11 @@ function Checks({
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={safeCheckPage}
+          pageCount={checkPageCount}
+          onChange={setCheckPage}
+        />
       </div>
       {open && (
         <Dialog

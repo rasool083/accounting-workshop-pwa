@@ -2905,6 +2905,39 @@ tr:last-child td {
   color: #286b5b;
   font-weight: 700;
 }
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 14px 4px 2px;
+  direction: rtl;
+}
+.pagination button {
+  min-width: 31px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #e1e8e5;
+  border-radius: 8px;
+  background: #fff;
+  color: #63756f;
+  font-size: 10px;
+  cursor: pointer;
+}
+.pagination button.active {
+  border-color: #b9d9cc;
+  background: #d8eee6;
+  color: #286b5b;
+  font-weight: 700;
+}
+.pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.pagination span {
+  color: #9aa8a3;
+  padding: 0 2px;
+}
 .panel-heading-actions {
   display: flex;
   align-items: center;
