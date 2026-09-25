@@ -3,7 +3,7 @@
 **نام پروژه:** Accounting Workshop PWA  
 **مخزن اصلی:** `rasool083/accounting-workshop-pwa`  
 **شاخهٔ مرجع:** `main`  
-**آخرین commit ثبت‌شده:** `dfbd9e7` — تکمیل handoff قرارداد قیمت پایه و واحد
+**آخرین commit ثبت‌شدهٔ handoff:** `f0ccf87` — تکمیل handoff قرارداد قیمت پایه و واحد
 **تاریخ ایجاد:** ۱۴۰۵/۰۶/۲۹ برابر با ۲۰ سپتامبر ۲۰۲۶
 
 ## هدف این دفتر
