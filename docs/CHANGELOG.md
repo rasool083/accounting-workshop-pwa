@@ -639,3 +639,12 @@ schema به نسخهٔ ۴ ارتقا یافت و ledgerهای `purchasePayments`
 ## ۱۴۰۵/۰۷/۰۳ — تدوین برنامهٔ مرحلهٔ بعد
 
 برنامهٔ مرحلهٔ بعد در `docs/NEXT-PHASE-PLAN-1405-07-03.md` ثبت شد. موضوع مرحله تثبیت قرارداد قیمت، واحد و پول است و قبل از هر migration یا قابلیت مالی جدید با fixture مستقل، checksum، checkpoint، قرارداد قیمت پایه، تست تبدیل واحد و migration dry-run اجرا خواهد شد. در این نوبت هیچ کد یا دادهٔ واقعی تغییر نکرد.
+
+
+## ۱۴۰۵/۰۷/۰۳ — اجرای substage قرارداد قیمت پایه و واحد
+
+مرحلهٔ قیمت و واحد با checkpoint `checkpoint/pre-price-unit-1405-07-03` اجرا شد. قراردادهای فاکتور و تاریخچهٔ قیمت اکنون snapshot واحد پایه، ضریب تبدیل و `priceBasis: "baseUnit"` را حفظ می‌کنند و محاسبهٔ فاکتور از helper مرکزی استفاده می‌کند. fixture غیرحساس و checksum ساخته شد و backup round-trip آن بررسی شد.
+
+نتایج نهایی: ۹ فایل تست، ۸۱ تست، check، harness ۶۰۶حالته، FIFO، build و smoke محلی/عمومی موفق. checksum fixture برابر `26c49b391cd15725a6ea1a3e92fb2cc6717fbf8f0831aa3a4b377484c35af4d5` است. Prettier فقط warning baseline روی فایل‌های تغییرکرده دارد و برای جلوگیری از diff گسترده اصلاح نشد.
+
+قرارداد ریال/تومان و migration dry-run هنوز اجرا نشده و به‌عنوان مرحلهٔ بعد تدوین شده است؛ هیچ backup واقعی یا دادهٔ کاربر در این substage تغییر نکرد.

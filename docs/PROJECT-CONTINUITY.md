@@ -3,7 +3,7 @@
 **نام پروژه:** Accounting Workshop PWA  
 **مخزن اصلی:** `rasool083/accounting-workshop-pwa`  
 **شاخهٔ مرجع:** `main`  
-**آخرین commit ثبت‌شده:** `f61812b` — تدوین مرحلهٔ بعد قرارداد قیمت، واحد و پول
+**آخرین commit ثبت‌شده:** `f74643c` — اجرای قرارداد قیمت پایه و واحد
 **تاریخ ایجاد:** ۱۴۰۵/۰۶/۲۹ برابر با ۲۰ سپتامبر ۲۰۲۶
 
 ## هدف این دفتر
@@ -461,3 +461,12 @@ Regression مخصوص فاکتور ۱۰۱۰ اضافه شد؛ مجموع تست�
 قرارداد پیشنهادی این است که قیمت اصلی قیمت هر واحد پایه باشد و هر ردیف تاریخی مقدار واردشده، واحد واردشده، مقدار پایه، واحد پایه و ضریب استفاده‌شده را قابل ردیابی نگه دارد. قرارداد ریال/تومان نیز تا پیش از تصمیم صریح، metadata و گزارش before/after نباید روی backup واقعی اعمال شود.
 
 **شرط آغاز اجرای کد:** ابتدا `git status` و checkpoint جدید، سپس ساخت fixture مستقل و ثبت تصمیم قیمت پایه؛ تا قبل از آن این مرحله فقط برنامه است و هیچ migration واقعی مجاز نیست.
+
+
+## ۱۴۰۵/۰۷/۰۳ — handoff اجرای قرارداد قیمت پایه و واحد
+
+مرحلهٔ قیمت/واحد تا substage قرارداد قیمت پایه انجام شد. checkpoint بازگشت `checkpoint/pre-price-unit-1405-07-03` روی مبنای پیش از کد قرار دارد. کد فعلی snapshotهای `baseUnit`، `conversionRate`، `quantityBase` و `priceBasis: "baseUnit"` را در ردیف فاکتور و تاریخچهٔ قیمت نگه می‌دارد و quantity فارسی را در محاسبهٔ فاکتور پشتیبانی می‌کند.
+
+fixture غیرحساس در `client/src/lib/fixtures/price-unit.fixture.ts` و checksum آن در `docs/PRICE-UNIT-FIXTURE-CHECKSUM.json` است. آخرین checksum `26c49b391cd15725a6ea1a3e92fb2cc6717fbf8f0831aa3a4b377484c35af4d5` است. ۹ فایل تست و ۸۱ تست، check، harness ششصدوشش‌حالته، FIFO، build و smoke موفق هستند. warning قالب‌بندی baseline ثبت شده و مانع عملکرد نیست.
+
+**مرحلهٔ بعد:** قرارداد ریال/تومان و migration pure به‌صورت dry-run روی fixture؛ ابتدا تصویب معنای واحد پول، سپس گزارش before/after، کنترل ردیف‌ها و eventها، checksum و rollback. تا عبور این دروازه هیچ migration روی backup واقعی مجاز نیست.

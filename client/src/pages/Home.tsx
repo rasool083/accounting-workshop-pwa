@@ -82,6 +82,7 @@ import {
   suggestNextPartyNumber,
   quantityInBase,
   unitConversionToBase,
+  calculateBaseUnitLine,
   adjustInventoryBalance,
   executeProduction,
   removeProductionRun,
@@ -1498,7 +1499,8 @@ function Invoices({
         price =>
           (price.productName === product.name ||
             price.productId === product.id) &&
-          price.unit === product.unit &&
+          (price.priceBasis === "baseUnit" || !price.priceBasis) &&
+          (price.baseUnit || price.unit) === product.unit &&
           price.effectiveDate <= form.date &&
           (price.scope === "عمومی" || price.partyIds?.includes(partyId))
       )
@@ -1507,14 +1509,18 @@ function Invoices({
   }
   const subtotal = form.items.reduce((sum, item) => {
     const product = state.products.find(row => row.id === item.productId);
-    const conversionRate = product
-      ? unitConversionToBase(product, item.unit)
-      : 1;
+    const line = product
+      ? calculateBaseUnitLine(
+          product,
+          parseLocalizedNumber(item.quantity) || 0,
+          item.unit,
+          parseLocalizedNumber(item.unitPrice) || 0
+        )
+      : null;
     return (
       sum +
-      (Number(item.quantity) || 0) *
-        (parseLocalizedNumber(item.unitPrice) || 0) *
-        conversionRate
+      (line?.total ??
+        (parseLocalizedNumber(item.quantity) || 0) * (parseLocalizedNumber(item.unitPrice) || 0))
     );
   }, 0);
   const discountInput = parseLocalizedNumber(form.discount) || 0;
@@ -1642,10 +1648,21 @@ function Invoices({
     if (subtotal <= 0) return;
     const items = form.items.map(row => {
       const product = state.products.find(item => item.id === row.productId);
-      const quantity = Number(row.quantity) || 0;
+      const quantity = parseLocalizedNumber(row.quantity) || 0;
       const unitPrice = parseLocalizedNumber(row.unitPrice) || 0;
       const unit = row.unit || product?.unit || "عدد";
-      const conversionRate = product ? unitConversionToBase(product, unit) : 1;
+      const line = product
+        ? calculateBaseUnitLine(product, quantity, unit, unitPrice)
+        : {
+            quantity,
+            enteredUnit: unit,
+            baseUnit: unit,
+            conversionRate: 1,
+            quantityBase: quantity,
+            unitPrice,
+            priceBasis: "baseUnit" as const,
+            total: quantity * unitPrice,
+          };
       const existingItem = editingInvoice?.items.find(item => item.productId === row.productId);
       const latestCost = [...state.productionRecords]
         .filter(record =>
@@ -1662,10 +1679,12 @@ function Invoices({
         description: product?.name || "خدمت/کالای آزاد",
         quantity,
         unit,
-        conversionRate,
-        quantityBase: quantity * conversionRate,
+        conversionRate: line.conversionRate,
+        quantityBase: line.quantityBase,
+        baseUnit: line.baseUnit,
+        priceBasis: line.priceBasis,
         unitPrice,
-        total: quantity * unitPrice * conversionRate,
+        total: line.total,
         unitCostAtSale:
           form.type === "فروش"
             ? existingItem?.unitCostAtSale ?? latestCost
@@ -5572,6 +5591,8 @@ function Prices({
                     effectiveDate: form.effectiveDate,
                     unit: priceUnit,
                     price,
+                    priceBasis: "baseUnit",
+                    baseUnit: selectedProduct?.unit || priceUnit,
                     note: form.note,
                   }
                 : item
@@ -5586,6 +5607,8 @@ function Prices({
                 effectiveDate: form.effectiveDate,
                 unit: priceUnit,
                 price,
+                priceBasis: "baseUnit",
+                baseUnit: selectedProduct?.unit || priceUnit,
                 note: form.note,
               },
               ...state.priceHistory,

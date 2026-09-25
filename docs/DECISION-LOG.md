@@ -741,3 +741,22 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **وضعیت:** برنامه تدوین‌شده؛ کد و دادهٔ واقعی هنوز تغییر نکرده‌اند.
 
 **گام بعدی مشروط:** در جلسهٔ اجرای بعد، پس از `git status` و ساخت checkpoint مخصوص این مرحله، fixture غیرحساس ساخته و قرارداد قیمت پایه در همین دفتر تصویب شود؛ سپس تست هستهٔ تبدیل واحد نوشته شود.
+
+
+## ۱۴۰۵/۰۷/۰۳ — اجرای substage قرارداد قیمت پایه و واحد
+
+**درخواست:** اجرای مرحلهٔ بعد تدوین‌شده با checkpoint، fixture، قرارداد قیمت پایه، تست اثر ردیف و backup و تدوین مرحلهٔ بعد در پایان.
+
+**بررسی:** typeهای `Product`، `InvoiceItem`، `PriceHistory`، normalize/migration، محاسبهٔ subtotal فاکتور، فرم قیمت و unit helper بررسی شدند. مشخص شد تبدیل واحد در هسته وجود دارد اما معنای قیمت پایه در type و snapshot ردیف صریح نبود و quantity فاکتور در دو مسیر با `Number` خوانده می‌شد.
+
+**تصمیم:** قرارداد قیمت پایه در این substage اجرا شد. `baseUnit` و `priceBasis: "baseUnit"` به قراردادهای تاریخی اضافه شدند؛ `calculateBaseUnitLine` یک منبع حقیقت برای محاسبهٔ quantity پایه و total شد؛ ردیف فاکتور snapshot واحد و ضریب را نگه می‌دارد؛ تاریخچهٔ قیمت نیز معنای قیمت را صریح ذخیره می‌کند. واحد ناشناخته رد می‌شود و quantity ورودی با parser محلی خوانده می‌شود.
+
+**دلیل:** این تغییر کم‌دامنه و backward-compatible است، محاسبهٔ ۱۰ کارتن و ۲۵۰۰ گرم را قابل audit می‌کند و قبل از migration پولی جلوی ابهام معنای مبلغ را می‌گیرد. به backup واقعی دست زده نشد و event تاریخی جدیدی تولید نشد.
+
+**Fixture:** fixture غیرحساس دارای ۳ کالا، ۲ فاکتور، ۲ ردیف، ۲ price history، ۱ پرداخت، ۱ چک، ۱ transaction و ۱ فرمول تولید ساخته شد. checksum فعلی `26c49b391cd15725a6ea1a3e92fb2cc6717fbf8f0831aa3a4b377484c35af4d5` و شمارش‌ها در `docs/PRICE-UNIT-FIXTURE-CHECKSUM.json` ثبت شده‌اند.
+
+**آزمون:** full Vitest، ۹ فایل و ۸۱ تست موفق؛ check موفق؛ harness با ۶۰۶ حالت موفق؛ FIFO موفق؛ backup round-trip و projection fixture موفق؛ build موفق؛ smoke محلی/عمومی `200 OK`؛ diff check موفق. Prettier روی فایل‌های تغییرکرده warning baseline دارد و عمداً format گسترده اجرا نشد.
+
+**وضعیت:** substage قرارداد قیمت پایه انجام‌شده و آمادهٔ commit مستقل است. قرارداد ریال/تومان و migration dry-run هنوز اجرا نشده است.
+
+**گام بعدی:** تصویب enum و معنای ریال/تومان، ساخت migration pure و dry-run روی fixture، کنترل before/after مبالغ، ردیف‌ها، eventها، projection، FIFO و checksum؛ سپس UI واحد پول.

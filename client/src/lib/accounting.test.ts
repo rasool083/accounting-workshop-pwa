@@ -33,7 +33,9 @@ import {
   calculateBankTransferFee,
   parseLocalizedNumber,
   jalaliWeekday,
+  calculateBaseUnitLine,
 } from "./accounting";
+import { priceUnitFixture } from "./fixtures/price-unit.fixture";
 
 describe("bank fee rules", () => {
   it("calculates fixed plus percentage and applies bounds", () => {
@@ -1255,5 +1257,64 @@ describe("append-only reversal regressions", () => {
     });
     expect(next.inventoryEvents).toEqual(expect.arrayContaining([expect.objectContaining({ productId: "p2", quantityBase: 2, sourceType: "projection_reconciliation" })]));
     expect(next.cashEvents).toEqual(expect.arrayContaining([expect.objectContaining({ accountId: "a2", amount: 20, sourceType: "projection_reconciliation" })]));
+  });
+});
+
+
+describe("base-unit price contract", () => {
+  it("calculates ten cartons at the base-unit price", () => {
+    const product = priceUnitFixture.products[0];
+    const line = calculateBaseUnitLine(product, 10, "کارتن", 300_000);
+    expect(line).toMatchObject({
+      quantity: 10,
+      enteredUnit: "کارتن",
+      baseUnit: "عدد",
+      conversionRate: 36,
+      quantityBase: 360,
+      unitPrice: 300_000,
+      priceBasis: "baseUnit",
+      total: 108_000_000,
+    });
+  });
+
+  it("calculates grams using the kilogram base price", () => {
+    const product = priceUnitFixture.products[1];
+    const line = calculateBaseUnitLine(product, 2500, "گرم", 180_000);
+    expect(line.baseUnit).toBe("کیلوگرم");
+    expect(line.quantityBase).toBeCloseTo(2.5);
+    expect(line.total).toBeCloseTo(450_000);
+  });
+
+  it("preserves explicit price meaning on fixture invoice rows", () => {
+    const state = normalizeState(priceUnitFixture);
+    const sale = state.invoices.find(invoice => invoice.id === "fixture-invoice-sale");
+    expect(sale?.items[0]).toMatchObject({
+      baseUnit: "عدد",
+      priceBasis: "baseUnit",
+      conversionRate: 36,
+      quantityBase: 360,
+      total: 108_000_000,
+    });
+  });
+});
+
+
+describe("base-unit validation", () => {
+  it("rejects an unknown unit instead of silently assuming factor one", () => {
+    const product = priceUnitFixture.products[0];
+    expect(() => calculateBaseUnitLine(product, 1, "واحد ناشناخته", 300_000)).toThrow(
+      "واحد «واحد ناشناخته» برای کالا تعریف نشده است"
+    );
+  });
+});
+
+
+describe("localized quantity with base-unit pricing", () => {
+  it("supports Persian quantity text after normalization", () => {
+    const product = priceUnitFixture.products[0];
+    const quantity = parseLocalizedNumber("۱۰");
+    const line = calculateBaseUnitLine(product, quantity, "کارتن", 300_000);
+    expect(line.quantityBase).toBe(360);
+    expect(line.total).toBe(108_000_000);
   });
 });

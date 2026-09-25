@@ -71,6 +71,9 @@ export interface InvoiceItem {
   total: number;
   quantityBase?: number;
   conversionRate?: number;
+  /** Snapshot of the base unit and price meaning used when this row was saved. */
+  baseUnit?: string;
+  priceBasis?: "baseUnit";
   /** بهای تمام‌شدهٔ هر واحد پایه در زمان ثبت فروش؛ برای سود ظاهری. */
   unitCostAtSale?: number;
 }
@@ -391,6 +394,9 @@ export interface PriceHistory {
   effectiveDate: string;
   unit: string;
   price: number;
+  /** Existing prices are interpreted as price per product base unit. */
+  priceBasis?: "baseUnit";
+  baseUnit?: string;
   note: string;
 }
 
@@ -1315,6 +1321,63 @@ export function quantityInBase(
   unit: string
 ) {
   return (Number(quantity) || 0) * unitConversionToBase(product, unit);
+}
+
+export interface BaseUnitLineCalculation {
+  quantity: number;
+  enteredUnit: string;
+  baseUnit: string;
+  conversionRate: number;
+  quantityBase: number;
+  unitPrice: number;
+  priceBasis: "baseUnit";
+  total: number;
+}
+
+/**
+ * Applies the stage contract: prices are per product base unit, while the
+ * entered quantity may use the product's second unit.
+ */
+export function calculateBaseUnitLine(
+  product: Product,
+  quantity: number,
+  enteredUnit: string,
+  baseUnitPrice: number
+): BaseUnitLineCalculation {
+  const safeQuantity = Number.isFinite(Number(quantity)) ? Number(quantity) : 0;
+  const selectedUnit = enteredUnit || product.unit;
+  const knownStandardUnit = Object.prototype.hasOwnProperty.call(
+    STANDARD_UNIT_FACTORS,
+    selectedUnit
+  );
+  const knownProductUnit = selectedUnit === product.unit || selectedUnit === product.unit2;
+  if (!knownProductUnit && !knownStandardUnit) {
+    throw new Error(`واحد «${selectedUnit}» برای کالا تعریف نشده است`);
+  }
+  if (
+    selectedUnit === product.unit2 &&
+    selectedUnit !== product.unit &&
+    !knownStandardUnit &&
+    !(Number(product.conversionRate) > 0)
+  ) {
+    throw new Error("ضریب تبدیل واحد معتبر نیست");
+  }
+  const conversionRate = unitConversionToBase(product, selectedUnit);
+  if (!(conversionRate > 0) || !Number.isFinite(conversionRate)) {
+    throw new Error("ضریب تبدیل واحد معتبر نیست");
+  }
+  const unitPrice = Number.isFinite(Number(baseUnitPrice)) ? Number(baseUnitPrice) : 0;
+  const quantityBase = safeQuantity * conversionRate;
+  return {
+    quantity: safeQuantity,
+    enteredUnit: selectedUnit,
+    baseUnit: product.unit,
+    conversionRate,
+    quantityBase,
+    unitPrice,
+    priceBasis: "baseUnit",
+    total: quantityBase * unitPrice,
+  };
 }
 
 /**

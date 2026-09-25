@@ -1,0 +1,15 @@
+{
+  "fixture": "price-unit-fixture",
+  "schemaVersion": 5,
+  "checksum": "26c49b391cd15725a6ea1a3e92fb2cc6717fbf8f0831aa3a4b377484c35af4d5",
+  "counts": {
+    "products": 3,
+    "invoices": 2,
+    "invoiceItems": 2,
+    "priceHistory": 2,
+    "payments": 1,
+    "checks": 1,
+    "transactions": 1,
+    "productionFormulas": 1
+  }
+}

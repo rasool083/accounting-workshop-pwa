@@ -234,3 +234,53 @@
 6. قبل از هر تغییر UI، تست هستهٔ تبدیل واحد نوشته شود.
 
 تا پیش از انجام این گام‌ها، این سند فقط برنامه است و هیچ ادعایی دربارهٔ اجرای migration یا تغییر قرارداد مالی ندارد.
+
+
+## ۱۳. نتیجهٔ اجرای این مرحله — قرارداد قیمت پایه و fixture
+
+### تغییرات اجراشده
+
+- checkpoint مرحله ساخته شد: `checkpoint/pre-price-unit-1405-07-03` روی commit مبنا `ae9f36c`.
+- typeهای `InvoiceItem` و `PriceHistory` اکنون `baseUnit` و `priceBasis: "baseUnit"` اختیاری و backward-compatible دارند.
+- تابع مرکزی `calculateBaseUnitLine` اضافه شد و quantity، unit، conversion، base quantity، base-unit price و total را در یک قرارداد محاسبه می‌کند.
+- فاکتور در UI برای کالاهای شناخته‌شده از همین helper استفاده می‌کند؛ مقدار quantity نیز با `parseLocalizedNumber` خوانده می‌شود.
+- ردیف فاکتور هنگام ثبت، `baseUnit`، `conversionRate`، `quantityBase` و `priceBasis` را snapshot می‌کند.
+- تاریخچهٔ قیمت هنگام ثبت/ویرایش، صریحاً `priceBasis: "baseUnit"` و `baseUnit` را ذخیره می‌کند.
+- واحد ناشناخته دیگر بی‌صدا factor یک نمی‌گیرد و با خطای قابل فهم رد می‌شود.
+- fixture غیرحساس در `client/src/lib/fixtures/price-unit.fixture.ts` ساخته شد.
+- checksum و شمارش fixture در `docs/PRICE-UNIT-FIXTURE-CHECKSUM.json` ثبت شد.
+- تست backup round-trip و projection در `price-unit-stage.test.ts` اضافه شد.
+
+### اثر ردیف و event
+
+Fixture شامل ۳ کالا، ۲ فاکتور، ۲ ردیف فاکتور، ۲ تاریخچهٔ قیمت، ۱ پرداخت خرید، ۱ چک، ۱ عملیات مالی و ۱ فرمول تولید است. در سناریوی ۱۰ کارتن، مقدار واردشده ۱۰، مقدار پایه ۳۶۰، ضریب ۳۶ و مبلغ ۱۰۸٬۰۰۰٬۰۰۰ است. در سناریوی ۲۵۰۰ گرم، مقدار پایه ۲٫۵ کیلوگرم و مبلغ ۴۵۰٬۰۰۰ است.
+
+این substage event مالی جدیدی برای fixture ایجاد نمی‌کند و migration واقعی اجرا نشده است. projection opening fixture پس از normalize با stock جاری برابر ماند و backup round-trip معنای `priceBasis` و snapshot واحد را حفظ کرد.
+
+### اعتبارسنجی
+
+- `pnpm check`: موفق.
+- full Vitest: ۹ فایل و ۸۱ تست موفق.
+- accounting harness: ۶۰۶ حالت موفق.
+- FIFO: موفق.
+- fixture checksum: موفق؛ checksum فعلی `26c49b391cd15725a6ea1a3e92fb2cc6717fbf8f0831aa3a4b377484c35af4d5`.
+- `pnpm build`: موفق.
+- smoke محلی و عمومی: هر دو `200 OK`.
+- `git diff --check`: موفق.
+- Prettier روی فایل‌های تغییرکرده warning دارد؛ این بدهی قالب‌بندی baseline است و برای جلوگیری از diff گسترده در این مرحله اصلاح نشد.
+
+### محدودیت این مرحله
+
+قرارداد انتخاب ریال/تومان و migration dry-run هنوز اجرا نشده است. دلیل توقف کنترل‌شده این است که ابتدا باید تصمیم واحد پول، ضریب تبدیل و سیاست حفظ مبلغ تاریخی در `DECISION-LOG.md` تصویب شود؛ هیچ backup واقعی یا دادهٔ کاربر تبدیل نشده است.
+
+## ۱۴. مرحلهٔ بعدی تدوین‌شده — قرارداد پول و migration dry-run
+
+۱. تعیین رسمی enum واحد پول و معنای مبلغ ذخیره‌شده.
+۲. بررسی تمام فیلدهای پولی: فاکتور، ردیف، پرداخت، چک، حساب، کارمزد، تولید، FIFO و event نقدی.
+۳. ساخت migration pure و بدون side effect که فقط گزارش before/after تولید کند.
+۴. اجرای migration روی fixture و backup ساختگی، نه دادهٔ واقعی.
+۵. کنترل مجموع مبالغ، تعداد ردیف‌ها، referenceها، eventها، projection، FIFO و checksum.
+۶. ساخت rollback و تست restore قبل/بعد.
+۷. پس از تصویب خروجی dry-run، اجرای UI تنظیم واحد پول و نمایش صریح currency.
+
+**شرط شروع مرحلهٔ بعد:** قرارداد ریال/تومان در decision log تصویب شود و snapshot مبنای این مرحله با commit مستقل ثبت شده باشد.
