@@ -206,11 +206,19 @@ function partyBalanceDescriptor(state: AppState, personId: string) {
     : { amount: Math.abs(net), label: "بدهی به طرف حساب", tone: "amount-positive" };
 }
 
-function printWithTarget(target: string) {
+function printWithTarget(
+  target: string,
+  landscape = false,
+  onCleanup?: () => void
+) {
   const className = `print-${target}`;
+  const orientationClass = "print-landscape";
   document.body.classList.add(className);
+  document.body.classList.toggle(orientationClass, landscape);
   const cleanup = () => {
     document.body.classList.remove(className);
+    document.body.classList.remove(orientationClass);
+    onCleanup?.();
     window.removeEventListener("afterprint", cleanup);
   };
   window.addEventListener("afterprint", cleanup);
@@ -2237,10 +2245,10 @@ function Invoices({
                                           )}
                                         </span>
                                         <span>
-                                          اختلاف: {formatNumber(item.days || 0)}{" "}
+                                          تعداد روز: {formatNumber(item.days || 0)}{" "}
                                           روز
                                         </span>
-                                        <span>
+                                        <span className="print-private">
                                           هزینه دیرکرد:{" "}
                                           {formatMoney(
                                             item.profit || 0,
@@ -2249,10 +2257,10 @@ function Invoices({
                                         </span>
                                         {profit && (
                                           <>
-                                            <span>
+                                            <span className="print-private">
                                               سود ظاهری: {formatMoney(profit.apparentProfit, state.settings.currency)} · {formatNumber(profit.apparentRate * 100)}٪
                                             </span>
-                                            <span>
+                                            <span className="print-private">
                                               سود مؤثر: {formatMoney(profit.effectiveProfit, state.settings.currency)} · {formatNumber(profit.effectiveRate * 100)}٪ · وصول {formatDate(profit.collectionDate)}
                                             </span>
                                           </>
@@ -2752,6 +2760,9 @@ function Invoices({
           onClose={() => setSelectedInvoice(null)}
         >
           <div className="invoice-detail">
+            <div className="print-customer-summary">
+              خلاصه وضعیت فاکتور {selectedInvoice.number} · {personName(state, selectedInvoice.partyId)}
+            </div>
             <div className="detail-meta">
               <span>تاریخ {formatDate(selectedInvoice.date)}</span>
               <span>{personName(state, selectedInvoice.partyId)}</span>
@@ -2806,6 +2817,29 @@ function Invoices({
                 {formatMoney(selectedInvoice.amount, state.settings.currency)}
               </strong>
             </div>
+            <section className="invoice-print-allocations">
+              <h4>چک‌های تخصیص‌یافته به این فاکتور</h4>
+              {invoiceAllocations.filter(item => item.invoiceId === selectedInvoice.id).length ? (
+                <div className="allocation-detail-grid">
+                  {invoiceAllocations
+                    .filter(item => item.invoiceId === selectedInvoice.id)
+                    .map(item => {
+                      const check = state.checks.find(row => row.id === item.checkId);
+                      return (
+                        <div className="allocation-detail-card" key={`${item.checkId}-${item.invoiceId}`}>
+                          <strong>چک {check?.number || "—"}</strong>
+                          <span>وضعیت: {check?.status || "—"}</span>
+                          <span>سررسید: {check ? formatDate(check.dueDate) : "—"}</span>
+                          <span>مبلغ تخصیص: {formatMoney(item.amount, state.settings.currency)}</span>
+                          <span>تعداد روز: {formatNumber(item.days || 0)} روز</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                <p className="muted-cell">چکی برای این فاکتور تخصیص داده نشده است.</p>
+              )}
+            </section>
             <div className="form-actions">
               {selectedInvoice.status !== "باطل" ? (
                 <>
@@ -2814,6 +2848,12 @@ function Invoices({
                     onClick={() => printWithTarget("invoice")}
                   >
                     چاپ فاکتور
+                  </button>
+                  <button
+                    className="button button-ghost"
+                    onClick={() => printWithTarget("invoice", true)}
+                  >
+                    چاپ فاکتور (افقی)
                   </button>
                   {selectedInvoice.paidAmount === 0 && (
                     <button
@@ -6256,6 +6296,7 @@ function Checks({
   >(null);
   const [replacementLines, setReplacementLines] = useState("");
   const [statusFilter, setStatusFilter] = useState<CheckStatus | "همه">("همه");
+  const [checkPartyFilter, setCheckPartyFilter] = useState("همه");
   const [bankFilter, setBankFilter] = useState("همه");
   const [receivedFrom, setReceivedFrom] = useState("");
   const [receivedTo, setReceivedTo] = useState("");
@@ -6269,6 +6310,7 @@ function Checks({
     "desc"
   );
   const [checkPage, setCheckPage] = useState(1);
+  const [printingChecks, setPrintingChecks] = useState(false);
   const checkPageSize = 25;
   const blank = {
     number: "",
@@ -6299,6 +6341,7 @@ function Checks({
     .filter(
       check =>
         (statusFilter === "همه" || check.status === statusFilter) &&
+        (checkPartyFilter === "همه" || check.partyId === checkPartyFilter) &&
         (bankFilter === "همه" || check.bankAccountId === bankFilter) &&
         (!receivedFrom || check.receivedDate >= receivedFrom) &&
         (!receivedTo || check.receivedDate <= receivedTo) &&
@@ -6323,6 +6366,7 @@ function Checks({
   }, [
     checkSortDirection,
     statusFilter,
+    checkPartyFilter,
     bankFilter,
     receivedFrom,
     receivedTo,
@@ -6696,6 +6740,9 @@ function Checks({
           <small>وصول، برگشت و معکوس‌سازی</small>
         </div>
       </div>
+      <div className="print-customer-summary">
+        خلاصه وضعیت چک‌های {personName(state, checkPartyFilter)}
+      </div>
       <div className="toolbar check-filters">
         <label>
           فیلتر وضعیت
@@ -6709,6 +6756,20 @@ function Checks({
             {statuses.map(status => (
               <option key={status} value={status}>
                 {status}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          مشتری برای گزارش چاپی
+          <select
+            value={checkPartyFilter}
+            onChange={e => setCheckPartyFilter(e.target.value)}
+          >
+            <option value="همه">همه مشتری‌ها</option>
+            {state.people.map(person => (
+              <option key={person.id} value={person.id}>
+                {person.name}
               </option>
             ))}
           </select>
@@ -6775,9 +6836,39 @@ function Checks({
         </button>
         <button
           className="button button-ghost button-small"
-          onClick={() => printWithTarget("checks")}
+          onClick={() => {
+            if (checkPartyFilter === "همه") {
+              window.alert("برای حفظ محرمانگی، ابتدا یک مشتری را برای گزارش چاپی انتخاب کنید.");
+              return;
+            }
+            setPrintingChecks(true);
+            setCheckPage(1);
+            setExpandedCheckIds(new Set(visibleChecks.map(check => check.id)));
+            window.setTimeout(
+              () => printWithTarget("checks", false, () => setPrintingChecks(false)),
+              0
+            );
+          }}
         >
-          چاپ گزارش
+          چاپ خلاصه مشتری
+        </button>
+        <button
+          className="button button-ghost button-small"
+          onClick={() => {
+            if (checkPartyFilter === "همه") {
+              window.alert("برای حفظ محرمانگی، ابتدا یک مشتری را برای گزارش چاپی انتخاب کنید.");
+              return;
+            }
+            setPrintingChecks(true);
+            setCheckPage(1);
+            setExpandedCheckIds(new Set(visibleChecks.map(check => check.id)));
+            window.setTimeout(
+              () => printWithTarget("checks", true, () => setPrintingChecks(false)),
+              0
+            );
+          }}
+        >
+          چاپ خلاصه مشتری (افقی)
         </button>
         <button
           className="button button-primary button-small"
@@ -6812,13 +6903,13 @@ function Checks({
                 <th>سررسید</th>
                 <th>مبلغ</th>
                 <th>وضعیت</th>
-                <th>مرجع وضعیت</th>
-                <th>عملیات</th>
+                <th className="print-private">مرجع وضعیت</th>
+                <th className="print-private">عملیات</th>
               </tr>
             </thead>
             <tbody>
-              {paginatedChecks.length ? (
-                paginatedChecks.map(check => {
+              {(printingChecks ? visibleChecks : paginatedChecks).length ? (
+                (printingChecks ? visibleChecks : paginatedChecks).map(check => {
                   const checkAllocations = allocationDetails.filter(
                     item => item.checkId === check.id
                   );
@@ -6906,7 +6997,7 @@ function Checks({
                             <option value="خرج شده">خرج شده</option>
                           </select>
                         </td>
-                        <td>
+                        <td className="print-private">
                           {["نزد ما", "وصول شده", "برگشتی"].includes(
                             check.status
                           ) ? (
@@ -6990,7 +7081,7 @@ function Checks({
                             </span>
                           )}
                         </td>
-                        <td>
+                        <td className="print-private">
                           <button
                             className="icon-button row-action"
                             title="تاریخچه چک"
@@ -7100,7 +7191,7 @@ function Checks({
                                         state.settings.currency
                                       )}
                                     </span>
-                                    <span>
+                                    <span className="print-private">
                                       هزینه دیرکرد:{" "}
                                       {formatMoney(
                                         item.profit,
@@ -7109,16 +7200,16 @@ function Checks({
                                     </span>
                                     {profit && (
                                       <>
-                                        <span>
+                                        <span className="print-private">
                                           سود ظاهری: {formatMoney(profit.apparentProfit, state.settings.currency)} · {formatNumber(profit.apparentRate * 100)}٪
                                         </span>
-                                        <span>
+                                        <span className="print-private">
                                           سود مؤثر: {formatMoney(profit.effectiveProfit, state.settings.currency)} · {formatNumber(profit.effectiveRate * 100)}٪ · وصول {formatDate(profit.collectionDate)}
                                         </span>
                                       </>
                                     )}
                                     <span>
-                                      اختلاف تاریخ:{" "}
+                                      تعداد روز: {" "}
                                       {formatNumber(item.days || 0)} روز
                                     </span>
                                     <span>

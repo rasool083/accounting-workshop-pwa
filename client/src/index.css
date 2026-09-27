@@ -3393,8 +3393,18 @@ tr:last-child td {
   size: A4 portrait;
   margin: 12mm;
 }
+@page landscape {
+  size: A4 landscape;
+  margin: 10mm;
+}
+.print-customer-summary {
+  display: none;
+}
 
 @media print {
+  body.print-landscape {
+    page: landscape;
+  }
   body {
     background: #fff !important;
     color: #111 !important;
@@ -3443,6 +3453,20 @@ tr:last-child td {
   body.print-invoice .invoice-detail * {
     visibility: visible !important;
   }
+  body.print-invoice .print-private,
+  body.print-checks .print-private {
+    display: none !important;
+  }
+  body.print-invoice .print-customer-summary,
+  body.print-checks .print-customer-summary {
+    display: block !important;
+    margin: 0 0 12px;
+    padding: 0 0 8px;
+    border-bottom: 1px solid #bbb;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 700;
+  }
 
   body.print-checks * {
     visibility: hidden !important;
@@ -3457,6 +3481,13 @@ tr:last-child td {
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+  }
+  body.print-checks .check-cards,
+  body.print-checks .pagination,
+  body.print-checks .checks-page > .page-intro,
+  body.print-checks .checks-page .panel-heading-actions,
+  body.print-checks .checks-page .panel-heading {
+    display: none !important;
   }
 
   body.print-month-close * {
@@ -3523,6 +3554,9 @@ tr:last-child td {
   body.print-ledger .ledger-panel .panel-heading-actions,
   body.print-ledger .ledger-controls {
     display: none !important;
+  }
+  .print-customer-summary {
+    display: none;
   }
 
   body.print-invoice table,
