@@ -896,3 +896,18 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **تصمیم قیمت‌گذاری جزئی بچ:** تغییر قیمت بخشی، تغییر تولید یا موجودی نیست. به‌جای تولید رکورد فیزیکی جعلی، آرایهٔ append-only `ProductionRecord.priceRevisions` ایجاد شد. هر revision شامل مقدار پایه، بهای واحد، مبلغ کل، تاریخ و توضیح است و مجموع revisionها نمی‌تواند از مقدار تولیدشده بیشتر شود. UI سطر اولیه و revisionها را جدا نشان می‌دهد.
 
 **نتیجهٔ اعتبارسنجی:** TypeScript، build و ۸۷ تست Vitest موفق شدند؛ هشدار chunk بزرگ Vite غیرمسدودکننده است. چاپ افقی فاکتور نیز فعال باقی ماند.
+
+
+## ۱۴۰۵/۰۷/۰۶ — انتقال کنترل‌شدهٔ Dropbox از مخزن Cedric به پروژهٔ اصلی
+
+**منبع بررسی:** `rasool083/accounting-workshop-pwa-cedric` در revision `2df92ae` فقط خواندنی بررسی شد. این مخزن working copy مستقل است و نباید با پروژهٔ اصلی merge یا overwrite شود؛ فقط الگوهای تأییدشدهٔ Dropbox به‌صورت انتخابی منتقل شدند.
+
+**قرارداد نام و محل:** Drive قرارداد نام `backup-YYYY-MM-DD-NNN.json` و پوشهٔ موجود خود را حفظ می‌کند. Dropbox قرارداد نام `dropbox-backup-YYYY-MM-DD-NNN.json` و مسیر داخلی App folder برابر `/backups/<سال شمسی>/<MM-نام ماه فارسی>/` دارد. این جداسازی از قاطی‌شدن فهرست‌ها و نصب‌ها جلوگیری می‌کند، ولی payload فایل در هر دو مسیر دقیقاً unified backup v1 فعلی است؛ پس نام یا محل مانع restore متقابل نیست.
+
+**قرارداد احراز هویت:** Dropbox با OAuth PKCE و refresh token offline پیاده می‌شود. App key عمومی قابل ذخیره در localStorage است، اما client secret، access token و refresh token وارد payload backup نمی‌شوند. namespace ذخیره‌سازی پروژهٔ اصلی با Cedric متفاوت است.
+
+**قرارداد سازگاری:** فهرست Dropbox recursive است تا فایل‌های ریشه‌ای قدیمی نیز دیده و بازیابی شوند. نام فایل‌ها از طریق `isBackupFilename` با قرارداد موجود مشترکاً فیلتر می‌شوند. نام ماه فارسی در header با Unicode escape ارسال می‌شود. چک‌های unit برای PKCE، redirect، ترتیب فهرست، scope error، مسیر مهر/اسفند/فروردین، مرز نوروز، escape فارسی و فایل قدیمی اضافه شد.
+
+**گزینه‌های ردشده:** استفاده از نام و کلیدهای Cedric رد شد چون دو نصب روی یک origin GitHub Pages قرار دارند و می‌توانستند localStorage، refresh token یا cache را با هم قاطی کنند. تغییر قرارداد unified payload رد شد چون نیاز کاربر استفاده از همان فایل پشتیبان در Drive و Dropbox بود. اتصال خودکار پس از بسته‌شدن PWA وعده داده نمی‌شود؛ upload با اقدام صریح کاربر و مجوزی که Dropbox صادر می‌کند انجام می‌شود.
+
+**وضعیت:** پیاده‌سازی و آزمون محلی انجام شد؛ انتشار عمومی و آزمون واقعی Dropbox در گام بعد انجام می‌شود.

@@ -115,6 +115,17 @@ import {
   type DriveBackupFile,
 } from "@/lib/googleDrive";
 import {
+  completeDropboxAuth,
+  disconnectDropbox,
+  downloadDropboxBackup,
+  getDropboxAppKey,
+  isDropboxConnected,
+  listDropboxBackups,
+  startDropboxAuth,
+  uploadDropboxBackup,
+  type DropboxBackupFile,
+} from "@/lib/dropbox";
+import {
   deleteRestoreSnapshot,
   exportUnifiedPayload,
   importUnifiedPayload,
@@ -249,6 +260,17 @@ function nextDriveBackupSequence(files: DriveBackupFile[], dateKey: string) {
     (files.reduce((max, file) => {
       if (!file.name.startsWith(prefix) || !file.name.endsWith(".json"))
         return max;
+      const sequence = Number(file.name.slice(prefix.length, -".json".length));
+      return Number.isFinite(sequence) ? Math.max(max, sequence) : max;
+    }, 0) || 0) + 1
+  );
+}
+
+function nextDropboxBackupSequence(files: DropboxBackupFile[], dateKey: string) {
+  const prefix = `dropbox-backup-${dateKey}-`;
+  return (
+    (files.reduce((max, file) => {
+      if (!file.name.startsWith(prefix) || !file.name.endsWith(".json")) return max;
       const sequence = Number(file.name.slice(prefix.length, -".json".length));
       return Number.isFinite(sequence) ? Math.max(max, sequence) : max;
     }, 0) || 0) + 1
@@ -556,6 +578,9 @@ export default function Home() {
     LAST_VERIFIED_BACKUP,
   ]);
   const [driveLoading, setDriveLoading] = useState(false);
+  const [dropboxBackups, setDropboxBackups] = useState<DropboxBackupFile[]>([]);
+  const [dropboxLoading, setDropboxLoading] = useState(false);
+  const [dropboxAppKey, setDropboxAppKeyState] = useState(() => getDropboxAppKey());
   const [snapshotRevision, setSnapshotRevision] = useState(0);
   const [driveClientId, setDriveClientIdState] = useState(() =>
     getDriveClientId()
@@ -575,6 +600,18 @@ export default function Home() {
   useEffect(() => {
     if (activePage === "backup") void handleDriveRefresh();
   }, [activePage]);
+  useEffect(() => {
+    void completeDropboxAuth()
+      .then(connected => {
+        if (connected) {
+          setNotice("Dropbox با موفقیت برای این مرورگر متصل شد");
+          void handleDropboxRefresh();
+        }
+      })
+      .catch(error => {
+        setNotice(error instanceof Error ? error.message : "اتصال Dropbox ناموفق بود");
+      });
+  }, []);
   useEffect(() => {
     setMobileNav(false);
   }, [activePage]);
@@ -892,6 +929,68 @@ export default function Home() {
     }
   }
 
+  async function handleDropboxUpload() {
+    if (!isDropboxConnected()) {
+      setNotice("Dropbox به این مرورگر متصل نیست؛ ابتدا اتصال Dropbox را انجام دهید");
+      return;
+    }
+    setDropboxLoading(true);
+    try {
+      const existing = await listDropboxBackups();
+      const dateKey = backupDateKey();
+      const sequence = nextDropboxBackupSequence(existing, dateKey);
+      const filename = `dropbox-backup-${dateKey}-${String(sequence).padStart(3, "0")}.json`;
+      const uploaded = await uploadDropboxBackup(
+        filename,
+        exportUnifiedPayload(state, loadVendorDirectory())
+      );
+      setDropboxBackups(current => [uploaded, ...current.filter(file => file.id !== uploaded.id)]);
+      setNotice(`پشتیبان ${dateKey} · ردیف ${formatNumber(sequence)} در Dropbox ذخیره شد`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "ذخیره در Dropbox ناموفق بود");
+    } finally {
+      setDropboxLoading(false);
+    }
+  }
+
+  async function handleDropboxConnect(appKey: string) {
+    try {
+      setDropboxAppKeyState(appKey.trim());
+      await startDropboxAuth(appKey);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "اتصال Dropbox ناموفق بود");
+    }
+  }
+
+  async function handleDropboxRefresh() {
+    if (!isDropboxConnected()) return;
+    setDropboxLoading(true);
+    try {
+      const files = await listDropboxBackups();
+      setDropboxBackups(files);
+      setNotice(`${formatNumber(files.length)} نسخهٔ پشتیبان از Dropbox خوانده شد`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "خواندن فهرست Dropbox ناموفق بود");
+    } finally {
+      setDropboxLoading(false);
+    }
+  }
+
+  async function handleDropboxRestore(fileId: string) {
+    if (!window.confirm("داده‌های محلی با نسخهٔ انتخاب‌شدهٔ Dropbox جایگزین شود؟ قبل از ادامه، از داده فعلی بکاپ بگیرید.")) return;
+    const file = dropboxBackups.find(item => item.id === fileId);
+    if (!file) {
+      setNotice("نسخهٔ انتخاب‌شدهٔ Dropbox پیدا نشد");
+      return;
+    }
+    try {
+      const payload = await downloadDropboxBackup(file.id);
+      applyImportedBackup(payload, `بازیابی از ${file.name}`, "RESTORE_DROPBOX");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "بازیابی از Dropbox ناموفق بود");
+    }
+  }
+
   function addTransaction(input: {
     type: TransactionType;
     amount: number;
@@ -1142,6 +1241,18 @@ export default function Home() {
               onDriveRefresh={handleDriveRefresh}
               driveClientId={driveClientId}
               onDriveConnect={handleDriveConnect}
+              dropboxBackups={dropboxBackups}
+              dropboxLoading={dropboxLoading}
+              onDropboxRefresh={handleDropboxRefresh}
+              onDropboxUpload={handleDropboxUpload}
+              onDropboxRestore={handleDropboxRestore}
+              dropboxAppKey={dropboxAppKey}
+              onDropboxConnect={handleDropboxConnect}
+              onDropboxDisconnect={async () => {
+                await disconnectDropbox();
+                setDropboxBackups([]);
+                setNotice("Dropbox از این مرورگر قطع شد");
+              }}
               snapshotRevision={snapshotRevision}
               onRestoreSnapshot={handleRestoreSnapshot}
               onDeleteSnapshot={handleDeleteSnapshot}
@@ -10301,6 +10412,14 @@ function BackupPage({
   onDriveRefresh,
   driveClientId,
   onDriveConnect,
+  dropboxBackups,
+  dropboxLoading,
+  onDropboxRefresh,
+  onDropboxUpload,
+  onDropboxRestore,
+  dropboxAppKey,
+  onDropboxConnect,
+  onDropboxDisconnect,
   snapshotRevision,
   onRestoreSnapshot,
   onDeleteSnapshot,
@@ -10317,6 +10436,14 @@ function BackupPage({
   onDriveRefresh: () => void;
   driveClientId: string;
   onDriveConnect: (clientId: string) => void;
+  dropboxBackups: DropboxBackupFile[];
+  dropboxLoading: boolean;
+  onDropboxRefresh: () => void;
+  onDropboxUpload: () => void;
+  onDropboxRestore: (fileId: string) => void;
+  dropboxAppKey: string;
+  onDropboxConnect: (appKey: string) => void;
+  onDropboxDisconnect: () => void | Promise<void>;
   snapshotRevision: number;
   onRestoreSnapshot: (snapshot: RestoreSnapshot) => void;
   onDeleteSnapshot: (snapshot: RestoreSnapshot) => void;
@@ -10329,6 +10456,7 @@ function BackupPage({
     "newest"
   );
   const [clientIdDraft, setClientIdDraft] = useState(driveClientId);
+  const [dropboxAppKeyDraft, setDropboxAppKeyDraft] = useState(dropboxAppKey);
   const [snapshots, setSnapshots] = useState<RestoreSnapshot[]>(() =>
     listRestoreSnapshots()
   );
@@ -10643,6 +10771,64 @@ function BackupPage({
                 نسخه‌ای با این نام پیدا نشد.
               </small>
             )}
+          </div>
+          <div className="drive-path-card dropbox-backup-card">
+            <strong>پشتیبان روی Dropbox</strong>
+            <small>
+              همان فایل یکپارچهٔ JSON با نام مستقل Dropbox در مسیر شمسی
+              ‎/backups/سال/ماه‎ ذخیره می‌شود؛ فایل‌های Drive و Dropbox با هم قابل بازیابی هستند.
+            </small>
+            <label>
+              App key عمومی Dropbox
+              <input
+                value={dropboxAppKeyDraft}
+                onChange={event => setDropboxAppKeyDraft(event.target.value)}
+                placeholder="Dropbox App key"
+                dir="ltr"
+              />
+            </label>
+            <div className="form-actions">
+              <button
+                className="button button-primary"
+                onClick={() => onDropboxConnect(dropboxAppKeyDraft)}
+                disabled={!dropboxAppKeyDraft.trim()}
+              >
+                اتصال به Dropbox
+              </button>
+              {isDropboxConnected() && (
+                <button className="button button-ghost" onClick={() => void onDropboxDisconnect()}>
+                  قطع اتصال
+                </button>
+              )}
+            </div>
+            <small>
+              در Dropbox App Console باید دسترسی‌های files.metadata.read، files.content.read و files.content.write فعال باشند.
+              کلید خصوصی در برنامه یا فایل پشتیبان ذخیره نمی‌شود.
+            </small>
+          </div>
+          <div className="form-actions">
+            <button className="button button-primary" onClick={onDropboxUpload} disabled={dropboxLoading || !isDropboxConnected()}>
+              <CloudUpload size={15} /> ذخیره در Dropbox
+            </button>
+            <button className="button button-ghost" onClick={onDropboxRefresh} disabled={dropboxLoading || !isDropboxConnected()}>
+              <RefreshCw size={15} className={dropboxLoading ? "spin" : ""} /> {dropboxLoading ? "در حال خواندن" : "تازه‌سازی فهرست"}
+            </button>
+          </div>
+          <div className="drive-backup-list">
+            {dropboxBackups.map(file => (
+              <div className="drive-backup-row" key={file.id}>
+                <div>
+                  <strong>{file.name}</strong>
+                  <small>
+                    {file.modifiedTime ? formatDate(file.modifiedTime.slice(0, 10)) : "نسخهٔ پشتیبان"} · {formatNumber(Number(file.size) || 0)} بایت
+                  </small>
+                </div>
+                <button className="button button-primary" onClick={() => onDropboxRestore(file.id)}>
+                  بازیابی
+                </button>
+              </div>
+            ))}
+            {!dropboxBackups.length && <small className="drive-empty">هنوز نسخه‌ای از Dropbox خوانده نشده است.</small>}
           </div>
           <span className="coming-tag">
             نام نسخه‌های جدید: تاریخ شمسی امروز ({todayJalali()}) + شمارهٔ ردیف

@@ -618,3 +618,22 @@ dry-run روی fixture موفق شد: ۲۲ فیلد مالی، مجموع ۴۱۹
 **آزمون‌ها:** `pnpm exec tsc --noEmit --pretty false`، `pnpm exec vitest run` با ۱۰ فایل و ۸۷ تست، `pnpm build` و `git diff --check` موفق شدند. تست‌های regression پایداری تخصیص چک برگشتی، صفر بودن دیرکرد قبل از وصول، فاصلهٔ سررسید تا وصول، هزینهٔ بستهٔ تو در تو با قیمت مستقل صفر و ایجاد سطر قیمت بخشی را پوشش می‌دهند.
 
 **محدودیت ثبت‌شده:** سطرهای قیمت جدید، قیمت‌گذاری بخش‌های همان بچ هستند و موجودی فیزیکی جدید ایجاد نمی‌کنند. اتصال تخصیص مقدار فروش به این سطرها در مدل فروش آینده باید از `priceRevisions` استفاده کند.
+
+
+## ۱۴۰۵/۰۷/۰۶ — بررسی خواندنی `accounting-workshop-pwa-cedric` و انتقال پشتیبان Dropbox
+
+**درخواست کاربر:** مخزن `rasool083/accounting-workshop-pwa-cedric` فقط خواندنی بررسی شود؛ آخرین اصلاحات، به‌ویژه ذخیره در Dropbox، روی پروژهٔ اصلی اعمال شود. محل و نام ذخیرهٔ Dropbox با Drive متفاوت باشد، اما محتوای یک فایل پشتیبان در هر دو قابل بازیابی باشد.
+
+**مرز دسترسی:** مخزن Cedric فقط با `git clone` در مسیر موقت `/tmp/accounting-workshop-pwa-cedric-readonly` و با `git status` بدون تغییر بررسی شد. آخرین commit آن `2df92ae` با عنوان `r6.2: Dropbox backups in Solar Hijri year/month folders` بود و وضعیت clone پاک باقی ماند؛ هیچ commit، فایل یا push روی آن مخزن انجام نشد.
+
+**یافته‌های منتقل‌شده از Cedric:** OAuth 2 با PKCE و `token_access_type=offline`، نگهداری refresh token در فضای محلی دستگاه، خطاهای قابل‌اقدام برای scopeهای Dropbox، فهرست بازگشتی پوشه‌ها برای حفظ سازگاری فایل‌های قدیمی، مسیر `/backups/<سال>/<ماه شمسی>`، محاسبهٔ ماه با تقویم فارسی در منطقهٔ زمانی تهران، و escape کردن نام ماه فارسی در `Dropbox-API-Arg`.
+
+**تصمیم سازگار با پروژهٔ اصلی:** `exportUnifiedPayload(state, loadVendorDirectory())` بدون تغییر به‌عنوان تنها محتوای پشتیبان استفاده می‌شود. Drive همچنان فایل‌هایی با الگوی `backup-YYYY-MM-DD-NNN.json` را نگه می‌دارد؛ Dropbox فایل مستقل با الگوی `dropbox-backup-YYYY-MM-DD-NNN.json` را در پوشهٔ `/backups/سال/ماه` نگه می‌دارد. بنابراین محل و نام فیزیکی متفاوت است، اما هر دو فایل از یک قرارداد unified backup v1 استفاده می‌کنند و هرکدام با بازیابی دستی یا مستقیم قابل انتقال بین مسیرها هستند.
+
+**اصلاح اجراشده در پروژهٔ اصلی:** `client/src/lib/dropbox.ts` با namespace مستقل `accounting-workshop-pwa:*` اضافه شد تا کلیدها و اتصال این سایت با نصب Cedric تداخل نداشته باشد. `Home.tsx` اکنون اتصال، قطع اتصال، فهرست، ذخیره و بازیابی Dropbox را در صفحهٔ پشتیبان دارد. بازگردانی Dropbox نیز قبل از جایگزینی، از مسیر snapshot و validation فعلی عبور می‌کند.
+
+**نیاز راه‌اندازی کاربر:** در Dropbox App Console یک App از نوع Scoped access / App folder ساخته شود، redirect URI نسخهٔ اصلی برابر `https://rasool083.github.io/accounting-workshop-pwa/` ثبت شود و scopeهای `files.metadata.read`، `files.content.read` و `files.content.write` فعال شوند؛ سپس App key عمومی در کارت Dropbox برنامه وارد شود. هیچ client secret در کد یا backup قرار نمی‌گیرد.
+
+**آزمون:** `pnpm exec tsc --noEmit --pretty false` موفق؛ `pnpm exec vitest run` با ۱۱ فایل و ۹۵ تست موفق؛ `pnpm build` موفق؛ `git diff --check` موفق. هشدار chunk بزرگ Vite غیرمسدودکننده است.
+
+**گام بعدی:** commit و انتشار نسخهٔ اصلی، سپس ثبت App key و آزمون واقعی یک upload/list/restore با دادهٔ آزمایشی غیرحساس؛ پس از تأیید، یک backup واقعی تومان را در هر دو مسیر بررسی کنید.
