@@ -3383,6 +3383,20 @@ tr:last-child td {
   font-size: 0.8rem;
 }
 
+.production-price-rows {
+  flex-basis: 100%;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--background) 72%, var(--card));
+}
+
+.production-price-rows strong {
+  color: var(--foreground);
+}
+
 .production-register-details .form-actions {
   flex-basis: 100%;
 }

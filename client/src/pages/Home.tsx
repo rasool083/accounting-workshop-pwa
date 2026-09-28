@@ -87,6 +87,8 @@ import {
   calculateBaseUnitLine,
   adjustInventoryBalance,
   executeProduction,
+  calculateCurrentProductionUnitCost,
+  refreshProductionRecordPrice,
   removeProductionRun,
   reconcileLedgerEvents,
   inventoryLedgerDiscrepancies,
@@ -9065,23 +9067,11 @@ function Production({
   const formulaCostPerUnit =
     totalCost / Math.max(1, quantityValue(form.outputQuantity) || 1);
   const currentFormulaCost = (formula: ProductionFormula) => {
-    const materialTotal = formula.materials.reduce((sum, material) => {
-      const product = state.products.find(
-        item => item.id === material.productId
-      );
-      return (
-        sum +
-        (product
-          ? quantityInBase(product, material.quantity, material.unit)
-          : 0) *
-          unitPrice(material.productId, material.unit)
-      );
-    }, 0);
-    const overhead = formula.costs.reduce(
-      (sum, cost) => sum + (Number(cost.amount) || 0),
-      0
-    );
-    return (materialTotal + overhead) / Math.max(1, formula.outputQuantity);
+    try {
+      return calculateCurrentProductionUnitCost(state, formula.id);
+    } catch {
+      return 0;
+    }
   };
 
   function saveProduction(event: React.FormEvent) {
@@ -9228,6 +9218,25 @@ function Production({
       onSave(removeProductionRun(state, record.id), `بچ ${record.batchNumber || "بدون شماره"} حذف شد و موجودی اصلاح شد`);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "حذف بچ انجام نشد");
+    }
+  }
+
+  function refreshProductionPrice(record: ProductionRecord, formula: ProductionFormula) {
+    const outputProduct = state.products.find(item => item.id === (record.outputProductId || formula.outputProductId));
+    const enteredUnit = record.actualOutputUnit || formula.outputUnit;
+    const raw = window.prompt(`مقدار ${enteredUnit} برای ایجاد سطر قیمت جدید را وارد کنید:`);
+    if (raw === null) return;
+    const enteredQuantity = quantityValue(raw);
+    const quantityBase = outputProduct
+      ? quantityInBase(outputProduct, enteredQuantity, enteredUnit)
+      : enteredQuantity;
+    try {
+      onSave(
+        refreshProductionRecordPrice(state, record.id, quantityBase),
+        `سطر قیمت جدید برای ${formatNumber(enteredQuantity)} ${enteredUnit} ثبت شد`
+      );
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "به‌روزرسانی قیمت انجام نشد");
     }
   }
 
@@ -9735,6 +9744,8 @@ function Production({
                 ? record.totalCost / outputBaseQuantity
                 : record.unitCost;
               const outputBaseUnit = outputProduct?.unit || displayFormula.outputUnit || "واحد پایه";
+              const revisedBase = (record.priceRevisions || []).reduce((sum, item) => sum + item.quantityBase, 0);
+              const originalBase = Math.max(0, outputBaseQuantity - revisedBase);
               return (
                 <details className="production-register-item" key={record.id}>
                   <summary>
@@ -9747,12 +9758,20 @@ function Production({
                   <div className="production-register-details">
                     <span>فرمول snapshot: {displayFormula.name}</span>
                     <span>قیمت تمام‌شدهٔ هر {outputBaseUnit}: {formatMoney(baseUnitCost, state.settings.currency)}</span>
+                    <div className="production-price-rows">
+                      <strong>سطرهای قیمت این بچ</strong>
+                      <span>سطر اولیه · {formatNumber(originalBase)} {outputBaseUnit} · {formatMoney(record.unitCost, state.settings.currency)} برای هر واحد پایه</span>
+                      {(record.priceRevisions || []).map(revision => (
+                        <span key={revision.id}>به‌روزرسانی {revision.effectiveDate} · {formatNumber(revision.quantityBase)} {outputBaseUnit} · {formatMoney(revision.unitCost, state.settings.currency)} برای هر واحد پایه</span>
+                      ))}
+                    </div>
                     {record.pieceWeight ? <span>وزن واقعی: {formatNumber(record.pieceWeight)} {record.pieceWeightUnit || "گرم"}</span> : null}
                     {record.wastePercent ? <span>پرت: {formatNumber(record.wastePercent)}٪</span> : null}
                     <span>مواد واقعی: {(record.materialUsage || []).map(usage => `${formatNumber(usage.actualQuantity)} ${usage.unit}`).join("، ") || "ثبت نشده"}</span>
                     <span>توضیح: {record.note || "بدون توضیح"}</span>
                     <div className="form-actions">
                       <button type="button" className="text-button" onClick={() => loadProductionRecord(record, displayFormula)}>ویرایش این بچ</button>
+                      <button type="button" className="text-button" onClick={() => refreshProductionPrice(record, displayFormula)}>به‌روزرسانی قیمت بخشی</button>
                       <button type="button" className="button button-danger button-small" onClick={() => deleteProductionRecord(record)}>حذف و اصلاح موجودی</button>
                     </div>
                   </div>

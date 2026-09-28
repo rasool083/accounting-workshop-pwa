@@ -260,6 +260,15 @@ export interface ProductionMaterialUsage {
   note?: string;
 }
 
+export interface ProductionPriceRevision {
+  id: string;
+  quantityBase: number;
+  unitCost: number;
+  totalCost: number;
+  effectiveDate: string;
+  note?: string;
+}
+
 export interface ProductionRecord {
   id: string;
   formulaId: string;
@@ -284,6 +293,8 @@ export interface ProductionRecord {
   executionId?: string;
   /** snapshot مستقل برای اینکه حذف/ویرایش موتور، سابقهٔ بچ را تغییر ندهد. */
   formulaSnapshot?: ProductionFormula;
+  /** Price-only rows for a sold/remaining portion of the same physical batch. */
+  priceRevisions?: ProductionPriceRevision[];
   outputProductId?: string;
   outputProductName?: string;
   note: string;
@@ -533,6 +544,63 @@ export interface ProductionRunOptions {
   note?: string;
 }
 
+export function calculateCurrentProductionUnitCost(
+  state: AppState,
+  formulaId: string,
+  date = todayJalali(),
+  visiting = new Set<string>()
+): number {
+  if (visiting.has(formulaId)) throw new Error("چرخه در فرمول‌های تولید پیدا شد");
+  const formula = state.productionFormulas.find(item => item.id === formulaId);
+  if (!formula || !formula.outputProductId) return 0;
+  const output = state.products.find(item => item.id === formula.outputProductId);
+  if (!output) return 0;
+  const nextVisiting = new Set(visiting).add(formulaId);
+  const pricePerBaseUnit = (product: Product): number => {
+    const nested = state.productionFormulas.find(item => item.outputProductId === product.id);
+    if (nested) return calculateCurrentProductionUnitCost(state, nested.id, date, nextVisiting);
+    const latest = state.priceHistory
+      .filter(item => item.productId === product.id && item.effectiveDate <= date)
+      .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))[0];
+    return (Number(latest?.price ?? product.price) || 0) /
+      Math.max(0.000001, unitConversionToBase(product, latest?.unit || product.unit));
+  };
+  const materialTotal = formula.materials.reduce((sum, material) => {
+    const product = state.products.find(item => item.id === material.productId);
+    return sum + (product ? quantityInBase(product, material.quantity, material.unit) * pricePerBaseUnit(product) : 0);
+  }, 0);
+  const overhead = formula.costs.reduce((sum, cost) => sum + Math.max(0, Number(cost.amount) || 0), 0);
+  const outputBase = quantityInBase(output, formula.outputQuantity, formula.outputUnit);
+  return outputBase > 0 ? (materialTotal + overhead) / outputBase : 0;
+}
+
+export function refreshProductionRecordPrice(
+  state: AppState,
+  productionRecordId: string,
+  quantityBase: number,
+  date = todayJalali(),
+  note = "به‌روزرسانی بخشی از بهای بچ"
+): AppState {
+  if (!Number.isFinite(quantityBase) || quantityBase <= 0) throw new Error("مقدار به‌روزرسانی باید بزرگ‌تر از صفر باشد");
+  const record = state.productionRecords.find(item => item.id === productionRecordId);
+  if (!record) throw new Error("رکورد تولید پیدا نشد");
+  const totalBase = record.outputQuantityBase ?? record.outputQuantity;
+  const revisedBase = (record.priceRevisions || []).reduce((sum, item) => sum + item.quantityBase, 0);
+  if (quantityBase > totalBase - revisedBase + 0.000001) throw new Error("مقدار از بخش قیمت‌گذاری‌نشدهٔ بچ بیشتر است");
+  const unitCost = calculateCurrentProductionUnitCost(state, record.formulaSnapshot?.id || record.formulaId, date);
+  if (!Number.isFinite(unitCost) || unitCost < 0) throw new Error("بهای جدید فرمول قابل محاسبه نیست");
+  const revision: ProductionPriceRevision = {
+    id: createId("production-price"), quantityBase, unitCost,
+    totalCost: quantityBase * unitCost, effectiveDate: date, note,
+  };
+  return {
+    ...state,
+    productionRecords: state.productionRecords.map(item =>
+      item.id === productionRecordId ? { ...item, priceRevisions: [...(item.priceRevisions || []), revision] } : item
+    ),
+  };
+}
+
 /**
  * Produces a requested quantity from a formula. Package formulas used as
  * materials are produced recursively when their available stock is not
@@ -582,9 +650,12 @@ export function executeProduction(
     return price / Math.max(0.000001, unitConversionToBase(product, priceUnit));
   };
   const unitPrice = (product: Product) =>
-    product.category === "بسته تولید"
-      ? Math.max(0, standalonePrice(product))
-      : Math.max(0, computedUnitCosts.get(product.id) || historicalUnitCost(product.id) || standalonePrice(product));
+    Math.max(
+      0,
+      computedUnitCosts.get(product.id) ||
+        historicalUnitCost(product.id) ||
+        standalonePrice(product)
+    );
   const weightToGrams = (value: number, unit: string) => {
     if (unit === "کیلوگرم") return value * 1000;
     if (unit === "تن") return value * 1_000_000;
@@ -2126,7 +2197,7 @@ export function settleChecksFIFO(
   const eligibleChecks = [...checks]
     .filter(
       check =>
-        !["باطل", "برگشتی", "عودت داده شده", "جایگزین شده", "خرج شده"].includes(
+        !["باطل", "عودت داده شده", "جایگزین شده", "خرج شده"].includes(
           check.status
         )
     )
@@ -2821,10 +2892,12 @@ export function calculateLateProfit(
   invoiceBaseAmount = check.amount,
   dayBasisOverride: number | "شمسی" = 30
 ) {
-  const days = jalaliDayDifference(
-    invoiceDate || check.invoiceDate || check.receivedDate,
-    check.dueDate
-  );
+  // A due date is not a collection date. Until the check is actually collected,
+  // no late fee is earned; the informational overdue period starts at dueDate
+  // and ends at the recorded collectedDate.
+  const days = check.collectedDate
+    ? jalaliDayDifference(check.dueDate, check.collectedDate)
+    : 0;
   const activeRule = rule || {
     dayBasis: 30,
     graceDays: 0,

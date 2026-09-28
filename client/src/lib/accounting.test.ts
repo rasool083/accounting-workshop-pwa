@@ -3,6 +3,7 @@ import {
   getSettlementBalances,
   adjustInventoryBalance,
   executeProduction,
+  refreshProductionRecordPrice,
   normalizeState,
   reconcileLedgerEvents,
   inventoryLedgerDiscrepancies,
@@ -28,6 +29,7 @@ import {
   purchasePaymentIdsExclusiveToInvoice,
   cashAccountReconciliation,
   calculateInvoiceAmount,
+  calculateLateProfit,
   calculateEffectiveProfitForAllocation,
   auditDataIntegrity,
   calculateBankTransferFee,
@@ -184,8 +186,8 @@ describe("FIFO settlement balances", () => {
     const second = balances.get("check-2:invoice-1")!;
 
     expect(first.remainingCheck).toBeCloseTo(0, 2);
-    expect(first.remainingInvoice).toBeCloseTo(26_605_504.59, 2);
-    expect(second.remainingCheck).toBeCloseTo(20_201_834.86, 2);
+    expect(first.remainingInvoice).toBeCloseTo(20_000_000, 2);
+    expect(second.remainingCheck).toBeCloseTo(30_000_000, 2);
     expect(second.remainingInvoice).toBeCloseTo(0, 2);
   });
 
@@ -273,6 +275,35 @@ describe("FIFO settlement balances", () => {
       status: "خرج شده" as const, bank: "", returnPartyId: "supplier",
     };
     expect(settleChecksFIFO([spentCheck], [invoice])).toEqual([]);
+  });
+
+  it("keeps a returned check allocation until the check is voided or replaced", () => {
+    const invoice = {
+      id: "returned-invoice", number: "R-1", type: "فروش" as const,
+      date: "1405/01/01", partyId: "returned-party", items: [], allocations: [],
+      amount: 1000, paidAmount: 0, status: "باز" as const, note: "",
+    };
+    const returnedCheck = {
+      id: "returned-check", number: "R-C1", partyId: "returned-party",
+      receivedDate: "1405/01/01", dueDate: "1405/02/01", amount: 1000,
+      status: "برگشتی" as const, bank: "",
+    };
+    const rebuilt = rebuildCheckAllocations({
+      invoices: [invoice], checks: [returnedCheck], paymentRules: [], settings: { dayBasis: 30 },
+    } as any);
+    expect(rebuilt.invoices[0].status).toBe("تسویه شده");
+    expect(rebuilt.invoices[0].allocations[0].checkId).toBe(returnedCheck.id);
+    expect(settleChecksFIFO([{ ...returnedCheck, status: "باطل" as const }], [invoice])).toEqual([]);
+  });
+
+  it("reports overdue days only from due date to actual collection", () => {
+    const check = {
+      id: "overdue-check", number: "O-1", receivedDate: "1405/01/01",
+      dueDate: "1405/02/01", collectedDate: "1405/02/11", amount: 1000,
+      status: "وصول شده" as const, bank: "",
+    };
+    expect(calculateLateProfit(check, undefined, "1404/01/01").days).toBe(10);
+    expect(calculateLateProfit({ ...check, collectedDate: undefined }).days).toBe(0);
   });
 
   it("allocates supplier payments across the oldest purchase invoices", () => {
@@ -839,6 +870,11 @@ describe("production execution", () => {
     expect(result.state.products.find(product => product.id === "pack")?.stock).toBe(0);
     expect(result.state.products.find(product => product.id === "output")?.stock).toBe(1);
     expect(result.state.productionRecords).toHaveLength(2);
+    const mainRecord = result.state.productionRecords.find(record => record.formulaId === "output-formula")!;
+    expect(mainRecord.materialCost).toBe(400);
+    const repriced = refreshProductionRecordPrice(result.state, mainRecord.id, 1, "1405/07/02");
+    expect(repriced.productionRecords.find(record => record.id === mainRecord.id)?.priceRevisions).toHaveLength(1);
+    expect(repriced.productionRecords.find(record => record.id === mainRecord.id)?.priceRevisions?.[0].unitCost).toBe(400);
   });
 
   it("always consumes packages while package ticks only control weight inclusion", () => {
