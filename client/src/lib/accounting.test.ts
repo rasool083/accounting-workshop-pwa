@@ -296,6 +296,38 @@ describe("FIFO settlement balances", () => {
     expect(settleChecksFIFO([{ ...returnedCheck, status: "باطل" as const }], [invoice])).toEqual([]);
   });
 
+  it("keeps the agreed FIFO order: oldest invoice first, checks by nearest due date", () => {
+    const invoices = [
+      { id: "fifo-old", number: "F-OLD", type: "فروش" as const, date: "1405/01/01", partyId: "fifo-party", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },
+      { id: "fifo-new", number: "F-NEW", type: "فروش" as const, date: "1405/01/02", partyId: "fifo-party", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },
+    ];
+    const checks = [
+      { id: "fifo-late", number: "C-LATE", partyId: "fifo-party", receivedDate: "1405/01/01", dueDate: "1405/02/01", amount: 100, status: "نزد ما" as const, bank: "" },
+      { id: "fifo-near", number: "C-NEAR", partyId: "fifo-party", receivedDate: "1405/01/01", dueDate: "1405/01/20", amount: 100, status: "نزد ما" as const, bank: "" },
+    ];
+    const rows = settleChecksFIFO(checks, invoices);
+    expect(rows.map(row => `${row.checkId}:${row.invoiceId}`)).toEqual([
+      "fifo-near:fifo-old",
+      "fifo-late:fifo-new",
+    ]);
+  });
+
+  it("allows one explicitly designated check to bypass FIFO without changing later FIFO", () => {
+    const invoices = [
+      { id: "designated-old", number: "D-OLD", type: "فروش" as const, date: "1405/01/01", partyId: "designated-party", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },
+      { id: "designated-new", number: "D-NEW", type: "فروش" as const, date: "1405/01/02", partyId: "designated-party", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },
+    ];
+    const checks = [
+      { id: "designated-check", number: "D-CHECK", partyId: "designated-party", designatedInvoiceId: "designated-new", receivedDate: "1405/01/01", dueDate: "1405/01/10", amount: 60, status: "نزد ما" as const, bank: "" },
+      { id: "ordinary-check", number: "O-CHECK", partyId: "designated-party", receivedDate: "1405/01/01", dueDate: "1405/01/20", amount: 100, status: "نزد ما" as const, bank: "" },
+    ];
+    const rows = settleChecksFIFO(checks, invoices);
+    expect(rows.map(row => `${row.checkId}:${row.invoiceId}:${row.principalAmount}`)).toEqual([
+      "designated-check:designated-new:60",
+      "ordinary-check:designated-old:100",
+    ]);
+  });
+
   it("reports overdue days only from due date to actual collection", () => {
     const check = {
       id: "overdue-check", number: "O-1", receivedDate: "1405/01/01",

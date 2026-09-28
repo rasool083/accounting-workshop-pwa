@@ -334,6 +334,8 @@ export interface Check {
   id: string;
   number: string;
   partyId?: string;
+  /** Optional customer-requested exception: allocate this check to this invoice first. */
+  designatedInvoiceId?: string;
   dueDate: string;
   receivedDate: string;
   /** تاریخ واقعی وصول؛ با سررسید یا تاریخ دریافت یکی فرض نمی‌شود. */
@@ -2221,7 +2223,20 @@ export function settleChecksFIFO(
 
   for (const check of eligibleChecks) {
     let checkRemaining = remainingByCheck.get(check.id) || 0;
-    for (const invoice of eligibleInvoices) {
+    const designatedInvoice = check.designatedInvoiceId
+      ? eligibleInvoices.find(
+          invoice =>
+            invoice.id === check.designatedInvoiceId &&
+            invoice.partyId === check.partyId
+        )
+      : undefined;
+    const invoiceOrder = designatedInvoice
+      ? [
+          designatedInvoice,
+          ...eligibleInvoices.filter(invoice => invoice.id !== designatedInvoice.id),
+        ]
+      : eligibleInvoices;
+    for (const invoice of invoiceOrder) {
       if (
         invoice.partyId !== check.partyId ||
         checkRemaining <= FIFO_EPSILON

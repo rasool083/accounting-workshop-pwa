@@ -6428,6 +6428,7 @@ function Checks({
   const blank = {
     number: "",
     partyId: "",
+    designatedInvoiceId: "",
     bank: "",
     bankAccountId: "",
     returnPartyId: "",
@@ -6545,6 +6546,7 @@ function Checks({
     setForm({
       number: check.number,
       partyId: check.partyId || "",
+      designatedInvoiceId: check.designatedInvoiceId || "",
       bank: check.bank || "",
       bankAccountId: check.bankAccountId || "",
       returnPartyId: check.returnPartyId || "",
@@ -6648,6 +6650,8 @@ function Checks({
         id: createId("check-replacement"),
         number: form.number.trim(),
         partyId: form.partyId || undefined,
+        designatedInvoiceId:
+          form.designatedInvoiceId || replacementParent.designatedInvoiceId || undefined,
         bank: form.bank,
         bankAccountId: form.bankAccountId || undefined,
         returnPartyId: form.returnPartyId || undefined,
@@ -6697,6 +6701,7 @@ function Checks({
       id,
       number: form.number.trim(),
       partyId: form.partyId || undefined,
+      designatedInvoiceId: form.designatedInvoiceId || undefined,
       bank: form.bank,
       bankAccountId: form.bankAccountId || undefined,
       returnPartyId: form.returnPartyId || undefined,
@@ -7062,6 +7067,11 @@ function Checks({
                               جایگزین چک اصلی
                             </small>
                           )}
+                          {check.designatedInvoiceId && (
+                            <small className="status-pill status-warning">
+                              تخصیص اختصاصی
+                            </small>
+                          )}
                         </td>
                         <td>{personName(state, check.partyId)}</td>
                         <td>{formatDate(check.receivedDate)}</td>
@@ -7079,6 +7089,7 @@ function Checks({
                                 setForm({
                                   number: check.number,
                                   partyId: check.partyId || "",
+                                  designatedInvoiceId: check.designatedInvoiceId || "",
                                   bank: check.bank || "",
                                   bankAccountId: check.bankAccountId || "",
                                   returnPartyId: check.returnPartyId || "",
@@ -7424,6 +7435,13 @@ function Checks({
                           state.checks.map(item => item.number)
                         ),
                     partyId: e.target.value,
+                    designatedInvoiceId: state.invoices.some(
+                      invoice =>
+                        invoice.id === form.designatedInvoiceId &&
+                        invoice.partyId === e.target.value
+                    )
+                      ? form.designatedInvoiceId
+                      : "",
                   });
                 }}
               >
@@ -7434,6 +7452,38 @@ function Checks({
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="full-field">
+              تخصیص اختصاصی به فاکتور (اختیاری)
+              <select
+                value={form.designatedInvoiceId}
+                onChange={e =>
+                  setForm({ ...form, designatedInvoiceId: e.target.value })
+                }
+              >
+                <option value="">بدون تخصیص اختصاصی؛ اجرای FIFO توافق‌شده</option>
+                {state.invoices
+                  .filter(
+                    invoice =>
+                      invoice.type === "فروش" &&
+                      invoice.status !== "باطل" &&
+                      !!form.partyId &&
+                      invoice.partyId === form.partyId
+                  )
+                  .sort(
+                    (a, b) =>
+                      jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)) ||
+                      a.id.localeCompare(b.id)
+                  )
+                  .map(invoice => (
+                    <option key={invoice.id} value={invoice.id}>
+                      فاکتور {invoice.number} · {formatDate(invoice.date)} · مبلغ {formatMoney(invoice.amount, state.settings.currency)}
+                    </option>
+                  ))}
+              </select>
+              <small className="muted-cell">
+                فقط همین چک ابتدا به فاکتور انتخاب‌شده می‌رود؛ سایر چک‌ها و باقیمانده‌ها طبق FIFO قدیمی‌ترین فاکتور و نزدیک‌ترین سررسید ادامه می‌یابند.
+              </small>
             </label>
             <label>
               تاریخ دریافت چک
