@@ -637,3 +637,18 @@ dry-run روی fixture موفق شد: ۲۲ فیلد مالی، مجموع ۴۱۹
 **آزمون:** `pnpm exec tsc --noEmit --pretty false` موفق؛ `pnpm exec vitest run` با ۱۱ فایل و ۹۵ تست موفق؛ `pnpm build` موفق؛ `git diff --check` موفق. هشدار chunk بزرگ Vite غیرمسدودکننده است.
 
 **گام بعدی:** commit و انتشار نسخهٔ اصلی، سپس ثبت App key و آزمون واقعی یک upload/list/restore با دادهٔ آزمایشی غیرحساس؛ پس از تأیید، یک backup واقعی تومان را در هر دو مسیر بررسی کنید.
+
+
+## ۱۴۰۵/۰۷/۰۷ — مقایسهٔ خط‌به‌خط و خواندنی مخزن `accounting-workshop-pwa-cedric`
+
+**درخواست:** تمام تغییرات مخزن `rasool083/accounting-workshop-pwa-cedric` با پروژهٔ اصلی مقایسه شود، علت تغییرات تحلیل شود و فقط ایده‌های معتبر به main منتقل شود.
+
+**محدوده و ایمنی:** مخزن Cedric در مسیر موقت `/tmp/accounting-workshop-pwa-cedric-readonly` فقط خوانده شد و هیچ تغییر، commit یا push روی آن انجام نشد. دو archive تمیز از فایل‌های Git-tracked ساخته شد و diff بدون `.git`، `node_modules` و build artifacts تهیه شد. headهای مقایسه: main=`3aa43cb` و Cedric=`2df92ae`. در Cedric ۲۱۲ فایل و در main ۱۹۸ فایل tracked بود؛ اختلاف در ۱۶ مسیر/گروه ثبت شد.
+
+**یافته‌های اصلی:** تغییرات Cedric در پنج گروه قرار گرفتند: جداسازی هویت/namespace نصب دوم، Dropbox با مسیر ماه شمسی، اصلاحات تولید و چک، مقاوم‌سازی چاپ landscape، و patch-runner دارای hash قبل/بعد. بیشتر اصلاحات مالی Cedric قبلاً با طراحی متفاوت و کامل‌تر در main وجود داشتند؛ namespace `-cedric`، base path و نام backup آن نباید به پروژهٔ اصلی منتقل شوند.
+
+**اصلاح منتقل‌شده:** در `reverseProductionRun` رکوردهای اجرای تو‌در‌تو هنگام تولید ابتدا برای بستهٔ فرعی و سپس برای محصول والد ساخته می‌شوند. حلقهٔ قبلی مستقیم روی `runRecords` حرکت می‌کرد و در صورت صفر بودن موجودی بسته، حذف بچ را قبل از حذف مصرف‌کننده با خطای کمبود موجودی متوقف می‌کرد. حلقه به parent-first (`[...runRecords].reverse()`) تغییر کرد تا ابتدا محصول والد حذف و بستهٔ مصرف‌شده آزاد شود. تست regression برای raw/package/output اضافه شد.
+
+**اعتبارسنجی:** focused accounting برابر ۶۰ تست موفق، کل Vitest برابر ۱۱ فایل و ۹۶ تست موفق، TypeScript موفق، build موفق و `git diff --check` موفق بود.
+
+**موارد منتقل‌نشده:** patchهای قدیمی Cedric برای خارج‌کردن `خرج شده` از تخصیص، محاسبهٔ دیرکرد بر اساس تاریخ فاکتور، نوع `ProductionPriceTier`، تغییر نام/namespace نصب، و patch-runner مستقیماً منتقل نشدند؛ هرکدام یا با قرارداد main ناسازگار بودند یا نیازمند تصمیم/آزمون مستقل هستند. گزارش کامل در `docs/CEDRIC-COMPARISON-1405-07-07.md` ثبت شد.

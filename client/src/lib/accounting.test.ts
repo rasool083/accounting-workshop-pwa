@@ -877,6 +877,37 @@ describe("production execution", () => {
     expect(repriced.productionRecords.find(record => record.id === mainRecord.id)?.priceRevisions?.[0].unitCost).toBe(400);
   });
 
+  it("reverses a nested production run parent-first", () => {
+    const raw = {
+      id: "reverse-raw", code: "RR", name: "ماده برگشت", unit: "گرم", unit2: "گرم",
+      conversionRate: 1, stock: 1000, minStock: 0, price: 2, category: "مواد اولیه" as const,
+    };
+    const pack = {
+      id: "reverse-pack", code: "RP", name: "بسته برگشت", unit: "بسته", unit2: "بسته",
+      conversionRate: 1, stock: 0, minStock: 0, price: 0, category: "بسته تولید" as const,
+    };
+    const output = {
+      id: "reverse-output", code: "RO", name: "محصول برگشت", unit: "عدد", unit2: "عدد",
+      conversionRate: 1, stock: 0, minStock: 0, price: 0, category: "محصول تولیدی" as const,
+    };
+    const state = normalizeState({
+      settings: { currency: "تومان", dayBasis: 30 },
+      products: [raw, pack, output],
+      productionFormulas: [
+        { id: "reverse-pack-formula", name: "فرمول بسته برگشت", formulaType: "بسته تولید", outputProductId: pack.id, outputQuantity: 1, outputUnit: "بسته", materials: [{ id: "reverse-pack-material", productId: raw.id, quantity: 100, unit: "گرم" }], costs: [], note: "" },
+        { id: "reverse-output-formula", name: "فرمول محصول برگشت", formulaType: "قطعه", outputProductId: output.id, outputQuantity: 1, outputUnit: "عدد", materials: [{ id: "reverse-output-material", productId: pack.id, quantity: 2, unit: "بسته" }], costs: [], note: "" },
+      ],
+    });
+    const produced = executeProduction(state, "reverse-output-formula", 1, "عدد", "1405/07/01").state;
+    const parent = produced.productionRecords.find(record => record.formulaId === "reverse-output-formula");
+    expect(parent).toBeDefined();
+    const restored = removeProductionRun(produced, parent!.id);
+    expect(restored.products.find(product => product.id === raw.id)?.stock).toBe(1000);
+    expect(restored.products.find(product => product.id === pack.id)?.stock).toBe(0);
+    expect(restored.products.find(product => product.id === output.id)?.stock).toBe(0);
+    expect(restored.productionRecords).toHaveLength(0);
+  });
+
   it("always consumes packages while package ticks only control weight inclusion", () => {
     const makeProduct = (id: string, name: string, unit: string, stock: number, category: "مواد اولیه" | "بسته تولید" | "محصول تولیدی", conversionRate = 1) => ({
       id, code: id, name, unit, unit2: unit, conversionRate, stock, minStock: 0, price: 1, category,

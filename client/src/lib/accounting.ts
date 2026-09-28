@@ -860,7 +860,10 @@ export function reverseProductionRun(state: AppState, productionRecordId: string
   );
   const products = state.products.map(product => ({ ...product }));
   const productById = (id: string) => products.find(product => product.id === id);
-  for (const record of runRecords) {
+  // Nested package records are appended before their parent record during execution.
+  // Reverse parent first so its consumed packages return to stock before child outputs
+  // are removed; otherwise a package whose stock was fully consumed fails validation.
+  for (const record of [...runRecords].reverse()) {
     const output = productById(
       record.outputProductId || record.formulaSnapshot?.outputProductId ||
       state.productionFormulas.find(formula => formula.id === record.formulaId)?.outputProductId || ""
