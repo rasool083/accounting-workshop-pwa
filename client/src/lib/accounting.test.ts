@@ -350,6 +350,30 @@ describe("FIFO settlement balances", () => {
     expect(calculateLateProfit({ ...check, collectedDate: undefined }, rule, "1405/01/01").overdueDays).toBe(0);
   });
 
+  it("matches the agreed 54-day example after the zero-rate tier", () => {
+    const rule = {
+      id: "example-tier-rule", name: "مثال ۳۰/۳۶۵", active: true,
+      dayBasis: 30, graceDays: 30,
+      tiers: [
+        { id: "free-30", maxDays: 30, rate: 0, note: "تا ۳۰ روز بدون هزینه" },
+        { id: "six-percent", maxDays: 365, rate: 0.06, note: "۶٪ سالانه" },
+      ],
+    };
+    const check = {
+      id: "example-check-1", number: "Z-1", receivedDate: "1405/06/07",
+      dueDate: "1405/07/30", amount: 200_000_000,
+      status: "نزد ما" as const, bank: "",
+    };
+    const result = calculateLateProfit(check, rule, "1405/06/07", 201_600_000, 30);
+    expect(result.contractDays).toBe(54);
+    expect(result.rate).toBe(0.06);
+    expect(result.chargeableContractDays).toBe(54);
+    expect(result.profit).toBeCloseTo(21_772_800, 2);
+    expect(result.settled).toBeCloseTo(223_372_800, 2);
+    expect(result.remaining).toBeCloseTo(23_372_800, 2);
+    expect(result.remainingBase).toBeCloseTo(21_094_584.84, 2);
+  });
+
   it("allocates supplier payments across the oldest purchase invoices", () => {
     const invoices = [
       { id: "buy-1", number: "B1", type: "خرید" as const, date: "1405/01/01", partyId: "supplier", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },

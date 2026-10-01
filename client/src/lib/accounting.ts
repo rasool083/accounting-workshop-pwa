@@ -340,6 +340,8 @@ export interface Check {
   partyId?: string;
   /** Optional customer-requested exception: allocate this check to this invoice first. */
   designatedInvoiceId?: string;
+  /** Optional audit link for a user-created group assignment. */
+  allocationGroupId?: string;
   dueDate: string;
   receivedDate: string;
   /** تاریخ واقعی وصول؛ با سررسید یا تاریخ دریافت یکی فرض نمی‌شود. */
@@ -437,6 +439,13 @@ export interface PaymentRule {
   tiers: Array<{ id: string; maxDays: number; rate: number; note: string }>;
 }
 
+export interface CheckAllocationGroup {
+  id: string;
+  name: string;
+  createdAt: string;
+  assignments: Array<{ checkId: string; invoiceId: string }>;
+}
+
 export interface AuditEvent {
   id: string;
   at: string;
@@ -521,6 +530,7 @@ export interface AppState {
   paymentRules: PaymentRule[];
   transactions: Transaction[];
   checks: Check[];
+  checkAllocationGroups?: CheckAllocationGroup[];
   accounts: Account[];
   audit: AuditEvent[];
   inventoryEvents: InventoryEvent[];
@@ -1203,6 +1213,10 @@ export function normalizeState(input: unknown): AppState {
             typeof check.returnPartyId === "string"
               ? check.returnPartyId
               : undefined,
+          allocationGroupId:
+            typeof check.allocationGroupId === "string"
+              ? check.allocationGroupId
+              : undefined,
           replacementIds: Array.isArray(check.replacementIds)
             ? check.replacementIds
             : [],
@@ -1234,6 +1248,18 @@ export function normalizeState(input: unknown): AppState {
             typeof check.paymentRuleId === "string"
               ? check.paymentRuleId
               : undefined,
+        }))
+      : [],
+    checkAllocationGroups: Array.isArray(source.checkAllocationGroups)
+      ? (source.checkAllocationGroups as Array<Record<string, unknown>>).map(group => ({
+          id: String(group.id || createId("allocation-group")),
+          name: String(group.name || "تخصیص گروهی"),
+          createdAt: String(group.createdAt || new Date().toISOString()),
+          assignments: Array.isArray(group.assignments)
+            ? group.assignments
+                .filter((item): item is Record<string, unknown> => Boolean(item && item.checkId && item.invoiceId))
+                .map(item => ({ checkId: String(item.checkId), invoiceId: String(item.invoiceId) }))
+            : [],
         }))
       : [],
     accounts: normalizedAccounts,
@@ -2936,7 +2962,11 @@ export function calculateLateProfit(
     graceDays: 0,
     tiers: [{ maxDays: 9999, rate: 0 }],
   };
-  const chargeableContractDays = Math.max(0, contractDays - activeRule.graceDays);
+  // The zero-rate tier is the grace period. Once the duration crosses that
+  // tier, every contractual day is chargeable: 54 days with 6%/30 days means
+  // 54 * 0.2% = 10.8%, not (54 - 30) days. Keep graceDays in the persisted
+  // shape for backward compatibility, but do not subtract it here.
+  const chargeableContractDays = Math.max(0, contractDays);
   const tier =
     [...activeRule.tiers]
       .sort((a, b) => a.maxDays - b.maxDays)

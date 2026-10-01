@@ -3618,6 +3618,20 @@ tr:last-child td {
     page-break-inside: avoid;
   }
 
+  /* Long-form customer PDF contract: page breaks are allowed between rows,
+     never inside one invoice/check allocation row. */
+  body.print-landscape.print-invoice table,
+  body.print-landscape.print-checks table {
+    table-layout: auto !important;
+    min-width: 100% !important;
+  }
+  body.print-landscape.print-invoice .invoice-print-allocations,
+  body.print-landscape.print-checks .allocation-detail-row,
+  body.print-landscape.print-checks .allocation-detail-card {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
   body.print-invoice .form-actions,
   body.print-checks .button,
   body.print-checks .check-filters,

@@ -6257,7 +6257,7 @@ function PaymentRules({
                 مبنای روزشمار <strong>{formatNumber(rule.dayBasis)} روز</strong>
               </span>
               <span>
-                تنفس <strong>{formatNumber(rule.graceDays)} روز</strong>
+                سابقهٔ تنفس <strong>{formatNumber(rule.graceDays)} روز</strong>
               </span>
             </div>
             <div className="tier-list">
@@ -6304,7 +6304,7 @@ function PaymentRules({
               />
             </label>
             <label>
-              روزهای تنفس
+              روزهای تنفس (از روز مشمول کم نمی‌شود)
               <input
                 inputMode="numeric"
                 value={form.graceDays}
@@ -6427,6 +6427,10 @@ function Checks({
   );
   const [checkPage, setCheckPage] = useState(1);
   const [printingChecks, setPrintingChecks] = useState(false);
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupCheckIds, setGroupCheckIds] = useState<string[]>([]);
+  const [groupAssignments, setGroupAssignments] = useState<Record<string, string>>({});
   const checkPageSize = 25;
   const blank = {
     number: "",
@@ -6510,6 +6514,32 @@ function Checks({
       rebuildCheckAllocations(state),
       "تخصیص FIFO همه چک‌ها بر اساس سررسید محاسبه شد"
     );
+  }
+  function saveAllocationGroup(event: React.FormEvent) {
+    event.preventDefault();
+    const assignments = groupCheckIds
+      .map(checkId => ({ checkId, invoiceId: groupAssignments[checkId] }))
+      .filter(item => item.invoiceId);
+    if (!groupName.trim() || !assignments.length) return;
+    const id = createId("allocation-group");
+    const nextState = rebuildCheckAllocations({
+      ...state,
+      checks: state.checks.map(check => {
+        const assignment = assignments.find(item => item.checkId === check.id);
+        return assignment
+          ? { ...check, designatedInvoiceId: assignment.invoiceId, allocationGroupId: id }
+          : check;
+      }),
+      checkAllocationGroups: [
+        ...(state.checkAllocationGroups || []),
+        { id, name: groupName.trim(), createdAt: new Date().toISOString(), assignments },
+      ],
+    });
+    onSave(nextState, `تخصیص گروهی «${groupName.trim()}» ثبت شد`);
+    setGroupOpen(false);
+    setGroupName("");
+    setGroupCheckIds([]);
+    setGroupAssignments({});
   }
   function exportChecks() {
     const rows = [
@@ -6990,6 +7020,12 @@ function Checks({
           }}
         >
           چاپ خلاصه مشتری (افقی)
+        </button>
+        <button
+          className="button button-ghost button-small"
+          onClick={() => setGroupOpen(true)}
+        >
+          تخصیص گروهی چک‌ها
         </button>
         <button
           className="button button-primary button-small"
@@ -7631,6 +7667,62 @@ function Checks({
                 <Check size={17} />
                 {editingCheck ? "ذخیره ویرایش چک" : "ثبت چک"}
               </button>
+            </div>
+          </form>
+        </Dialog>
+      )}
+      {groupOpen && (
+        <Dialog title="تخصیص گروهی چک‌ها به فاکتورها" onClose={() => setGroupOpen(false)}>
+          <form className="form-grid" onSubmit={saveAllocationGroup}>
+            <p className="form-hint full-field">
+              این گروه یک استثنای ثبت‌شده برای FIFO است. فاکتورهای انتخاب‌شده بیش از ۱۰۰٪ تسویه نمی‌شوند و سایر چک‌ها طبق ترتیب عادی ادامه می‌یابند.
+            </p>
+            <label className="full-field">
+              نام گروه / درخواست مشتری
+              <input value={groupName} onChange={event => setGroupName(event.target.value)} placeholder="مثلاً چک‌های مهر مشتری" required />
+            </label>
+            <label className="full-field">
+              چک‌های گروه (با Ctrl انتخاب چندتایی)
+              <select
+                multiple
+                size={Math.min(8, Math.max(4, state.checks.length))}
+                value={groupCheckIds}
+                onChange={event => {
+                  const ids = Array.from(event.target.selectedOptions, option => option.value);
+                  setGroupCheckIds(ids);
+                  setGroupAssignments(current => Object.fromEntries(ids.map(id => [id, current[id] || ""])));
+                }}
+              >
+                {state.checks
+                  .filter(check => !["باطل", "خرج شده", "عودت داده شده", "جایگزین شده"].includes(check.status))
+                  .sort((a, b) => jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)))
+                  .map(check => (
+                    <option key={check.id} value={check.id}>
+                      {check.number} · {formatMoney(check.amount, state.settings.currency)} · {formatDate(check.dueDate)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            {groupCheckIds.map(checkId => {
+              const check = state.checks.find(item => item.id === checkId);
+              const invoices = state.invoices.filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل" && invoice.partyId === check?.partyId);
+              return (
+                <label className="full-field" key={checkId}>
+                  چک {check?.number || checkId} ← فاکتور مقصد
+                  <select required value={groupAssignments[checkId] || ""} onChange={event => setGroupAssignments(current => ({ ...current, [checkId]: event.target.value }))}>
+                    <option value="">انتخاب فاکتور</option>
+                    {invoices.map(invoice => (
+                      <option key={invoice.id} value={invoice.id}>
+                        {invoice.number} · {formatMoney(invoice.amount, state.settings.currency)} · {formatDate(invoice.date)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+            <div className="form-actions">
+              <button type="button" className="button button-ghost" onClick={() => setGroupOpen(false)}>انصراف</button>
+              <button type="submit" className="button button-primary" disabled={!groupCheckIds.length}>ثبت گروه و بازسازی تخصیص‌ها</button>
             </div>
           </form>
         </Dialog>
