@@ -2358,11 +2358,13 @@ function Invoices({
                                           )}
                                         </span>
                                         <span>
-                                          تعداد روز: {formatNumber(item.days || 0)}{" "}
-                                          روز
+                                          مدت قرارداد تا سررسید: {formatNumber(item.contractDays ?? item.days ?? 0)} روز
+                                        </span>
+                                        <span>
+                                          دیرکرد اطلاع‌رسانی پس از سررسید: {formatNumber(item.overdueDays || 0)} روز
                                         </span>
                                         <span className="print-private">
-                                          هزینه دیرکرد:{" "}
+                                          هزینهٔ شرایط پرداخت طبق پله:{" "}
                                           {formatMoney(
                                             item.profit || 0,
                                             state.settings.currency
@@ -2944,7 +2946,8 @@ function Invoices({
                           <span>وضعیت: {check?.status || "—"}</span>
                           <span>سررسید: {check ? formatDate(check.dueDate) : "—"}</span>
                           <span>مبلغ تخصیص: {formatMoney(item.amount, state.settings.currency)}</span>
-                          <span>تعداد روز: {formatNumber(item.days || 0)} روز</span>
+                          <span>مدت قرارداد تا سررسید: {formatNumber(item.contractDays ?? item.days ?? 0)} روز</span>
+                          <span>دیرکرد اطلاع‌رسانی پس از سررسید: {formatNumber(item.overdueDays || 0)} روز</span>
                         </div>
                       );
                     })}
@@ -7316,7 +7319,7 @@ function Checks({
                                       )}
                                     </span>
                                     <span className="print-private">
-                                      هزینه دیرکرد:{" "}
+                                      هزینهٔ شرایط پرداخت طبق پله:{" "}
                                       {formatMoney(
                                         item.profit,
                                         state.settings.currency
@@ -7333,8 +7336,10 @@ function Checks({
                                       </>
                                     )}
                                     <span>
-                                      تعداد روز: {" "}
-                                      {formatNumber(item.days || 0)} روز
+                                      مدت قرارداد تا سررسید: {formatNumber(item.contractDays ?? item.days ?? 0)} روز
+                                    </span>
+                                    <span>
+                                      دیرکرد اطلاع‌رسانی پس از سررسید: {formatNumber(item.overdueDays || 0)} روز
                                     </span>
                                     <span>
                                       مانده چک پس از تخصیص:{" "}

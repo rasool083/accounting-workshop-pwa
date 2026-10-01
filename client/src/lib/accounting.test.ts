@@ -135,7 +135,7 @@ describe("effective profit at collection", () => {
 });
 
 describe("FIFO settlement balances", () => {
-  it("shows the staged invoice and check balances from the two-check example", () => {
+  it("applies the invoice-to-due payment tier while splitting checks FIFO", () => {
     const invoice = {
       id: "invoice-1",
       number: "1",
@@ -186,8 +186,8 @@ describe("FIFO settlement balances", () => {
     const second = balances.get("check-2:invoice-1")!;
 
     expect(first.remainingCheck).toBeCloseTo(0, 2);
-    expect(first.remainingInvoice).toBeCloseTo(20_000_000, 2);
-    expect(second.remainingCheck).toBeCloseTo(30_000_000, 2);
+    expect(first.remainingInvoice).toBeCloseTo(26_605_504.587155968, 2);
+    expect(second.remainingCheck).toBeCloseTo(20_201_834.862385318, 2);
     expect(second.remainingInvoice).toBeCloseTo(0, 2);
   });
 
@@ -328,14 +328,26 @@ describe("FIFO settlement balances", () => {
     ]);
   });
 
-  it("reports overdue days only from due date to actual collection", () => {
+  it("uses invoice-to-due days for the payment tier and reports due-to-collection separately", () => {
     const check = {
       id: "overdue-check", number: "O-1", receivedDate: "1405/01/01",
       dueDate: "1405/02/01", collectedDate: "1405/02/11", amount: 1000,
       status: "وصول شده" as const, bank: "",
     };
-    expect(calculateLateProfit(check, undefined, "1404/01/01").days).toBe(10);
-    expect(calculateLateProfit({ ...check, collectedDate: undefined }).days).toBe(0);
+    const rule = {
+      id: "tier-rule", name: "آزمایشی", active: true, dayBasis: 30, graceDays: 0,
+      tiers: [
+        { id: "short", maxDays: 60, rate: 0.01, note: "کوتاه" },
+        { id: "long", maxDays: 9999, rate: 0.02, note: "بلند" },
+      ],
+    };
+    const result = calculateLateProfit(check, rule, "1405/01/01", 1000);
+    expect(result.contractDays).toBe(31);
+    expect(result.days).toBe(31);
+    expect(result.overdueDays).toBe(10);
+    expect(result.rate).toBe(0.01);
+    expect(result.profit).toBeCloseTo(1000 * 0.01 * 31 / 30, 8);
+    expect(calculateLateProfit({ ...check, collectedDate: undefined }, rule, "1405/01/01").overdueDays).toBe(0);
   });
 
   it("allocates supplier payments across the oldest purchase invoices", () => {

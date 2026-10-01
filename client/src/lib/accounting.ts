@@ -94,6 +94,10 @@ export interface CheckAllocation {
   principalAmount?: number;
   profit?: number;
   days?: number;
+  /** فاصلهٔ قراردادی از تاریخ فاکتور تا سررسید چک؛ مبنای انتخاب پله. */
+  contractDays?: number;
+  /** فاصلهٔ اطلاع‌رسانی از سررسید تا وصول واقعی؛ هزینهٔ جدید ایجاد نمی‌کند. */
+  overdueDays?: number;
   allocatedAt: string;
 }
 export interface Invoice {
@@ -2160,6 +2164,8 @@ export interface FIFOSettlement {
   principalAmount: number;
   profit: number;
   days: number;
+  contractDays: number;
+  overdueDays: number;
 }
 
 export interface FIFOSettlementBalance {
@@ -2275,7 +2281,9 @@ export function settleChecksFIFO(
         amount,
         principalAmount,
         profit,
-        days: probe.days,
+        days: probe.contractDays,
+        contractDays: probe.contractDays,
+        overdueDays: probe.overdueDays,
       });
       const invoiceRemaining = Math.max(0, baseRemaining - principalAmount);
       remainingByInvoice.set(
@@ -2519,7 +2527,9 @@ export function applyCheckFIFO(state: AppState, check: Check) {
         amount: item.amount,
         principalAmount: item.principalAmount,
         profit: item.profit,
-        days: item.days,
+        days: item.contractDays,
+        contractDays: item.contractDays,
+        overdueDays: item.overdueDays,
         allocatedAt: now,
       })),
       status:
@@ -2560,7 +2570,9 @@ export function rebuildCheckAllocations(state: AppState): AppState {
         amount: item.amount,
         principalAmount: item.principalAmount,
         profit: item.profit,
-        days: item.days,
+        days: item.contractDays,
+        contractDays: item.contractDays,
+        overdueDays: item.overdueDays,
         allocatedAt: now,
       })),
       status:
@@ -2910,10 +2922,13 @@ export function calculateLateProfit(
   invoiceBaseAmount = check.amount,
   dayBasisOverride: number | "شمسی" = 30
 ) {
-  // A due date is not a collection date. Until the check is actually collected,
-  // no late fee is earned; the informational overdue period starts at dueDate
-  // and ends at the recorded collectedDate.
-  const days = check.collectedDate
+  // The payment-rule tier is contractual: invoice date -> check due date.
+  // Actual overdue days are separate information: due date -> collected date.
+  const contractDays = jalaliDayDifference(
+    invoiceDate || check.invoiceDate || check.receivedDate,
+    check.dueDate
+  );
+  const overdueDays = check.collectedDate
     ? jalaliDayDifference(check.dueDate, check.collectedDate)
     : 0;
   const activeRule = rule || {
@@ -2921,11 +2936,11 @@ export function calculateLateProfit(
     graceDays: 0,
     tiers: [{ maxDays: 9999, rate: 0 }],
   };
-  const overdueDays = Math.max(0, days - activeRule.graceDays);
+  const chargeableContractDays = Math.max(0, contractDays - activeRule.graceDays);
   const tier =
     [...activeRule.tiers]
       .sort((a, b) => a.maxDays - b.maxDays)
-      .find(item => overdueDays <= item.maxDays) ||
+      .find(item => chargeableContractDays <= item.maxDays) ||
     activeRule.tiers[activeRule.tiers.length - 1];
   const rate = tier?.rate || 0;
   const basis =
@@ -2934,15 +2949,18 @@ export function calculateLateProfit(
           invoiceDate || check.invoiceDate || check.receivedDate
         )
       : Math.max(1, Number(dayBasisOverride) || activeRule.dayBasis || 30);
-  const profit = invoiceBaseAmount * ((rate * overdueDays) / basis);
+  const profit = invoiceBaseAmount * ((rate * chargeableContractDays) / basis);
   const settled = invoiceBaseAmount + profit;
   const remaining = Math.max(0, settled - check.amount);
   const remainingBase = settled
-    ? remaining / (1 + (rate * overdueDays) / basis)
+    ? remaining / (1 + (rate * chargeableContractDays) / basis)
     : 0;
   return {
-    days,
+    // `days` remains the backward-compatible contractual day field.
+    days: contractDays,
+    contractDays,
     overdueDays,
+    chargeableContractDays,
     rate,
     base: invoiceBaseAmount,
     profit,
