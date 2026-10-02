@@ -10,9 +10,12 @@ import {
 } from "./vendorDirectory";
 
 export const UNIFIED_BACKUP_FORMAT = "accounting-workshop-unified-backup-v1";
+/** Envelope emitted by the read-only Google AI Studio continuation. */
+export const AI_STUDIO_UNIFIED_BACKUP_FORMAT =
+  "accounting-workshop-pwa-aistudio-unified-backup-v1";
 
 export type UnifiedBackupEnvelope = {
-  format: typeof UNIFIED_BACKUP_FORMAT;
+  format: typeof UNIFIED_BACKUP_FORMAT | typeof AI_STUDIO_UNIFIED_BACKUP_FORMAT;
   backupId: string;
   createdAt: string;
   application: "حسابداری کارگاه";
@@ -226,7 +229,10 @@ export function exportUnifiedPayload(
 
 export function importUnifiedPayload(payload: string): ImportedBackup {
   const parsed = parseJsonObject(payload);
-  if (parsed.format !== UNIFIED_BACKUP_FORMAT) {
+  if (
+    parsed.format !== UNIFIED_BACKUP_FORMAT &&
+    parsed.format !== AI_STUDIO_UNIFIED_BACKUP_FORMAT
+  ) {
     return {
       accounting: stripLocalSecurity(importPayload(payload)),
       unified: false,

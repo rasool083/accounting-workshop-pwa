@@ -328,6 +328,29 @@ describe("FIFO settlement balances", () => {
     ]);
   });
 
+  it("allocates a native check group to its invoice pool, then resumes FIFO", () => {
+    const invoices = [
+      { id: "pool-old", number: "P-OLD", type: "فروش" as const, date: "1405/01/01", partyId: "pool-party", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },
+      { id: "pool-new", number: "P-NEW", type: "فروش" as const, date: "1405/01/02", partyId: "pool-party", items: [], allocations: [], amount: 100, paidAmount: 0, status: "باز" as const, note: "" },
+    ];
+    const checks = [
+      { id: "pool-group-check", number: "P-GROUP", partyId: "pool-party", receivedDate: "1405/01/01", dueDate: "1405/01/10", amount: 60, status: "نزد ما" as const, bank: "" },
+      { id: "pool-ordinary-check", number: "P-ORDINARY", partyId: "pool-party", receivedDate: "1405/01/01", dueDate: "1405/01/20", amount: 100, status: "نزد ما" as const, bank: "" },
+    ];
+    const rows = settleChecksFIFO(checks, invoices, [], 30, [], [{
+      id: "pool-group",
+      name: "گروه آزمایشی",
+      createdAt: "1405/07/10",
+      checkIds: ["pool-group-check"],
+      invoiceIds: ["pool-new"],
+      assignments: [],
+    }]);
+    expect(rows.map(row => `${row.checkId}:${row.invoiceId}:${row.principalAmount}`)).toEqual([
+      "pool-group-check:pool-new:60",
+      "pool-ordinary-check:pool-old:100",
+    ]);
+  });
+
   it("uses invoice-to-due days for the payment tier and reports due-to-collection separately", () => {
     const check = {
       id: "overdue-check", number: "O-1", receivedDate: "1405/01/01",

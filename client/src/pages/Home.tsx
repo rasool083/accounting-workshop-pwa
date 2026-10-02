@@ -1641,9 +1641,17 @@ function Invoices({
         state.checks,
         state.invoices,
         state.paymentRules,
-        state.settings.dayBasis
+        state.settings.dayBasis,
+        state.legacyCheckGroupAllocations || [],
+        state.checkAllocationGroups || []
       ),
-    [state.checks, state.invoices, state.paymentRules, state.settings.dayBasis]
+    [
+      state.checks,
+      state.invoices,
+      state.paymentRules,
+      state.settings.dayBasis,
+      state.legacyCheckGroupAllocations,
+    ]
   );
   const allocationBalances = useMemo(
     () =>
@@ -6431,6 +6439,9 @@ function Checks({
   const [groupName, setGroupName] = useState("");
   const [groupCheckIds, setGroupCheckIds] = useState<string[]>([]);
   const [groupAssignments, setGroupAssignments] = useState<Record<string, string>>({});
+  const [groupMode, setGroupMode] = useState<"pool" | "perCheck">("pool");
+  const [groupInvoiceIds, setGroupInvoiceIds] = useState<string[]>([]);
+  const [groupPartyId, setGroupPartyId] = useState("");
   const checkPageSize = 25;
   const blank = {
     number: "",
@@ -6498,7 +6509,9 @@ function Checks({
     state.checks,
     state.invoices,
     state.paymentRules,
-    state.settings.dayBasis
+    state.settings.dayBasis,
+    state.legacyCheckGroupAllocations || [],
+    state.checkAllocationGroups || []
   );
   const allocationBalances = useMemo(
     () =>
@@ -6520,19 +6533,37 @@ function Checks({
     const assignments = groupCheckIds
       .map(checkId => ({ checkId, invoiceId: groupAssignments[checkId] }))
       .filter(item => item.invoiceId);
-    if (!groupName.trim() || !assignments.length) return;
+    const poolMode = groupMode === "pool";
+    if (!groupName.trim()) return;
+    if (poolMode && (!groupCheckIds.length || !groupInvoiceIds.length)) return;
+    if (!poolMode && !assignments.length) return;
     const id = createId("allocation-group");
+    const partyId = groupPartyId || undefined;
     const nextState = rebuildCheckAllocations({
       ...state,
-      checks: state.checks.map(check => {
-        const assignment = assignments.find(item => item.checkId === check.id);
-        return assignment
-          ? { ...check, designatedInvoiceId: assignment.invoiceId, allocationGroupId: id }
-          : check;
-      }),
+      checks: poolMode
+        ? state.checks
+        : state.checks.map(check => {
+            const assignment = assignments.find(item => item.checkId === check.id);
+            return assignment
+              ? { ...check, designatedInvoiceId: assignment.invoiceId, allocationGroupId: id }
+              : check;
+          }),
       checkAllocationGroups: [
         ...(state.checkAllocationGroups || []),
-        { id, name: groupName.trim(), createdAt: new Date().toISOString(), assignments },
+        {
+          id,
+          name: groupName.trim(),
+          createdAt: new Date().toISOString(),
+          assignments: poolMode
+            ? groupCheckIds.flatMap(checkId =>
+                groupInvoiceIds.map(invoiceId => ({ checkId, invoiceId }))
+              )
+            : assignments,
+          partyId,
+          checkIds: poolMode ? groupCheckIds : undefined,
+          invoiceIds: poolMode ? groupInvoiceIds : undefined,
+        },
       ],
     });
     onSave(nextState, `تخصیص گروهی «${groupName.trim()}» ثبت شد`);
@@ -6540,6 +6571,8 @@ function Checks({
     setGroupName("");
     setGroupCheckIds([]);
     setGroupAssignments({});
+    setGroupInvoiceIds([]);
+    setGroupPartyId("");
   }
   function exportChecks() {
     const rows = [
@@ -7675,11 +7708,38 @@ function Checks({
         <Dialog title="تخصیص گروهی چک‌ها به فاکتورها" onClose={() => setGroupOpen(false)}>
           <form className="form-grid" onSubmit={saveAllocationGroup}>
             <p className="form-hint full-field">
-              این گروه یک استثنای ثبت‌شده برای FIFO است. فاکتورهای انتخاب‌شده بیش از ۱۰۰٪ تسویه نمی‌شوند و سایر چک‌ها طبق ترتیب عادی ادامه می‌یابند.
+              این گروه یک استثنای ثبت‌شده برای FIFO است: ابتدا مجموعهٔ چک‌های انتخاب‌شده، فاکتورهای انتخابی را به ترتیب قدیمی‌ترین تسویه می‌کنند؛ هیچ فاکتوری بیش از ۱۰۰٪ تسویه نمی‌شود و باقیمانده‌ها به چرخهٔ عادی بازمی‌گردند.
             </p>
+            <label className="full-field">
+              نوع تخصیص
+              <select
+                value={groupMode}
+                onChange={event => setGroupMode(event.target.value as "pool" | "perCheck")}
+              >
+                <option value="pool">گروه چک ← گروه فاکتور (پیشنهادی)</option>
+                <option value="perCheck">تخصیص تکی هر چک به یک فاکتور</option>
+              </select>
+            </label>
             <label className="full-field">
               نام گروه / درخواست مشتری
               <input value={groupName} onChange={event => setGroupName(event.target.value)} placeholder="مثلاً چک‌های مهر مشتری" required />
+            </label>
+            <label className="full-field">
+              طرف حساب (برای محدودکردن فهرست‌ها)
+              <select
+                value={groupPartyId}
+                onChange={event => {
+                  setGroupPartyId(event.target.value);
+                  setGroupCheckIds([]);
+                  setGroupInvoiceIds([]);
+                  setGroupAssignments({});
+                }}
+              >
+                <option value="">همهٔ طرف‌حساب‌ها</option>
+                {state.people.map(person => (
+                  <option key={person.id} value={person.id}>{person.name}</option>
+                ))}
+              </select>
             </label>
             <label className="full-field">
               چک‌های گروه (با Ctrl انتخاب چندتایی)
@@ -7695,6 +7755,7 @@ function Checks({
               >
                 {state.checks
                   .filter(check => !["باطل", "خرج شده", "عودت داده شده", "جایگزین شده"].includes(check.status))
+                  .filter(check => !groupPartyId || check.partyId === groupPartyId)
                   .sort((a, b) => jalaliDateKey(a.dueDate).localeCompare(jalaliDateKey(b.dueDate)))
                   .map(check => (
                     <option key={check.id} value={check.id}>
@@ -7702,29 +7763,121 @@ function Checks({
                     </option>
                   ))}
               </select>
+              <span className="form-hint">
+                انتخاب‌شده: {formatNumber(groupCheckIds.length)} چک به مبلغ{" "}
+                {formatMoney(
+                  state.checks
+                    .filter(check => groupCheckIds.includes(check.id))
+                    .reduce((sum, check) => sum + check.amount, 0),
+                  state.settings.currency
+                )}
+              </span>
             </label>
-            {groupCheckIds.map(checkId => {
-              const check = state.checks.find(item => item.id === checkId);
-              const invoices = state.invoices.filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل" && invoice.partyId === check?.partyId);
-              return (
-                <label className="full-field" key={checkId}>
-                  چک {check?.number || checkId} ← فاکتور مقصد
-                  <select required value={groupAssignments[checkId] || ""} onChange={event => setGroupAssignments(current => ({ ...current, [checkId]: event.target.value }))}>
-                    <option value="">انتخاب فاکتور</option>
-                    {invoices.map(invoice => (
+            {groupMode === "pool" ? (
+              <label className="full-field">
+                فاکتورهای مقصد (با Ctrl انتخاب چندتایی؛ قدیمی‌ترین اول تسویه می‌شود)
+                <select
+                  multiple
+                  size={Math.min(8, Math.max(4, state.invoices.length))}
+                  value={groupInvoiceIds}
+                  onChange={event =>
+                    setGroupInvoiceIds(
+                      Array.from(event.target.selectedOptions, option => option.value)
+                    )
+                  }
+                >
+                  {state.invoices
+                    .filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل")
+                    .filter(invoice => !groupPartyId || invoice.partyId === groupPartyId)
+                    .sort((a, b) => jalaliDateKey(a.date).localeCompare(jalaliDateKey(b.date)))
+                    .map(invoice => (
                       <option key={invoice.id} value={invoice.id}>
-                        {invoice.number} · {formatMoney(invoice.amount, state.settings.currency)} · {formatDate(invoice.date)}
+                        {invoice.number} · {formatDate(invoice.date)} · مانده{" "}
+                        {formatMoney(
+                          Math.max(0, invoice.amount - (invoice.paidAmount || 0)),
+                          state.settings.currency
+                        )}
                       </option>
                     ))}
-                  </select>
-                </label>
-              );
-            })}
+                </select>
+                <span className="form-hint">
+                  انتخاب‌شده: {formatNumber(groupInvoiceIds.length)} فاکتور
+                </span>
+              </label>
+            ) : (
+              groupCheckIds.map(checkId => {
+                const check = state.checks.find(item => item.id === checkId);
+                const invoices = state.invoices.filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل" && invoice.partyId === check?.partyId);
+                return (
+                  <label className="full-field" key={checkId}>
+                    چک {check?.number || checkId} ← فاکتور مقصد
+                    <select required value={groupAssignments[checkId] || ""} onChange={event => setGroupAssignments(current => ({ ...current, [checkId]: event.target.value }))}>
+                      <option value="">انتخاب فاکتور</option>
+                      {invoices.map(invoice => (
+                        <option key={invoice.id} value={invoice.id}>
+                          {invoice.number} · {formatMoney(invoice.amount, state.settings.currency)} · {formatDate(invoice.date)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })
+            )}
             <div className="form-actions">
               <button type="button" className="button button-ghost" onClick={() => setGroupOpen(false)}>انصراف</button>
-              <button type="submit" className="button button-primary" disabled={!groupCheckIds.length}>ثبت گروه و بازسازی تخصیص‌ها</button>
+              <button
+                type="submit"
+                className="button button-primary"
+                disabled={
+                  !groupCheckIds.length ||
+                  (groupMode === "pool" && !groupInvoiceIds.length) ||
+                  (groupMode === "perCheck" && !Object.values(groupAssignments).some(Boolean))
+                }
+              >
+                ثبت گروه و بازسازی تخصیص‌ها
+              </button>
             </div>
           </form>
+          <div className="form-grid" style={{ marginTop: 16 }}>
+            <h4 className="full-field" style={{ margin: 0 }}>
+              تخصیص‌های گروهی ثبت‌شده ({formatNumber((state.checkAllocationGroups || []).length)})
+            </h4>
+            {(state.checkAllocationGroups || []).map(group => (
+              <div
+                key={group.id}
+                className="panel full-field"
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}
+              >
+                <span>
+                  <strong>{group.name}</strong> ·{" "}
+                  {formatNumber(group.checkIds?.length || group.assignments.length)} چک →{" "}
+                  {formatNumber(group.invoiceIds?.length || new Set(group.assignments.map(item => item.invoiceId)).size)} فاکتور
+                </span>
+                <button
+                  type="button"
+                  className="button button-danger"
+                  onClick={() => {
+                    if (!window.confirm(`آیا از لغو و حذف تخصیص گروهی «${group.name}» اطمینان دارید؟`)) return;
+                    const nextState = rebuildCheckAllocations({
+                      ...state,
+                      checkAllocationGroups: (state.checkAllocationGroups || []).filter(item => item.id !== group.id),
+                      checks: state.checks.map(check =>
+                        check.allocationGroupId === group.id
+                          ? { ...check, designatedInvoiceId: undefined, allocationGroupId: undefined }
+                          : check
+                      ),
+                    });
+                    onSave(nextState, `تخصیص گروهی «${group.name}» لغو شد`);
+                  }}
+                >
+                  لغو تخصیص
+                </button>
+              </div>
+            ))}
+            {!(state.checkAllocationGroups || []).length && (
+              <p className="form-hint full-field">هنوز هیچ تخصیص گروهی ثبت نشده است.</p>
+            )}
+          </div>
         </Dialog>
       )}
       {historyCheckId && (
@@ -7800,7 +7953,9 @@ function MonthClose({
     partyChecks,
     partyInvoices,
     state.paymentRules,
-    state.settings.dayBasis
+    state.settings.dayBasis,
+    state.legacyCheckGroupAllocations || [],
+    state.checkAllocationGroups || []
   );
   const allValidSalesTotal = state.invoices
     .filter(invoice => invoice.type === "فروش" && invoice.status !== "باطل")

@@ -340,6 +340,8 @@ export interface Check {
   partyId?: string;
   /** Optional customer-requested exception: allocate this check to this invoice first. */
   designatedInvoiceId?: string;
+  /** Legacy name emitted by the read-only AI Studio continuation. */
+  targetInvoiceId?: string;
   /** Optional audit link for a user-created group assignment. */
   allocationGroupId?: string;
   dueDate: string;
@@ -444,6 +446,24 @@ export interface CheckAllocationGroup {
   name: string;
   createdAt: string;
   assignments: Array<{ checkId: string; invoiceId: string }>;
+  /**
+   * اختیاری: در حالت گروهی، مجموعهٔ چک‌ها به مجموعهٔ فاکتورها تخصیص می‌یابد
+   * (مثلاً چک‌های z1..z4 به فاکتورهای ۱۰۱۰..۱۰۱۲) و ترتیب تسویه بین آن‌ها
+   * با قاعدهٔ سررسید نزدیک‌تر به قدیمی‌ترین فاکتور انجام می‌شود.
+   */
+  partyId?: string;
+  checkIds?: string[];
+  invoiceIds?: string[];
+}
+
+/** Legacy group shape emitted by the read-only AI Studio continuation. */
+export interface LegacyCheckGroupAllocation {
+  id: string;
+  name: string;
+  partyId?: string;
+  checkIds: string[];
+  invoiceIds: string[];
+  createdAt: string;
 }
 
 export interface AuditEvent {
@@ -531,6 +551,7 @@ export interface AppState {
   transactions: Transaction[];
   checks: Check[];
   checkAllocationGroups?: CheckAllocationGroup[];
+  legacyCheckGroupAllocations?: LegacyCheckGroupAllocation[];
   accounts: Account[];
   audit: AuditEvent[];
   inventoryEvents: InventoryEvent[];
@@ -1213,6 +1234,12 @@ export function normalizeState(input: unknown): AppState {
             typeof check.returnPartyId === "string"
               ? check.returnPartyId
               : undefined,
+          designatedInvoiceId:
+            typeof check.designatedInvoiceId === "string" && check.designatedInvoiceId.trim()
+              ? check.designatedInvoiceId.trim()
+              : typeof check.targetInvoiceId === "string" && check.targetInvoiceId.trim()
+                ? check.targetInvoiceId.trim()
+                : undefined,
           allocationGroupId:
             typeof check.allocationGroupId === "string"
               ? check.allocationGroupId
@@ -1251,15 +1278,47 @@ export function normalizeState(input: unknown): AppState {
         }))
       : [],
     checkAllocationGroups: Array.isArray(source.checkAllocationGroups)
-      ? (source.checkAllocationGroups as Array<Record<string, unknown>>).map(group => ({
-          id: String(group.id || createId("allocation-group")),
-          name: String(group.name || "تخصیص گروهی"),
-          createdAt: String(group.createdAt || new Date().toISOString()),
-          assignments: Array.isArray(group.assignments)
+      ? (source.checkAllocationGroups as Array<Record<string, unknown>>).map(group => {
+          const checkIds = Array.isArray(group.checkIds)
+            ? group.checkIds.filter((id): id is string => typeof id === "string")
+            : [];
+          const invoiceIds = Array.isArray(group.invoiceIds)
+            ? group.invoiceIds.filter((id): id is string => typeof id === "string")
+            : [];
+          const assignments = Array.isArray(group.assignments)
             ? group.assignments
                 .filter((item): item is Record<string, unknown> => Boolean(item && item.checkId && item.invoiceId))
                 .map(item => ({ checkId: String(item.checkId), invoiceId: String(item.invoiceId) }))
+            : checkIds.flatMap(checkId =>
+                invoiceIds.map(invoiceId => ({ checkId, invoiceId }))
+              );
+          return {
+            id: String(group.id || createId("allocation-group")),
+            name: String(group.name || "تخصیص گروهی"),
+            createdAt: String(group.createdAt || new Date().toISOString()),
+            assignments,
+            partyId: typeof group.partyId === "string" ? group.partyId : undefined,
+            checkIds: checkIds.length ? checkIds : undefined,
+            invoiceIds: invoiceIds.length ? invoiceIds : undefined,
+          };
+        })
+      : [],
+    legacyCheckGroupAllocations: Array.isArray(
+      source.checkGroupAllocations ?? source.legacyCheckGroupAllocations
+    )
+      ? ((source.checkGroupAllocations ?? source.legacyCheckGroupAllocations) as Array<
+          Record<string, unknown>
+        >).map(group => ({
+          id: String(group.id || createId("legacy-group")),
+          name: String(group.name || "تخصیص گروهی"),
+          partyId: typeof group.partyId === "string" ? group.partyId : undefined,
+          checkIds: Array.isArray(group.checkIds)
+            ? group.checkIds.filter((id): id is string => typeof id === "string")
             : [],
+          invoiceIds: Array.isArray(group.invoiceIds)
+            ? group.invoiceIds.filter((id): id is string => typeof id === "string")
+            : [],
+          createdAt: String(group.createdAt || todayJalali()),
         }))
       : [],
     accounts: normalizedAccounts,
@@ -2012,6 +2071,22 @@ export function transactionLabel(type: TransactionType) {
 
 export function exportPayload(state: AppState) {
   const data = normalizeState(state);
+  // سازگاری دوطرفه با نسخهٔ AI Studio: نام فیلد هدف چک و مجموعهٔ تخصیص گروهی
+  // در هر دو شکل نوشته می‌شوند تا هر دو برنامه بتوانند این پشتیبان را بخوانند.
+  const compatibleChecks = data.checks.map(check => ({
+    ...check,
+    targetInvoiceId: check.designatedInvoiceId,
+  }));
+  const compatibleGroups = [
+    ...(data.checkAllocationGroups || []).map(group => ({
+      id: group.id,
+      name: group.name,
+      checkIds: group.assignments.map(item => item.checkId),
+      invoiceIds: group.assignments.map(item => item.invoiceId),
+      createdAt: group.createdAt,
+    })),
+    ...(data.legacyCheckGroupAllocations || []),
+  ];
   return JSON.stringify(
     {
       format: "accounting-workshop-backup",
@@ -2040,7 +2115,11 @@ export function exportPayload(state: AppState) {
         productionRecords: data.productionRecords.length,
         payrollRecords: data.payrollRecords.length,
       },
-      data,
+      data: {
+        ...data,
+        checks: compatibleChecks,
+        checkGroupAllocations: compatibleGroups,
+      },
     },
     null,
     2
@@ -2221,7 +2300,9 @@ export function settleChecksFIFO(
   checks: Check[],
   invoices: Invoice[],
   paymentRules: PaymentRule[] = [],
-  dayBasis: number | "شمسی" = 30
+  dayBasis: number | "شمسی" = 30,
+  legacyCheckGroupAllocations: LegacyCheckGroupAllocation[] = [],
+  checkAllocationGroups: CheckAllocationGroup[] = []
 ) {
   const settlements: FIFOSettlement[] = [];
   const eligibleInvoices = [...invoices]
@@ -2253,21 +2334,52 @@ export function settleChecksFIFO(
     eligibleChecks.map(check => [check.id, Math.max(0, check.amount)])
   );
 
+  // تخصیص گروهی بومی (گروه چک ← گروه فاکتور): هر چک گروه ابتدا به فاکتورهای
+  // همان گروه می‌رود؛ اگر فاکتورها تسویه شدند، ادامه در چرخهٔ عادی FIFO انجام می‌شود.
+  const nativeGroupInvoiceIdsByCheck = new Map<string, string[]>();
+  for (const group of checkAllocationGroups) {
+    if (!group.checkIds?.length || !group.invoiceIds?.length) continue;
+    for (const checkId of group.checkIds) {
+      const current = nativeGroupInvoiceIdsByCheck.get(checkId) || [];
+      nativeGroupInvoiceIdsByCheck.set(checkId, [
+        ...current,
+        ...group.invoiceIds.filter(invoiceId => !current.includes(invoiceId)),
+      ]);
+    }
+  }
+
+  // تخصیص گروهی وارد‌شده از نسخهٔ AI Studio: هر چک ابتدا به فاکتورهای گروه خود
+  // می‌رود (به ترتیب تاریخ فاکتور و سررسید چک) و سپس چرخهٔ عادی FIFO ادامه می‌یابد.
+  const legacyGroupInvoiceIdsByCheck = new Map<string, string[]>();
+  for (const group of legacyCheckGroupAllocations) {
+    for (const checkId of group.checkIds) {
+      const current = legacyGroupInvoiceIdsByCheck.get(checkId) || [];
+      legacyGroupInvoiceIdsByCheck.set(checkId, [
+        ...current,
+        ...group.invoiceIds.filter(invoiceId => !current.includes(invoiceId)),
+      ]);
+    }
+  }
+
   for (const check of eligibleChecks) {
     let checkRemaining = remainingByCheck.get(check.id) || 0;
-    const designatedInvoice = check.designatedInvoiceId
-      ? eligibleInvoices.find(
-          invoice =>
-            invoice.id === check.designatedInvoiceId &&
-            invoice.partyId === check.partyId
-        )
-      : undefined;
-    const invoiceOrder = designatedInvoice
-      ? [
-          designatedInvoice,
-          ...eligibleInvoices.filter(invoice => invoice.id !== designatedInvoice.id),
-        ]
-      : eligibleInvoices;
+    const groupInvoiceIds = new Set([
+      ...(legacyGroupInvoiceIdsByCheck.get(check.id) || []),
+      ...(nativeGroupInvoiceIdsByCheck.get(check.id) || []),
+    ]);
+    // فاکتورهای گروه به ترتیب تاریخ (قدیمی‌ترین ابتدا) و سپس فاکتور اختصاصی
+    // درخواست مشتری، پیش از چرخهٔ عادی FIFO بررسی می‌شوند.
+    const prioritizedInvoices = [
+      ...eligibleInvoices.filter(invoice => groupInvoiceIds.has(invoice.id)),
+      ...(check.designatedInvoiceId
+        ? eligibleInvoices.filter(invoice => invoice.id === check.designatedInvoiceId)
+        : []),
+    ];
+    const prioritizedIds = new Set(prioritizedInvoices.map(invoice => invoice.id));
+    const invoiceOrder = [
+      ...prioritizedInvoices,
+      ...eligibleInvoices.filter(invoice => !prioritizedIds.has(invoice.id)),
+    ];
     for (const invoice of invoiceOrder) {
       if (
         invoice.partyId !== check.partyId ||
@@ -2466,7 +2578,9 @@ export function buildCollectionProfitReport(state: AppState): CollectionProfitRe
     state.checks,
     state.invoices,
     state.paymentRules,
-    state.settings.dayBasis
+    state.settings.dayBasis,
+    state.legacyCheckGroupAllocations || [],
+    state.checkAllocationGroups || []
   );
   settlements.forEach(allocation => {
     const invoice = state.invoices.find(item => item.id === allocation.invoiceId);
@@ -2526,7 +2640,9 @@ export function applyCheckFIFO(state: AppState, check: Check) {
     partyChecks,
     state.invoices,
     state.paymentRules,
-    state.settings.dayBasis
+    state.settings.dayBasis,
+    state.legacyCheckGroupAllocations || [],
+    state.checkAllocationGroups || []
   );
   const byInvoice = new Map<string, FIFOSettlement[]>();
   settlements.forEach(item =>
@@ -2574,7 +2690,9 @@ export function rebuildCheckAllocations(state: AppState): AppState {
     state.checks,
     state.invoices,
     state.paymentRules,
-    state.settings.dayBasis
+    state.settings.dayBasis,
+    state.legacyCheckGroupAllocations || [],
+    state.checkAllocationGroups || []
   );
   const byInvoice = new Map<string, FIFOSettlement[]>();
   settlements.forEach(item => {

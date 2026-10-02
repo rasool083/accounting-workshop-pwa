@@ -964,3 +964,10 @@ snapshot محلی عمداً به Google Drive upload نمی‌شود؛ Drive م
 **امنیت:** فایل نباید شامل دادهٔ واقعی مشتری، رمز، token یا secret باشد. این snapshot دانش فنی است و با JSON عملیاتی حسابداری اشتباه نشود.
 **اثر:** هر جلسهٔ بعدی ابتدا همین snapshot، `CHAT-CONTINUITY-PROTOCOL.md`، `PROJECT-CONTINUITY.md` و `DECISION-LOG.md` را می‌خواند و سپس وضعیت Git و تست‌ها را کنترل می‌کند.
 **وضعیت:** انجام‌شده؛ نیازمند commit و push همین مرحله.
+
+## ۱۴۰۵/۰۷/۱۱ — تصمیم سازگاری دوطرفه با backupهای AI Studio
+**تصمیم:** envelopeهای `accounting-workshop-unified-backup-v1` و `accounting-workshop-pwa-aistudio-unified-backup-v1` هر دو معتبرند؛ export اصلی همچنان نام بومی را تولید می‌کند اما payload داخلی aliasهای لازم برای AI Studio را نیز نگه می‌دارد.
+**نگاشت:** `targetInvoiceId` فقط به‌عنوان نام legacy به `designatedInvoiceId` map می‌شود. گروه‌های `checkIds`/`invoiceIds` جدا از assignmentهای تک‌چکی نگهداری می‌شوند تا restore اطلاعاتی را حذف نکند.
+**FIFO:** گروه native یا legacy فقط استثنای صریح کاربر است؛ ابتدا فاکتورهای همان pool با ترتیب قدیمی‌ترین تاریخ بررسی می‌شوند و سپس مانده به FIFO عمومی بازمی‌گردد. status exclusion، سقف ۱۰۰٪، epsilon، tier و چک برگشتی تغییر نکرده‌اند.
+**گزینهٔ ردشده:** جایگزین‌کردن مدل اصلی با مدل AI Studio رد شد؛ زیرا designation تک‌چکی و سابقهٔ قراردادهای پروژهٔ اصلی باید حفظ شود.
+**اعتبارسنجی:** تست backup برای envelope جدید، checksum، mapping و round-trip اضافه شد؛ تست native group-to-group نیز اضافه شد. مخزن AI Studio فقط‌خواندنی باقی ماند.
