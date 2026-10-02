@@ -2193,12 +2193,24 @@ function Invoices({
                     );
                     return (
                       <Fragment key={invoice.id}>
-                        <tr>
+                        <tr
+                          className="row-detail-trigger"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedInvoice(invoice)}
+                          onKeyDown={event => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedInvoice(invoice);
+                            }
+                          }}
+                        >
                           <td>
                             <button
                               type="button"
                               className={`allocation-toggle ${expanded ? "is-expanded" : ""}`}
-                              onClick={() =>
+                              onClick={event => {
+                                event.stopPropagation();
                                 setExpandedInvoiceIds(current => {
                                   const next = new Set(current);
                                   if (next.has(invoice.id))
@@ -2206,7 +2218,7 @@ function Invoices({
                                   else next.add(invoice.id);
                                   return next;
                                 })
-                              }
+                              }}
                               title="نمایش چک‌های تخصیص‌یافته"
                             >
                               <ChevronDown size={14} />
@@ -2270,7 +2282,10 @@ function Invoices({
                           <td>
                             <button
                               className="text-button"
-                              onClick={() => setSelectedInvoice(invoice)}
+                              onClick={event => {
+                                event.stopPropagation();
+                                setSelectedInvoice(invoice);
+                              }}
                             >
                               جزئیات
                             </button>{" "}
@@ -2283,7 +2298,10 @@ function Invoices({
                               <button
                                 className="icon-button row-action"
                                 title="ویرایش فاکتور"
-                                onClick={() => openEdit(invoice)}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  openEdit(invoice);
+                                }}
                               >
                                 <Pencil size={14} />
                               </button>
@@ -2291,7 +2309,10 @@ function Invoices({
                             <button
                               className="icon-button row-action"
                               title="حذف فاکتور"
-                              onClick={() => deleteInvoice(invoice)}
+                              onClick={event => {
+                                event.stopPropagation();
+                                deleteInvoice(invoice);
+                              }}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -3506,6 +3527,9 @@ function Transactions({
   const [editingTransaction, setEditingTransaction] = useState<
     AppState["transactions"][number] | null
   >(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<
+    AppState["transactions"][number] | null
+  >(null);
   const [editForm, setEditForm] = useState({
     type: "دریافت" as TransactionType,
     amount: "",
@@ -3657,6 +3681,24 @@ function Transactions({
       "تمام اطلاعات عملیات ویرایش شد"
     );
     setEditingTransaction(null);
+  }
+  function deleteTransaction(item: AppState["transactions"][number]) {
+    if (!window.confirm("عملیات حذف شود؟")) return;
+    const nextAccounts =
+      item.accountId || item.fromAccountId || item.toAccountId
+        ? applyAccountEffect(state.accounts, item, -1)
+        : state.accounts;
+    const nextProducts = applyProductEffect(state.products, item, -1);
+    onSave(
+      {
+        ...state,
+        accounts: nextAccounts,
+        products: nextProducts,
+        transactions: state.transactions.filter(row => row.id !== item.id),
+      },
+      "عملیات حذف شد و اثر حسابی آن با reversal برگشت داده شد"
+    );
+    setSelectedTransaction(null);
   }
   function saveAccountOperation(event: React.FormEvent) {
     event.preventDefault();
@@ -4443,7 +4485,19 @@ function Transactions({
             <tbody>
               {state.transactions.length ? (
                 state.transactions.map(item => (
-                  <tr key={item.id}>
+                  <tr
+                    key={item.id}
+                    className="row-detail-trigger"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedTransaction(item)}
+                    onKeyDown={event => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedTransaction(item);
+                      }
+                    }}
+                  >
                     <td>
                       <span className="table-type">
                         <span
@@ -4473,37 +4527,19 @@ function Transactions({
                       <button
                         className="icon-button row-action"
                         title="ویرایش کامل عملیات"
-                        onClick={() => beginTransactionEdit(item)}
+                        onClick={event => {
+                          event.stopPropagation();
+                          beginTransactionEdit(item);
+                        }}
                       >
                         <Pencil size={14} />
                       </button>
                       <button
                         className="icon-button row-action"
                         title="حذف عملیات"
-                        onClick={() => {
-                          if (!window.confirm("عملیات حذف شود؟")) return;
-                          const nextAccounts =
-                            item.accountId ||
-                            item.fromAccountId ||
-                            item.toAccountId
-                              ? applyAccountEffect(state.accounts, item, -1)
-                              : state.accounts;
-                          const nextProducts = applyProductEffect(
-                            state.products,
-                            item,
-                            -1
-                          );
-                          onSave(
-                            {
-                              ...state,
-                              accounts: nextAccounts,
-                              products: nextProducts,
-                              transactions: state.transactions.filter(
-                                row => row.id !== item.id
-                              ),
-                            },
-                            "عملیات حذف شد و اثر حسابی آن برگشت داده شد"
-                          );
+                        onClick={event => {
+                          event.stopPropagation();
+                          deleteTransaction(item);
                         }}
                       >
                         <Trash2 size={14} />
@@ -4625,6 +4661,27 @@ function Transactions({
               </button>
             </div>
           </form>
+        </Dialog>
+      )}
+      {selectedTransaction && (
+        <Dialog
+          title={`جزئیات عملیات ${transactionLabel(selectedTransaction.type)}`}
+          onClose={() => setSelectedTransaction(null)}
+        >
+          <div className="detail-grid">
+            <div><span>نوع عملیات</span><strong>{transactionLabel(selectedTransaction.type)}</strong></div>
+            <div><span>تاریخ</span><strong>{formatDate(selectedTransaction.date)}</strong></div>
+            <div><span>طرف حساب</span><strong>{personName(state, selectedTransaction.partyId)}</strong></div>
+            <div><span>مبلغ</span><strong>{formatMoney(selectedTransaction.amount, state.settings.currency)} تومان</strong></div>
+            <div><span>کارمزد</span><strong>{formatMoney(selectedTransaction.feeAmount || 0, state.settings.currency)} تومان</strong></div>
+            <div><span>وضعیت</span><strong>{selectedTransaction.status}</strong></div>
+          </div>
+          <p className="form-hint">اصلاح یا حذف این عملیات، رویدادهای قبلی دفتر را با reversal معکوس می‌کند و رویداد جدید را جداگانه ثبت می‌نماید.</p>
+          {selectedTransaction.note && <p className="muted-cell">شرح: {selectedTransaction.note}</p>}
+          <div className="form-actions">
+            <button type="button" className="button button-ghost" onClick={() => { setSelectedTransaction(null); beginTransactionEdit(selectedTransaction); }}>ویرایش عملیات</button>
+            <button type="button" className="button button-danger" onClick={() => deleteTransaction(selectedTransaction)}>حذف با reversal</button>
+          </div>
         </Dialog>
       )}
     </div>
@@ -6427,6 +6484,9 @@ function Checks({
   const [dueFrom, setDueFrom] = useState("");
   const [dueTo, setDueTo] = useState("");
   const [historyCheckId, setHistoryCheckId] = useState<string | null>(null);
+  const [selectedCheck, setSelectedCheck] = useState<
+    AppState["checks"][number] | null
+  >(null);
   const [expandedCheckIds, setExpandedCheckIds] = useState<Set<string>>(
     new Set()
   );
@@ -7108,20 +7168,30 @@ function Checks({
                     <Fragment key={check.id}>
                       <tr
                         key={check.id}
-                        className={`check-row check-row-${check.status === "وصول شده" ? "cleared" : check.status === "خرج شده" ? "spent" : ["برگشتی", "عودت داده شده", "باطل"].includes(check.status) ? "bad" : check.status === "جایگزین شده" ? "replaced" : "open"}`}
+                        className={`check-row row-detail-trigger check-row-${check.status === "وصول شده" ? "cleared" : check.status === "خرج شده" ? "spent" : ["برگشتی", "عودت داده شده", "باطل"].includes(check.status) ? "bad" : check.status === "جایگزین شده" ? "replaced" : "open"}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedCheck(check)}
+                        onKeyDown={event => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedCheck(check);
+                          }
+                        }}
                       >
                         <td>
                           <button
                             type="button"
                             className={`allocation-toggle ${expanded ? "is-expanded" : ""}`}
-                            onClick={() =>
+                            onClick={event => {
+                              event.stopPropagation();
                               setExpandedCheckIds(current => {
                                 const next = new Set(current);
                                 if (next.has(check.id)) next.delete(check.id);
                                 else next.add(check.id);
                                 return next;
-                              })
-                            }
+                              });
+                            }}
                             aria-expanded={expanded}
                             title="نمایش فاکتورهای تخصیص‌یافته"
                           >
@@ -7151,7 +7221,7 @@ function Checks({
                         <td>
                           {formatMoney(check.amount, state.settings.currency)}
                         </td>
-                        <td>
+                        <td onClick={event => event.stopPropagation()}>
                           <select
                             value={check.status}
                             onChange={e => {
@@ -7198,6 +7268,7 @@ function Checks({
                             check.status
                           ) ? (
                             <select
+                              onClick={event => event.stopPropagation()}
                               value={check.bankAccountId || ""}
                               onChange={e =>
                                 saveCheckStatus(
@@ -7228,6 +7299,7 @@ function Checks({
                               check.status
                             ) ? (
                             <select
+                              onClick={event => event.stopPropagation()}
                               value={check.returnPartyId || ""}
                               onChange={e =>
                                 saveCheckStatus(
@@ -7254,7 +7326,8 @@ function Checks({
                                   <button
                                     type="button"
                                     className="button button-ghost button-small"
-                                    onClick={() => {
+                                    onClick={event => {
+                                      event.stopPropagation();
                                       setReplacementParent(check);
                                       setEditingCheck(null);
                                       setForm({
@@ -7281,14 +7354,20 @@ function Checks({
                           <button
                             className="icon-button row-action"
                             title="تاریخچه چک"
-                            onClick={() => setHistoryCheckId(check.id)}
+                            onClick={event => {
+                              event.stopPropagation();
+                              setHistoryCheckId(check.id);
+                            }}
                           >
                             <FileClock size={14} />
                           </button>
                           <button
                             className="icon-button row-action"
                             title="ویرایش کامل چک"
-                            onClick={() => beginEdit(check)}
+                            onClick={event => {
+                              event.stopPropagation();
+                              beginEdit(check);
+                            }}
                           >
                             <Pencil size={14} />
                           </button>
@@ -7296,7 +7375,8 @@ function Checks({
                             <button
                               className="icon-button row-action"
                               title="حذف چک"
-                              onClick={() => {
+                              onClick={event => {
+                                event.stopPropagation();
                                 if (!window.confirm("چک و ارجاعات آن حذف شود؟"))
                                   return;
                                 onSave(
@@ -7877,6 +7957,38 @@ function Checks({
             {!(state.checkAllocationGroups || []).length && (
               <p className="form-hint full-field">هنوز هیچ تخصیص گروهی ثبت نشده است.</p>
             )}
+          </div>
+        </Dialog>
+      )}
+      {selectedCheck && (
+        <Dialog
+          title={`جزئیات چک ${selectedCheck.number}`}
+          onClose={() => setSelectedCheck(null)}
+        >
+          <div className="detail-grid">
+            <div><span>طرف حساب</span><strong>{personName(state, selectedCheck.partyId)}</strong></div>
+            <div><span>وضعیت</span><strong>{selectedCheck.status}</strong></div>
+            <div><span>تاریخ دریافت</span><strong>{formatDate(selectedCheck.receivedDate)}</strong></div>
+            <div><span>سررسید</span><strong>{formatDate(selectedCheck.dueDate)}</strong></div>
+            <div><span>مبلغ</span><strong>{formatMoney(selectedCheck.amount, state.settings.currency)} تومان</strong></div>
+            <div><span>بانک / مرجع</span><strong>{selectedCheck.bank || "—"}</strong></div>
+          </div>
+          {allocationDetails.filter(item => item.checkId === selectedCheck.id).length ? (
+            <div className="audit-history">
+              <h4>فاکتورهای تخصیص‌یافته</h4>
+              {allocationDetails
+                .filter(item => item.checkId === selectedCheck.id)
+                .map(item => (
+                  <div className="audit-history-row" key={`${item.checkId}-${item.invoiceId}`}>
+                    <strong>{state.invoices.find(invoice => invoice.id === item.invoiceId)?.number || "فاکتور حذف‌شده"}</strong>
+                    <span>{formatMoney(item.amount, state.settings.currency)} تومان · {formatNumber(item.contractDays ?? item.days ?? 0)} روز</span>
+                  </div>
+                ))}
+            </div>
+          ) : <p className="form-hint">این چک هنوز به فاکتوری تخصیص نیافته است.</p>}
+          <div className="form-actions">
+            <button type="button" className="button button-ghost" onClick={() => setHistoryCheckId(selectedCheck.id)}>مشاهده تاریخچه</button>
+            <button type="button" className="button button-primary" onClick={() => { setSelectedCheck(null); beginEdit(selectedCheck); }}>ویرایش چک</button>
           </div>
         </Dialog>
       )}
