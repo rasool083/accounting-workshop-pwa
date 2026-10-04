@@ -1243,6 +1243,67 @@ describe("payroll accounting", () => {
     expect(reconciled.cashEvents.at(-1)).toEqual(expect.objectContaining({ accountId: "bank", amount: -50, kind: "payment", sourceId: "payroll-payment-1" }));
     expect(rebuildCashProjection(reconciled).accounts.find(account => account.id === "bank")?.balance).toBe(950);
   });
+
+  const payrollOpening = () => normalizeState({
+    accounts: [{ id: "bank", name: "بانک", type: "بانک", balance: 1000 }],
+    cashEvents: [{ id: "opening", at: "2026-09-24T00:00:00Z", date: "1405/07/03", kind: "opening_balance" as const, accountId: "bank", amount: 1000, currency: "تومان", sourceType: "opening", note: "" }],
+    transactions: [],
+    payrollRecords: [],
+  });
+
+  it("keeps a payable payroll registration cash-neutral, then deducts exactly once when paid", () => {
+    const previous = payrollOpening();
+    const payable = {
+      ...previous,
+      payrollRecords: [{ id: "payable-1", date: "1405/07/03", period: "1405/06", employeeName: "رضا", amount: 200, feeAmount: 0, status: "پرداختنی" as const, note: "" }],
+    };
+    const afterPayable = reconcileLedgerEvents(previous, payable);
+    expect(rebuildCashProjection(afterPayable).accounts.find(item => item.id === "bank")?.balance).toBe(1000);
+
+    const paid = {
+      ...afterPayable,
+      payrollRecords: [{ ...afterPayable.payrollRecords[0], status: "پرداخت‌شده" as const, accountId: "bank", transactionId: "payable-payment", paidAt: "1405/07/05" }],
+      transactions: [{ id: "payable-payment", type: "پرداخت حقوق" as const, date: "1405/07/05", accountId: "bank", referenceType: "هزینه" as const, referenceId: "payable-1", amount: 200, feeAmount: 0, status: "ثبت شده" as const, note: "پرداخت حقوق رضا" }],
+    };
+    const afterPayment = reconcileLedgerEvents(afterPayable, paid);
+    expect(afterPayment.cashEvents.filter(event => event.sourceId === "payable-payment").map(event => event.amount)).toEqual([-200]);
+    expect(rebuildCashProjection(afterPayment).accounts.find(item => item.id === "bank")?.balance).toBe(800);
+  });
+
+  it("reverses the old payroll payment exactly once before applying an edited amount and fee", () => {
+    const previous = payrollOpening();
+    const original = reconcileLedgerEvents(previous, {
+      ...previous,
+      payrollRecords: [{ id: "edit-1", date: "1405/07/03", period: "1405/06", employeeName: "سارا", amount: 200, feeAmount: 5, status: "پرداخت‌شده" as const, accountId: "bank", transactionId: "edit-payment", note: "" }],
+      transactions: [{ id: "edit-payment", type: "پرداخت حقوق" as const, date: "1405/07/03", accountId: "bank", referenceType: "هزینه" as const, referenceId: "edit-1", amount: 200, feeAmount: 5, status: "ثبت شده" as const, note: "حقوق سارا" }],
+    });
+    expect(rebuildCashProjection(original).accounts.find(item => item.id === "bank")?.balance).toBe(795);
+
+    const edited = reconcileLedgerEvents(original, {
+      ...original,
+      payrollRecords: [{ ...original.payrollRecords[0], amount: 300, feeAmount: 10 }],
+      transactions: [{ ...original.transactions[0], amount: 300, feeAmount: 10 }],
+    });
+    expect(edited.cashEvents.filter(event => event.reversalOf).map(event => event.amount)).toEqual([200, 5]);
+    expect(edited.cashEvents.filter(event => event.sourceId === "edit-payment" || event.sourceId === "edit-payment:fee").map(event => event.amount)).toEqual([-200, -5, 200, 5, -300, -10]);
+    expect(rebuildCashProjection(edited).accounts.find(item => item.id === "bank")?.balance).toBe(690);
+  });
+
+  it("returns the exact original amount on payroll void without a second manual refund", () => {
+    const previous = payrollOpening();
+    const original = reconcileLedgerEvents(previous, {
+      ...previous,
+      payrollRecords: [{ id: "void-1", date: "1405/07/03", period: "1405/06", employeeName: "مینا", amount: 150, feeAmount: 7, status: "پرداخت‌شده" as const, accountId: "bank", transactionId: "void-payment", note: "" }],
+      transactions: [{ id: "void-payment", type: "پرداخت حقوق" as const, date: "1405/07/03", accountId: "bank", referenceType: "هزینه" as const, referenceId: "void-1", amount: 150, feeAmount: 7, status: "ثبت شده" as const, note: "حقوق مینا" }],
+    });
+    const voided = reconcileLedgerEvents(original, {
+      ...original,
+      payrollRecords: [{ ...original.payrollRecords[0], status: "باطل" as const }],
+      transactions: [{ ...original.transactions[0], status: "باطل" as const }],
+    });
+    expect(voided.cashEvents.filter(event => event.reversalOf).map(event => event.amount)).toEqual([150, 7]);
+    expect(rebuildCashProjection(voided).accounts.find(item => item.id === "bank")?.balance).toBe(1000);
+  });
 });
 
 
