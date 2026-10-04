@@ -1180,12 +1180,14 @@ export default function Home() {
             <BankAccounts
               state={state}
               onSave={(next, msg) => updateState(next, msg)}
+              onNavigate={setActivePage}
             />
           )}
           {activePage === "people" && (
             <People
               state={state}
               onSave={(next, msg) => updateState(next, msg)}
+              onNavigate={setActivePage}
             />
           )}
           {activePage === "inventory" && (
@@ -3038,11 +3040,14 @@ function Invoices({
 function BankAccounts({
   state,
   onSave,
+  onNavigate,
 }: {
   state: AppState;
   onSave: (next: AppState, message: string) => void;
+  onNavigate: (page: PageId) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<AppState["accounts"][number] | null>(null);
   const [form, setForm] = useState({
     name: "",
     type: "بانک" as "بانک" | "صندوق" | "شریک",
@@ -3134,10 +3139,17 @@ function BankAccounts({
     const referenced = state.checks.some(
       check => check.bankAccountId === account.id
     );
+    const referencedByLedger = state.transactions.some(
+      item => item.accountId === account.id || item.fromAccountId === account.id || item.toAccountId === account.id
+    ) || state.cashEvents.some(event => event.accountId === account.id) || state.payrollRecords.some(record => record.accountId === account.id);
     if (referenced) {
       window.alert(
         "این حساب در چک‌ها استفاده شده و برای حفظ یکپارچگی قابل حذف نیست."
       );
+      return;
+    }
+    if (referencedByLedger) {
+      window.alert("این حساب در دفتر نقدی یا عملیات مالی سابقه دارد؛ برای حفظ تاریخچه حذف نمی‌شود. نام یا موجودی را اصلاح کنید.");
       return;
     }
     if (!window.confirm(`حساب «${account.name}» حذف شود؟`)) return;
@@ -3148,6 +3160,7 @@ function BankAccounts({
       },
       "حساب حذف شد"
     );
+    setSelectedAccount(null);
   }
 
   return (
@@ -3233,7 +3246,19 @@ function BankAccounts({
                     check => check.bankAccountId === account.id
                   );
                   return (
-                    <tr key={account.id}>
+                    <tr
+                      key={account.id}
+                      className="row-detail-trigger"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedAccount(account)}
+                      onKeyDown={event => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedAccount(account);
+                        }
+                      }}
+                    >
                       <td>
                         <strong>{account.name}</strong>
                       </td>
@@ -3248,14 +3273,20 @@ function BankAccounts({
                         <button
                           className="icon-button row-action edit-action"
                           title="ویرایش حساب"
-                          onClick={() => edit(account)}
+                          onClick={event => {
+                            event.stopPropagation();
+                            edit(account);
+                          }}
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           className="icon-button row-action delete-action"
                           title="حذف حساب"
-                          onClick={() => remove(account)}
+                          onClick={event => {
+                            event.stopPropagation();
+                            remove(account);
+                          }}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -3330,6 +3361,45 @@ function BankAccounts({
           </div>
         </form>
       </div>
+      {selectedAccount && (() => {
+        const transactions = state.transactions.filter(item =>
+          item.accountId === selectedAccount.id ||
+          item.fromAccountId === selectedAccount.id ||
+          item.toAccountId === selectedAccount.id
+        );
+        const cashEvents = state.cashEvents.filter(item => item.accountId === selectedAccount.id);
+        const linkedChecks = state.checks.filter(item => item.bankAccountId === selectedAccount.id);
+        return (
+          <Dialog title={`ریز گردش ${selectedAccount.name}`} onClose={() => setSelectedAccount(null)}>
+            <div className="detail-grid">
+              <div><span>نوع حساب</span><strong>{selectedAccount.type}</strong></div>
+              <div><span>ماندهٔ فعلی</span><strong>{formatMoney(selectedAccount.balance, state.settings.currency)} تومان</strong></div>
+              <div><span>تعداد عملیات</span><strong>{formatNumber(transactions.length)}</strong></div>
+              <div><span>رویدادهای دفتر نقدی</span><strong>{formatNumber(cashEvents.length)}</strong></div>
+            </div>
+            <div className="detail-section">
+              <div className="panel-heading"><h4>تراکنش‌ها و انتقال‌ها</h4><span className="soft-tag">ویرایش/حذف از دفتر عملیات</span></div>
+              {transactions.length ? transactions.map(item => (
+                <div className="audit-history-row" key={item.id}>
+                  <div><strong>{transactionLabel(item.type)}</strong><span>{formatDate(item.date)} · {formatMoney(item.amount, state.settings.currency)} تومان</span></div>
+                  <button type="button" className="button button-ghost button-small" onClick={() => onNavigate("transactions")}>مدیریت عملیات</button>
+                </div>
+              )) : <p className="form-hint">عملیات مستقیمی برای این حساب ثبت نشده است.</p>}
+            </div>
+            <div className="detail-section">
+              <div className="panel-heading"><h4>رویدادهای دفتر نقدی</h4><span className="soft-tag">immutable ledger</span></div>
+              {cashEvents.length ? cashEvents.slice().reverse().map(event => (
+                <div className="audit-history-row" key={event.id}><div><strong>{event.kind}</strong><span>{formatDate(event.date)} · {formatMoney(event.amount, state.settings.currency)} تومان</span></div><small className="muted-cell">برای حفظ حسابداری، از تراکنش منبع ویرایش شود.</small></div>
+              )) : <p className="form-hint">رویداد نقدی ثبت نشده است.</p>}
+            </div>
+            <div className="detail-section">
+              <div className="panel-heading"><h4>چک‌های مرتبط</h4><span className="soft-tag">{formatNumber(linkedChecks.length)} فقره</span></div>
+              {linkedChecks.length ? linkedChecks.map(check => <div className="audit-history-row" key={check.id}><strong>{check.number}</strong><span>{check.status} · {formatMoney(check.amount, state.settings.currency)} تومان</span><button type="button" className="button button-ghost button-small" onClick={() => onNavigate("checks")}>مدیریت چک‌ها</button></div>) : <p className="form-hint">چک بانکی مرتبطی وجود ندارد.</p>}
+            </div>
+            <div className="form-actions"><button type="button" className="button button-primary" onClick={() => { setSelectedAccount(null); edit(selectedAccount); }}>ویرایش حساب</button><button type="button" className="button button-danger" onClick={() => remove(selectedAccount)}>حذف حساب</button></div>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }
@@ -4691,9 +4761,11 @@ function Transactions({
 function People({
   state,
   onSave,
+  onNavigate,
 }: {
   state: AppState;
   onSave: (state: AppState, message: string) => void;
+  onNavigate: (page: PageId) => void;
 }) {
   const blank = {
     code: "",
@@ -4706,6 +4778,7 @@ function People({
   const [editingPerson, setEditingPerson] = useState<
     AppState["people"][number] | null
   >(null);
+  const [selectedPerson, setSelectedPerson] = useState<AppState["people"][number] | null>(null);
   const [peopleSortDirection, setPeopleSortDirection] = useState<
     "asc" | "desc"
   >("asc");
@@ -4736,6 +4809,19 @@ function People({
         ? form.roles.filter(item => item !== role)
         : [...form.roles, role],
     });
+  }
+  function removePerson(person: AppState["people"][number]) {
+    const referenced = state.invoices.some(item => item.partyId === person.id)
+      || state.checks.some(item => item.partyId === person.id || item.returnPartyId === person.id)
+      || state.transactions.some(item => item.partyId === person.id)
+      || state.payrollRecords.some(item => item.personId === person.id);
+    if (referenced) {
+      window.alert("این طرف حساب در سوابق مالی استفاده شده و برای حفظ تاریخچه حذف نمی‌شود؛ اطلاعات او را اصلاح یا غیرفعال کنید.");
+      return;
+    }
+    if (!window.confirm("طرف حساب حذف شود؟")) return;
+    onSave({ ...state, people: state.people.filter(item => item.id !== person.id) }, "طرف حساب حذف شد");
+    setSelectedPerson(null);
   }
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -4817,7 +4903,19 @@ function People({
                   )
                   .map(person => {
                     const balance = partyBalanceDescriptor(state, person.id);
-                    return <tr key={person.id}>
+                    return <tr
+                      key={person.id}
+                      className="row-detail-trigger"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedPerson(person)}
+                      onKeyDown={event => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedPerson(person);
+                        }
+                      }}
+                    >
                       <td className="muted-cell">{person.code}</td>
                       <td>
                         <strong>{person.name}</strong>
@@ -4843,25 +4941,20 @@ function People({
                         <button
                           className="icon-button row-action"
                           title="ویرایش کامل طرف حساب"
-                          onClick={() => beginEdit(person)}
+                          onClick={event => {
+                            event.stopPropagation();
+                            beginEdit(person);
+                          }}
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           className="icon-button row-action"
                           title="حذف طرف حساب"
-                          onClick={() =>
-                            window.confirm("طرف حساب حذف شود؟") &&
-                            onSave(
-                              {
-                                ...state,
-                                people: state.people.filter(
-                                  item => item.id !== person.id
-                                ),
-                              },
-                              "طرف حساب حذف شد"
-                            )
-                          }
+                          onClick={event => {
+                            event.stopPropagation();
+                            removePerson(person);
+                          }}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -4965,6 +5058,39 @@ function People({
           </form>
         </Dialog>
       )}
+      {selectedPerson && (() => {
+        const invoices = state.invoices.filter(item => item.partyId === selectedPerson.id);
+        const checks = state.checks.filter(item => item.partyId === selectedPerson.id || item.returnPartyId === selectedPerson.id);
+        const transactions = state.transactions.filter(item => item.partyId === selectedPerson.id);
+        const payroll = state.payrollRecords.filter(item => item.personId === selectedPerson.id);
+        return (
+          <Dialog title={`ریز حساب ${selectedPerson.name}`} onClose={() => setSelectedPerson(null)}>
+            <div className="detail-grid">
+              <div><span>کد</span><strong>{selectedPerson.code || "—"}</strong></div>
+              <div><span>نقش‌ها</span><strong>{(selectedPerson.roles?.length ? selectedPerson.roles : [selectedPerson.type]).join("، ")}</strong></div>
+              <div><span>مانده</span><strong>{formatMoney(selectedPerson.balance || 0, state.settings.currency)} تومان</strong></div>
+              <div><span>شماره تماس</span><strong>{selectedPerson.phone || "—"}</strong></div>
+            </div>
+            <div className="detail-section">
+              <div className="panel-heading"><h4>فاکتورها</h4><span className="soft-tag">{formatNumber(invoices.length)} فقره</span></div>
+              {invoices.length ? invoices.map(invoice => <div className="audit-history-row" key={invoice.id}><strong>{invoice.number}</strong><span>{invoice.type} · {formatMoney(invoice.amount, state.settings.currency)} تومان · {invoice.status}</span><button type="button" className="button button-ghost button-small" onClick={() => onNavigate("invoices")}>مدیریت فاکتورها</button></div>) : <p className="form-hint">فاکتور مرتبطی ثبت نشده است.</p>}
+            </div>
+            <div className="detail-section">
+              <div className="panel-heading"><h4>چک‌ها</h4><span className="soft-tag">{formatNumber(checks.length)} فقره</span></div>
+              {checks.length ? checks.map(check => <div className="audit-history-row" key={check.id}><strong>{check.number}</strong><span>{check.status} · {formatMoney(check.amount, state.settings.currency)} تومان</span><button type="button" className="button button-ghost button-small" onClick={() => onNavigate("checks")}>مدیریت چک‌ها</button></div>) : <p className="form-hint">چک مرتبطی ثبت نشده است.</p>}
+            </div>
+            <div className="detail-section">
+              <div className="panel-heading"><h4>عملیات و انتقال‌ها</h4><span className="soft-tag">{formatNumber(transactions.length)} رکورد</span></div>
+              {transactions.length ? transactions.map(item => <div className="audit-history-row" key={item.id}><strong>{transactionLabel(item.type)}</strong><span>{formatDate(item.date)} · {formatMoney(item.amount, state.settings.currency)} تومان</span><button type="button" className="button button-ghost button-small" onClick={() => onNavigate("transactions")}>مدیریت عملیات</button></div>) : <p className="form-hint">عملیات مرتبطی ثبت نشده است.</p>}
+            </div>
+            <div className="detail-section">
+              <div className="panel-heading"><h4>حقوق</h4><span className="soft-tag">{formatNumber(payroll.length)} رکورد</span></div>
+              {payroll.length ? payroll.map(item => <div className="audit-history-row" key={item.id}><strong>{item.period}</strong><span>{item.status} · {formatMoney(item.amount, state.settings.currency)} تومان</span><button type="button" className="button button-ghost button-small" onClick={() => onNavigate("payroll")}>مدیریت حقوق</button></div>) : <p className="form-hint">رکورد حقوق مرتبطی وجود ندارد.</p>}
+            </div>
+            <div className="form-actions"><button type="button" className="button button-primary" onClick={() => { setSelectedPerson(null); beginEdit(selectedPerson); }}>ویرایش طرف حساب</button><button type="button" className="button button-danger" onClick={() => removePerson(selectedPerson)}>حذف طرف حساب</button></div>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }

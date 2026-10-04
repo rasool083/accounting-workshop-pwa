@@ -2074,6 +2074,37 @@ tr:last-child td {
   color: #526760;
   font-size: 12px;
 }
+.detail-section {
+  display: grid;
+  gap: 9px;
+  margin: 16px 0;
+}
+.detail-section .panel-heading {
+  margin-bottom: 0;
+  align-items: center;
+}
+.detail-section .panel-heading h4 {
+  margin: 0;
+  color: #315e57;
+  font-size: 13px;
+}
+.detail-section .audit-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.detail-section .audit-history-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .detail-section .audit-history-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
 @media print {
   .check-filters {
     display: none !important;
